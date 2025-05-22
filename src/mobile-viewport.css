@@ -1,0 +1,16 @@
+/* Fix for mobile browsers */
+@supports (-webkit-touch-callout: none) {
+    #root {
+      height: -webkit-fill-available;
+      min-height: -webkit-fill-available;
+    }
+  }
+  
+  /* Prevent overscroll */
+  body {
+    overscroll-behavior-y: none;
+  }
+
+  /* * {
+    outline: 1px solid red;
+  } */
