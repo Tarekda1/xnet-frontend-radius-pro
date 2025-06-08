@@ -1,0 +1,23 @@
+# Development Dockerfile for React + Vite + TypeScript
+
+FROM node:18-alpine AS development
+
+# Set working directory
+WORKDIR /app
+
+# Install dependencies first (better layer caching)
+COPY package*.json ./
+RUN npm ci --silent
+
+# Copy source code
+COPY . .
+
+# Add node_modules/.bin to PATH
+ENV PATH /app/node_modules/.bin:$PATH
+
+# Expose Vite development server port and HMR port
+EXPOSE 5173
+EXPOSE 24678
+
+# Start development server with host configuration
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173", "--strictPort"] 

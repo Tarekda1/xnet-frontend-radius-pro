@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  # Production build
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: xnet-frontend-radius-pro
+    ports:
+      - "3001:80"
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+    networks:
+      - xnet-network
+
+  # Development service (optional)
+  frontend-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: development
+    container_name: xnet-frontend-radius-pro-dev
+    ports:
+      - "5173:5173"
+      - "24678:24678"  # HMR websocket port
+    volumes:
+      - .:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+      - VITE_HMR_PORT=24678
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
+    restart: unless-stopped
+    networks:
+      - xnet-network
+    profiles:
+      - dev
+
+networks:
+  xnet-network:
+    driver: bridge 

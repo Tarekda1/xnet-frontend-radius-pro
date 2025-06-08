@@ -20,12 +20,24 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import {
   ArrowUpDown,
   CalendarIcon,
   Check,
   CheckCircle,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  Clock,
   DollarSign,
   Eye,
   Trash2,
@@ -46,6 +58,8 @@ const providerStyles = {
   default: { color: "text-gray-700", bg: "bg-gray-100" },
 } as const;
 
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100, 200];
+
 type Props = {
   invoices: ExternalInvoice[];
   /* pagination */
@@ -54,6 +68,10 @@ type Props = {
   pageSize: number;
   onNextPage: () => void;
   onPrevPage: () => void;
+  onPageSizeChange: (size: number) => void;
+  onFirstPage: () => void;
+  onLastPage: () => void;
+  totalItems: number;
   /* selection / sorting */
   sorting: SortingState;
   onSortingChange: OnChangeFn<SortingState>;
@@ -63,6 +81,10 @@ type Props = {
   onSetPaid: (id: number) => void;
   onViewInvoice: (inv: ExternalInvoice) => void;
   onDeleteInvoice: (id: number) => void;
+  /* other */
+  search: string;
+  key?: number;
+  hideBulkActions?: boolean;
 };
 
 const DesktopTable: React.FC<Props> = ({
@@ -72,6 +94,10 @@ const DesktopTable: React.FC<Props> = ({
   pageSize,
   onNextPage,
   onPrevPage,
+  onPageSizeChange,
+  onFirstPage,
+  onLastPage,
+  totalItems,
   sorting,
   onSortingChange,
   rowSelection,
@@ -202,21 +228,36 @@ const DesktopTable: React.FC<Props> = ({
         header: ({ column }) => (
           <HeaderButton column={column}>Status</HeaderButton>
         ),
-        cell: ({ row }) =>
-          row.original.status === "paid" ? (
-            <Badge variant="success">
-              <CheckCircle className="h-3 w-3 mr-1  text-white" /> <span className="text-white">Paid</span>
-            </Badge>
-          ) : (
-            <Badge variant="destructive">
-              <XCircle className="h-3 w-3 mr-1 text-white" /> <span className="text-white">Unpaid</span>
-            </Badge>
-          ),
+        cell: ({ row }) => {
+          switch (row.original.status) {
+            case "paid":
+              return (
+                <Badge variant="success">
+                  <CheckCircle className="h-3 w-3 mr-1 text-white" />
+                  <span className="text-white">Paid</span>
+                </Badge>
+              );
+            case "pending":
+              return (
+                <Badge variant="outline" className="bg-yellow-500 hover:bg-yellow-600 border-yellow-500">
+                  <Clock className="h-3 w-3 mr-1 text-white" />
+                  <span className="text-white">Pending</span>
+                </Badge>
+              );
+            default:
+              return (
+                <Badge variant="destructive">
+                  <XCircle className="h-3 w-3 mr-1 text-white" />
+                  <span className="text-white">Unpaid</span>
+                </Badge>
+              );
+          }
+        },
         sortingFn: (rowA, rowB, columnId) => {
-          const a = rowA.original.status;
-          const b = rowB.original.status;
-          if (a === b) return 0;
-          return a === "paid" ? 1 : -1;  // "paid" comes after "unpaid"
+          const statusOrder = { paid: 2, pending: 1, unpaid: 0 };
+          const a = statusOrder[rowA.original.status as keyof typeof statusOrder] ?? 0;
+          const b = statusOrder[rowB.original.status as keyof typeof statusOrder] ?? 0;
+          return a - b;  // Sort by status priority
         },
       },
       {
@@ -328,27 +369,78 @@ const DesktopTable: React.FC<Props> = ({
         </Table>
       </div>
 
-      {/* pagination footer */}
-      <div className="flex items-center justify-between py-4">
-        <span className="text-sm text-muted-foreground">
-          Page {currentPage} of {totalPages}
-        </span>
-        <div className="space-x-2">
+      {/* Enhanced pagination footer */}
+      <div className="flex items-center justify-between py-4 px-2 border-t">
+        {/* Items per page selector */}
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Show</span>
+          <Select
+            value={pageSize.toString()}
+            onValueChange={(value) => onPageSizeChange(Number(value))}
+          >
+            <SelectTrigger className="h-8 w-[80px]">
+              <SelectValue placeholder={pageSize} />
+            </SelectTrigger>
+            <SelectContent side="top">
+              {PAGE_SIZE_OPTIONS.map((size) => (
+                <SelectItem key={size} value={size.toString()}>
+                  {size}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <span className="text-sm text-muted-foreground">per page</span>
+        </div>
+
+        {/* Items range and total */}
+        <div className="flex-1 text-center text-sm text-muted-foreground">
+          Showing <span className="font-medium">{(currentPage - 1) * pageSize + 1}</span> to{" "}
+          <span className="font-medium">{Math.min(currentPage * pageSize, totalItems)}</span> of{" "}
+          <span className="font-medium">{totalItems}</span> items
+        </div>
+
+        {/* Navigation buttons */}
+        <div className="flex gap-1">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onFirstPage}
+            disabled={currentPage === 1}
+            className="h-8 w-8 p-0"
+          >
+            <ChevronsLeft className="h-4 w-4" />
+          </Button>
           <Button
             variant="outline"
             size="sm"
             onClick={onPrevPage}
             disabled={currentPage === 1}
+            className="h-8 w-8 p-0"
           >
-            Previous
+            <ChevronLeft className="h-4 w-4" />
           </Button>
+          <div className="flex items-center gap-1 px-2">
+            <div className="text-sm font-medium">
+              Page {currentPage} of {totalPages}
+            </div>
+          </div>
           <Button
             variant="outline"
             size="sm"
             onClick={onNextPage}
             disabled={currentPage === totalPages}
+            className="h-8 w-8 p-0"
           >
-            Next
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onLastPage}
+            disabled={currentPage === totalPages}
+            className="h-8 w-8 p-0"
+          >
+            <ChevronsRight className="h-4 w-4" />
           </Button>
         </div>
       </div>

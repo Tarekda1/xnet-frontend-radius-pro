@@ -53,7 +53,7 @@ export type ExternalInvoice = {
     amount: number;
 
     /** Payment status */
-    status: "paid" | "unpaid";
+    status: "paid" | "unpaid" | "pending";
 
     /** ISO date when invoice was generated */
     createdAt: string;

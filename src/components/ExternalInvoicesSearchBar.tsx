@@ -2,7 +2,7 @@ import React, { Dispatch, SetStateAction, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DateRangePicker } from "@/components/ui/DateRangePicker";
-import { CalendarIcon, RefreshCw, SearchIcon, X } from "lucide-react";
+import { CalendarIcon, SearchIcon, X, Check, Download } from "lucide-react";
 import { DateRange } from "react-day-picker";
 
 type Props = {
@@ -17,7 +17,13 @@ type Props = {
   onSearch: (value: string) => void;
   onClearSearch: () => void;
   onClearDates?: () => void;
-  onRefresh?: () => void;
+  
+  /* bulk actions */
+  onBulkPaid?: () => void;
+  onExport?: () => void;
+  selectedCount?: number;
+  hasData?: boolean;
+  
   currentSearchTerm: string;
   setSearchTerm: Dispatch<SetStateAction<string>>;
   searchTerm: string;
@@ -31,69 +37,120 @@ const ExternalInvoicesSearchBar: React.FC<Props> = ({
   onSearch,
   onClearSearch,
   onClearDates,
-  onRefresh,
+  onBulkPaid,
+  onExport,
+  selectedCount = 0,
+  hasData = false,
 }) => {
   const [search, setSearch] = useState<string>(globalFilter || "");
+  
   const onClearSearchCb = () => {
     setSearch("");
     onClearSearch();
   };
-  return <form
-    onSubmit={(e) => {
-      e.preventDefault();
-      onSearch(search.trim());
-    }}
-    className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 py-4"
-  >
-    {/* ── Search text ─────────────────────────────── */}
-    <div className="relative w-full sm:w-64">
-      <Input
-        placeholder="Search invoices…"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="pr-10"
-      />
-      {search && (
-        <button
-          type="button"
-          onClick={onClearSearchCb}
-          className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+
+  const handleSearch = (e?: React.FormEvent) => {
+    e?.preventDefault();
+    onSearch(search.trim());
+  };
+
+  return (
+    <div className="space-y-2">
+      {/* Bulk Action Buttons Header */}
+      <div className="flex justify-end gap-1.5">
+        {onBulkPaid && (
+          <Button
+            onClick={onBulkPaid}
+            disabled={selectedCount === 0}
+            variant="outline"
+            size="sm"
+            className="h-8 px-3"
+          >
+            <Check className="mr-1.5 h-3.5 w-3.5" />
+            Set Selected as Paid ({selectedCount})
+          </Button>
+        )}
+        
+        {onExport && (
+          <Button
+            onClick={onExport}
+            disabled={!hasData}
+            variant="outline"
+            size="sm"
+            className="h-8 px-3"
+          >
+            <Download className="mr-1.5 h-3.5 w-3.5" />
+            Export to Excel
+          </Button>
+        )}
+      </div>
+
+      {/* Search Input and Date Range on Same Line */}
+      <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-2">
+        {/* Search Input */}
+        <div className="flex-1 min-w-0">
+          <div className="relative">
+            <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search invoices, clients, amounts..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9 pr-8 h-9 text-sm"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleSearch();
+                }
+              }}
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={onClearSearchCb}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Search Button */}
+        <Button 
+          type="submit" 
+          variant="default" 
+          size="sm" 
+          className="h-9 px-3"
         >
-          <X className="h-4 w-4" />
-        </button>
-      )}
+          <SearchIcon className="mr-1.5 h-3.5 w-3.5" />
+          Search
+        </Button>
+
+        {/* Date Range Picker */}
+        {onDateRangeChange && (
+          <div className="flex gap-1.5 shrink-0">
+            <DateRangePicker
+              dateRange={dateRange}
+              onDateRangeChange={onDateRangeChange}
+              className="w-full sm:w-auto h-9"
+            />
+            
+            {onClearDates && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onClearDates}
+                size="sm"
+                className="h-9 px-3"
+              >
+                <CalendarIcon className="mr-1.5 h-3.5 w-3.5" />
+                Clear
+              </Button>
+            )}
+          </div>
+        )}
+      </form>
     </div>
-
-    <Button type="submit" variant="outline" className="w-full sm:w-auto">
-      <SearchIcon className="mr-2 h-4 w-4" />
-      Search
-    </Button>
-
-    {/* ── Date range ──────────────────────────────── */}
-    {/* <DateRangePicker
-      dateRange={dateRange}
-      onDateRangeChange={onDateRangeChange}
-      className="w-full sm:w-auto"
-    />
-    <Button
-      variant="outline"
-      onClick={onClearDates}
-      className="w-full sm:w-auto"
-    >
-      <CalendarIcon className="mr-2 h-4 w-4" />
-      Clear Dates
-    </Button> */}
-
-    {/* ── Refresh ─────────────────────────────────── */}
-    {/* <Button
-      variant="outline"
-      onClick={onRefresh}
-      className="w-full sm:w-auto"
-    >
-      <RefreshCw className="mr-2 h-4 w-4" />
-      {loading ? "Loading" : "Refresh"}
-    </Button> */}
-  </form>
+  );
 };
 
 export default ExternalInvoicesSearchBar;

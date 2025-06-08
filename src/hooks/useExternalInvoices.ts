@@ -32,6 +32,7 @@ export interface InvoiceMetrics {
     totalPaid: number;
     totalUnpaid: number;
     totalAmount: number;
+    totalPending: number;
 }
 
 
