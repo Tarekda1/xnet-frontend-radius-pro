@@ -1,0 +1,23 @@
+ingress:
+  - hostname: radius.xnetcloud.tech
+    service: http://localhost:5173
+    originRequest:
+      noTLSVerify: true
+      wsSettings:
+        enableWS: true
+        enableWSS: true
+  - hostname: api.xnetcloud.tech
+    service: http://localhost:3000
+    originRequest:
+      noTLSVerify: true
+      wsSettings:
+        enableWS: true
+        enableWSS: true
+  - hostname: ws.xnetcloud.tech
+    service: http://localhost:15674
+    originRequest:
+      noTLSVerify: true
+      wsSettings:
+        enableWS: true
+        enableWSS: true
+  - service: http_status:404 

@@ -52,6 +52,8 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import Loader from "@/components/ui/loader";
+import { Skeleton } from "@/components/ui/skeleton";
+import SearchBar from "@/components/SearchBar";
 
 import {
     Clock,
@@ -60,6 +62,10 @@ import {
     RefreshCw,
     RotateCw,
     Settings,
+    User,
+    Wifi,
+    HardDrive,
+    Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -85,13 +91,10 @@ const formatUptime = (s: number) => {
 };
 const statusColor = (s: string) =>
 ({
-    active:
-        "bg-green-500 after:bg-blue-500 [--status-color:34,197,94]",
+    active: "bg-blue-500 after:bg-blue-500 [--status-color:59,130,246]",
     idle: "bg-yellow-500 after:bg-yellow-500 [--status-color:234,179,8]",
-    disconnected:
-        "bg-red-500 after:bg-red-500 [--status-color:239,68,68]",
-}[s.toLowerCase()] ||
-    "bg-gray-500 after:bg-gray-500 [--status-color:107,114,128]");
+    disconnected: "bg-red-500 after:bg-red-500 [--status-color:239,68,68]",
+}[s.toLowerCase()] || "bg-gray-500 after:bg-gray-500 [--status-color:107,114,128]");
 const formatStatus = (s: string) =>
 ({ active: "Online", idle: "Idle", disconnected: "Disconnected" }[
     s.toLowerCase()
@@ -106,42 +109,48 @@ const profileBadge = (p: string) => {
     const l = p.toLowerCase();
     if (l === "premium")
         return (
-            <Badge variant="outline" className="bg-yellow-100 text-yellow-800">
+            <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-200">
                 Premium
             </Badge>
         );
     if (l === "basic")
         return (
-            <Badge variant="outline" className="bg-blue-100 text-blue-800">
+            <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-200">
                 Basic
             </Badge>
         );
     if (l === "basicfn")
         return (
-            <Badge variant="outline" className="bg-blue-100 text-purple-800">
+            <Badge variant="outline" className="bg-blue-100 text-purple-800 border-purple-200">
                 BasicFN
             </Badge>
         );
     return (
-        <Badge variant="outline" className="bg-gray-100 text-gray-800">
+        <Badge variant="outline" className="bg-gray-100 text-gray-800 border-gray-200">
             {p}
         </Badge>
     );
 };
 
 /* small reusable bar */
-const UsageBar: React.FC<{ used: string; total: string }> = ({
+const UsageBar: React.FC<{ used: string; total: string; type: 'daily' | 'monthly' }> = ({
     used,
     total,
+    type
 }) => {
     const value = pct(used, total);
     return (
         <TooltipProvider>
             <Tooltip>
                 <TooltipTrigger asChild>
-                    <div>
-                        <div className="text-sm mb-1">
-                            {formatBytes(used)} / {formatBytes(total)} ({value.toFixed(1)}%)
+                    <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">
+                                {type === 'daily' ? 'Daily' : 'Monthly'} Usage
+                            </span>
+                            <span className="font-medium">
+                                {formatBytes(used)} / {formatBytes(total)}
+                            </span>
                         </div>
                         <Progress
                             value={value}
@@ -154,13 +163,47 @@ const UsageBar: React.FC<{ used: string; total: string }> = ({
                                         : "bg-gray-200"
                             )}
                         />
+                        <div className="text-xs text-muted-foreground text-right">
+                            {value.toFixed(1)}% used
+                        </div>
                     </div>
                 </TooltipTrigger>
                 <TooltipContent>
-                    {formatBytes(used)} / {formatBytes(total)}
+                    <div className="space-y-1">
+                        <div className="font-medium">{type === 'daily' ? 'Daily' : 'Monthly'} Usage</div>
+                        <div>{formatBytes(used)} / {formatBytes(total)}</div>
+                        <div className="text-sm text-muted-foreground">{value.toFixed(1)}% used</div>
+                    </div>
                 </TooltipContent>
             </Tooltip>
         </TooltipProvider>
+    );
+};
+
+const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
+    const isActive = status.toLowerCase() === 'active';
+    const isIdle = status.toLowerCase() === 'idle';
+    const isDisconnected = status.toLowerCase() === 'disconnected';
+
+    return (
+        <Badge 
+            variant="outline" 
+            className={cn(
+                "relative pl-6 pr-3 py-1.5 border-2",
+                isActive && "border-blue-200 bg-blue-50/50 text-blue-700",
+                isIdle && "border-yellow-200 bg-yellow-50/50 text-yellow-700",
+                isDisconnected && "border-red-200 bg-red-50/50 text-red-700"
+            )}
+        >
+            <span
+                className={cn(
+                    "absolute left-2 top-1/2 -translate-y-1/2 inline-block w-2 h-2 rounded-full",
+                    statusColor(status),
+                    isActive && "animate-pulse"
+                )}
+            />
+            {formatStatus(status)}
+        </Badge>
     );
 };
 
@@ -169,50 +212,53 @@ const MobileCard: React.FC<{
     user: OnlineUser;
     onAction: (a: string, u: string) => void;
 }> = React.memo(({ user, onAction }) => (
-    <Card>
-        <CardHeader>
-            <CardTitle className="flex justify-between items-center">
-                <span className={cn(profileClass(user.profile_profile_name))}>
-                    {user.session_username}
-                </span>
-                {profileBadge(user.profile_profile_name)}
-            </CardTitle>
-            <CardDescription>{user.userDetails_full_name || "—"}</CardDescription>
+    <Card className="overflow-hidden border border-border/50 hover:border-border transition-colors">
+        <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                    <CardTitle className={cn("text-lg", profileClass(user.profile_profile_name))}>
+                        {user.session_username}
+                    </CardTitle>
+                    <CardDescription className="flex items-center gap-2">
+                        <User className="h-3.5 w-3.5" />
+                        {user.userDetails_full_name || "—"}
+                    </CardDescription>
+                </div>
+                <div className="flex flex-col items-end gap-2">
+                    {profileBadge(user.profile_profile_name)}
+                    <StatusBadge status={user.session_status} />
+                </div>
+            </div>
         </CardHeader>
-        <CardContent className="text-sm space-y-2">
-            <p>
-                <span className="font-semibold">Status:</span>{" "}
-                <Badge variant="outline">
-                    <span
-                        className={cn(
-                            "inline-block w-2 h-2 rounded-full mr-2",
-                            statusColor(user.session_status)
-                        )}
-                    />
-                    {formatStatus(user.session_status)}
-                </Badge>
-            </p>
-            <p>
-                <span className="font-semibold">Uptime:</span>{" "}
-                {formatUptime(user.session_session_time)}
-            </p>
-            <UsageBar
-                used={user.real_time_data_usage}
-                total={user.profile_daily_quota}
-            />
+        <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                    <div className="text-sm text-muted-foreground">MAC Address</div>
+                    <div className="flex items-center text-sm">
+                        <Wifi className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
+                        {user.session_mac_address}
+                    </div>
+                </div>
+                <UsageBar
+                    used={user.real_time_data_usage}
+                    total={user.profile_daily_quota}
+                    type="daily"
+                />
+            </div>
             <UsageBar
                 used={user.monthly_usage}
                 total={user.profile_monthly_quota}
+                type="monthly"
             />
         </CardContent>
-        <CardFooter className="justify-end">
+        <CardFooter className="pt-2">
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                    <Button size="sm" variant="outline">
+                    <Button size="sm" variant="outline" className="w-full">
                         Actions <ChevronDown className="h-4 w-4 ml-1" />
                     </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
+                <DropdownMenuContent align="end" className="w-[200px]">
                     <DropdownMenuLabel>Actions</DropdownMenuLabel>
                     <DropdownMenuItem
                         onClick={() => onAction("disconnect", user.session_username)}
@@ -251,34 +297,49 @@ const TableRows = function TableRows({
     return (
         <>
             {users.map((u) => (
-                <TableRow key={u.session_username} className="hover:bg-gray-50">
-                    <TableCell className={cn(profileClass(u.profile_profile_name),`p-4`)}>
-                        {u.session_username}
+                <TableRow 
+                    key={u.session_username} 
+                    className={cn(
+                        "hover:bg-muted/50 transition-colors",
+                        u.session_status === 'active' && "bg-blue-50/50",
+                        u.session_status === 'idle' && "bg-yellow-50/50"
+                    )}
+                >
+                    <TableCell className={cn(profileClass(u.profile_profile_name), "p-4")}>
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-primary/10 rounded-lg">
+                                <User className="h-4 w-4 text-primary" />
+                            </div>
+                            <div>
+                                <div className="font-medium">{u.session_username}</div>
+                                <div className="text-xs text-muted-foreground">{u.userDetails_full_name || "—"}</div>
+                            </div>
+                        </div>
                     </TableCell>
-                    <TableCell className="font-bold">{u.userDetails_full_name}</TableCell>
-                    <TableCell>{u.session_mac_address}</TableCell>
+                    <TableCell>
+                        <div className="flex items-center gap-1.5">
+                            <Wifi className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span className="font-mono text-sm">{u.session_mac_address}</span>
+                        </div>
+                    </TableCell>
                     <TableCell>{profileBadge(u.profile_profile_name)}</TableCell>
                     <TableCell>
-                        <Badge variant="outline">
-                            <span
-                                className={cn(
-                                    "inline-block w-2 h-2 rounded-full mr-2",
-                                    statusColor(u.session_status)
-                                )}
-                            />
-                            {formatStatus(u.session_status)}
-                        </Badge>
+                        <StatusBadge status={u.session_status} />
                     </TableCell>
                     <TableCell>
-                        {u.is_fallback ? (
-                            <span className="text-red-600">Yes</span>
-                        ) : (
-                            <span className="text-green-600">No</span>
-                        )}
+                        <div className="flex items-center gap-1.5">
+                            <HardDrive className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span className={cn(
+                                "text-sm",
+                                u.is_fallback ? "text-red-600" : "text-green-600"
+                            )}>
+                                {u.is_fallback ? "Yes" : "No"}
+                            </span>
+                        </div>
                     </TableCell>
                     <TableCell>
-                        <div className="flex items-center">
-                            <Clock className="h-4 w-4 mr-1" />
+                        <div className="flex items-center gap-1.5 text-sm">
+                            <Clock className="h-3.5 w-3.5 text-muted-foreground" />
                             {formatUptime(u.session_session_time)}
                         </div>
                     </TableCell>
@@ -286,12 +347,14 @@ const TableRows = function TableRows({
                         <UsageBar
                             used={u.real_time_data_usage}
                             total={u.profile_daily_quota}
+                            type="daily"
                         />
                     </TableCell>
                     <TableCell>
                         <UsageBar
                             used={u.monthly_usage}
                             total={u.profile_monthly_quota}
+                            type="monthly"
                         />
                     </TableCell>
                     <TableCell className="text-center">
@@ -301,7 +364,7 @@ const TableRows = function TableRows({
                                     Actions <ChevronDown className="h-4 w-4 ml-1" />
                                 </Button>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
+                            <DropdownMenuContent align="end" className="w-[200px]">
                                 <DropdownMenuLabel>Actions</DropdownMenuLabel>
                                 <DropdownMenuItem
                                     onClick={() => onAction("disconnect", u.session_username)}
@@ -336,20 +399,19 @@ const DesktopTable: React.FC<{
     users: OnlineUser[];
     onAction: (a: string, u: string) => void;
 }> = React.memo(({ users, onAction }) => (
-    <Card className="overflow-hidden shadow-lg">
-        <Table className="dark:bg-gray-600 table-fixed">
+    <Card className="overflow-hidden border border-border/50">
+        <Table>
             <TableHeader>
-                <TableRow>
-                    <TableHead className="w-1/10">Username</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead className="w-[150px]">MAC</TableHead>
+                <TableRow className="hover:bg-transparent">
+                    <TableHead className="w-[250px]">User</TableHead>
+                    <TableHead className="w-[150px]">MAC Address</TableHead>
                     <TableHead className="w-[100px]">Profile</TableHead>
-                    <TableHead className="w-[150px]">Status</TableHead>
-                    <TableHead className="w-[60px]">FUP</TableHead>
+                    <TableHead className="w-[120px]">Status</TableHead>
+                    <TableHead className="w-[80px]">FUP</TableHead>
                     <TableHead className="w-[120px]">Uptime</TableHead>
-                    <TableHead>Daily</TableHead>
-                    <TableHead>Monthly</TableHead>
-                    <TableHead className="text-center">Actions</TableHead>
+                    <TableHead>Daily Usage</TableHead>
+                    <TableHead>Monthly Usage</TableHead>
+                    <TableHead className="text-center w-[100px]">Actions</TableHead>
                 </TableRow>
             </TableHeader>
             <TableBody>
@@ -362,9 +424,19 @@ const DesktopTable: React.FC<{
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ MAIN TABLE COMPONENT ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 interface Props {
     search: string;
+    onCountChange?: (count: number) => void;
+    isRefreshing?: boolean;
+    onSearch?: (term: string) => void;
+    onRefresh?: () => void;
 }
 
-const OnlineUsersTable: React.FC<Props> = ({ search }) => {
+const OnlineUsersTable: React.FC<Props> = ({ 
+    search, 
+    onCountChange, 
+    isRefreshing,
+    onSearch,
+    onRefresh 
+}) => {
     /* local pagination to keep table self-contained */
     //const [page, setPage] = useState(1);
 
@@ -401,6 +473,30 @@ const OnlineUsersTable: React.FC<Props> = ({ search }) => {
     /* page-size select options */
     const pageSizes = useMemo(() => [10, 25, 50, 100], []);
 
+    // Update count when users change
+    useEffect(() => {
+        onCountChange?.(data?.totalUsers || 0);
+    }, [data?.totalUsers, onCountChange]);
+
+    const handleSearch = useCallback((term: string) => {
+        onSearch?.(term);
+    }, [onSearch]);
+
+    const handleRefresh = useCallback(() => {
+        onRefresh?.();
+        refetch();
+    }, [onRefresh, refetch]);
+
+    if (isRefreshing) {
+        return (
+            <div className="space-y-2">
+                <Skeleton className="h-8 w-full" />
+                <Skeleton className="h-8 w-full" />
+                <Skeleton className="h-8 w-full" />
+            </div>
+        );
+    }
+
     if (isLoading)
         return (
             <div className="flex justify-center py-20">
@@ -412,6 +508,7 @@ const OnlineUsersTable: React.FC<Props> = ({ search }) => {
 
     return (
         <>
+
             {/* Desktop */}
             <div className="hidden md:block">
                 <DesktopTable users={data!.data} onAction={onAction} />

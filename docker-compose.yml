@@ -1,45 +1,76 @@
 version: '3.8'
 
-services:
-  # Production build
-  frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: production
-    container_name: xnet-frontend-radius-pro
-    ports:
-      - "3001:80"
-    environment:
-      - NODE_ENV=production
-    restart: unless-stopped
-    networks:
-      - xnet-network
+# Enable BuildKit by default
+x-build-args: &build-args
+  DOCKER_BUILDKIT: 1
+  COMPOSE_DOCKER_CLI_BUILD: 1
 
-  # Development service (optional)
+services:
+  # Development service
   frontend-dev:
+    profiles: ["dev"]
     build:
       context: .
       dockerfile: Dockerfile.dev
-      target: development
-    container_name: xnet-frontend-radius-pro-dev
-    ports:
-      - "5173:5173"
-      - "24678:24678"  # HMR websocket port
+      args:
+        <<: *build-args
+        NODE_ENV: development
     volumes:
-      - .:/app
       - /app/node_modules
+      - ${HOME}/.npm:/root/.npm:cached
+    ports:
+      - "${PORT:-5173}:5173"
+      - "24678:24678"
     environment:
       - NODE_ENV=development
-      - VITE_HMR_PORT=24678
+      - VITE_API_URL=${VITE_API_URL:-https://radius.xnetcloud.tech/api}
       - CHOKIDAR_USEPOLLING=true
       - WATCHPACK_POLLING=true
-    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5173"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     networks:
-      - xnet-network
-    profiles:
-      - dev
+      - frontend-network
+
+  # Production service
+  frontend-prod:
+    profiles: ["prod"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        <<: *build-args
+        NODE_ENV: production
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:3000}
+      cache_from:
+        - type=registry,ref=node:20-alpine
+        - type=registry,ref=nginx:alpine-slim
+    restart: unless-stopped
+    ports:
+      - "${PORT:-80}:80"
+    environment:
+      - NODE_ENV=production
+      - VITE_API_URL=${VITE_API_URL:-http://localhost:3000}
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - frontend-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 500M
+        reservations:
+          cpus: '0.25'
+          memory: 200M
 
 networks:
-  xnet-network:
+  frontend-network:
     driver: bridge 

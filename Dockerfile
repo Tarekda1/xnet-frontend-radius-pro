@@ -1,33 +1,41 @@
 # Multi-stage Dockerfile for React + Vite + TypeScript
 
-# Stage 1: Build stage
-FROM node:18-alpine AS builder
+# Build stage
+FROM node:20-alpine AS builder
+
+# Add dependencies for npm performance
+RUN apk add --no-cache libc6-compat
 
 # Set working directory
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+# Configure npm for better performance
+RUN npm config set registry https://registry.npmmirror.com/ && \
+    npm config set fetch-retries 3 && \
+    npm config set fetch-retry-mintimeout 5000 && \
+    npm config set fetch-retry-maxtimeout 60000
 
 # Install dependencies
-RUN npm ci --silent
+COPY package*.json ./
+RUN npm install --prefer-offline --no-audit --no-fund --production
 
-# Copy source code
+# Copy source code and build
 COPY . .
-
-# Build the application
 RUN npm run build
 
-# Stage 2: Production stage
-FROM nginx:alpine AS production
+# Production stage
+FROM nginx:alpine-slim
+
+# Copy custom nginx config
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Copy built assets from builder stage
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Copy custom nginx configuration (optional)
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Add healthcheck
+RUN apk add --no-cache wget
 
-# Expose port 80
+# Expose port
 EXPOSE 80
 
 # Start nginx

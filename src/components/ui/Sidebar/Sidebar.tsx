@@ -82,11 +82,6 @@ const Sidebar: React.FC = () => {
         to: '/invoice-upload',
       },
       {
-        label: 'Invoices',
-        to: '/invoices',
-        icon: FileText,
-      },
-      {
         label: "External Invoices",
         to: "/external-invoices",
         icon: FileText,

@@ -1,23 +1,28 @@
-# Development Dockerfile for React + Vite + TypeScript
+# Use a lightweight Node.js image
+FROM node:20
 
-FROM node:18-alpine AS development
+# Set environment variables for consistent behavior
+ENV NODE_ENV=development
 
 # Set working directory
 WORKDIR /app
 
-# Install dependencies first (better layer caching)
-COPY package*.json ./
-RUN npm ci --silent
+# Install dependencies separately to improve build caching
+COPY package.json package-lock.json* ./
 
-# Copy source code
+RUN npm ci || npm install
+
+# Copy source code AFTER installing dependencies
 COPY . .
 
-# Add node_modules/.bin to PATH
-ENV PATH /app/node_modules/.bin:$PATH
+# Ensure node_modules/.bin is in PATH
+ENV PATH=/app/node_modules/.bin:$PATH
 
-# Expose Vite development server port and HMR port
+# Install `vite` globally (optional if needed for tooling)
+# RUN npm install -g vite
+
+# Expose Vite dev server and HMR port (default: 5173)
 EXPOSE 5173
-EXPOSE 24678
 
-# Start development server with host configuration
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173", "--strictPort"] 
+# Use host networking for Vite dev server
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

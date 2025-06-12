@@ -1,4 +1,4 @@
-import React, { Suspense } from 'react';
+import React, { Suspense, useEffect } from 'react';
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import queryClient from './api/queryClient';
@@ -7,11 +7,12 @@ import Dashboard from './pages/Dashboard';
 import Setting from './pages/Setting';
 import About from './pages/About';
 import { SidebarProvider } from './components/ui/Sidebar/Sidebar.context';
-import { ToastContainer } from 'react-toastify';
+import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Helmet } from 'react-helmet';
 import { Loader } from 'lucide-react';
+import { websocketService } from './services/websocket';
 
 const Home = React.lazy(() => import('./pages/Home'));
 const UsersComponent = React.lazy(() => import('./pages/Users'));
@@ -60,6 +61,30 @@ const AppRoutes: React.FC = () => {
 };
 
 const App: React.FC = () => {
+  useEffect(() => {
+    // Initialize WebSocket connection
+    websocketService.connect();
+
+    // Set up notification handler
+    const unsubscribe = websocketService.onNotification((data) => {
+      console.log('Received notification:', data);
+      toast.info(data.message, {
+        position: "top-right",
+        autoClose: 5000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
+    });
+
+    // Cleanup on unmount
+    return () => {
+      unsubscribe();
+      websocketService.disconnect();
+    };
+  }, []);
+
   return (
     <>
       <Helmet>

@@ -2,15 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { Profile, useProfiles } from '../hooks/useProfiles';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Search, Plus, Download, Upload, Clock, Users, Pencil } from 'lucide-react';
+import { Search, Plus, Download, Upload, Clock, Users, Pencil, Network, AlertCircle } from 'lucide-react';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { toast } from 'react-toastify';
+import { useToast } from "@/components/ui/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const ProfileCard: React.FC<{ profile: Profile; onEdit: () => void }> = ({ profile, onEdit }) => {
   const formatQuota = (quota: string) => {
@@ -246,9 +247,73 @@ const ProfilesComponent: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProfile, setEditingProfile] = useState<Profile | undefined>(undefined);
+  const { toast } = useToast();
 
-  if (isLoading) return <div className="flex justify-center items-center h-screen">Loading...</div>;
-  if (error) return <div className="text-red-500 text-center">Error: {error.message}</div>;
+  if (isLoading) {
+    return (
+      <div className="w-full py-6 space-y-6">
+        <header className="flex flex-col md:flex-row justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <Skeleton className="h-10 w-10 rounded-lg" />
+            <div className="space-y-2">
+              <Skeleton className="h-8 w-48" />
+              <Skeleton className="h-4 w-64" />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Skeleton className="h-10 w-[200px]" />
+            <Skeleton className="h-10 w-32" />
+          </div>
+        </header>
+
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-6 w-48" />
+            <Skeleton className="h-4 w-64" />
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[1, 2, 3].map((i) => (
+                <Card key={i} className="overflow-hidden">
+                  <Skeleton className="h-32 w-full" />
+                  <div className="p-4 space-y-4">
+                    <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="h-4 w-1/2" />
+                    <Skeleton className="h-4 w-2/3" />
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="w-full py-6 space-y-6">
+        <div className="flex items-center justify-center h-[50vh]">
+          <Card className="w-full max-w-md">
+            <CardContent className="pt-6">
+              <div className="flex flex-col items-center gap-4 text-center">
+                <div className="p-3 rounded-full bg-red-100">
+                  <AlertCircle className="h-6 w-6 text-red-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold">Error Loading Profiles</h3>
+                  <p className="text-sm text-muted-foreground mt-1">{error.message}</p>
+                </div>
+                <Button variant="outline" onClick={() => window.location.reload()}>
+                  Try Again
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   const filteredProfiles = data?.data.filter(profile =>
     profile.profileName.toLowerCase().includes(searchTerm.toLowerCase())
@@ -258,21 +323,29 @@ const ProfilesComponent: React.FC = () => {
     try {
       if (profile.id) {
         await updateProfile(profile);
-        toast.success(`Profile "${profile.profileName}" updated successfully`);
+        toast({
+          title: "Profile Updated",
+          description: `Profile "${profile.profileName}" has been updated successfully.`,
+        });
       } else {
         await createProfile(profile);
-        toast.success(`Profile "${profile.profileName}" created successfully`);
+        toast({
+          title: "Profile Created",
+          description: `Profile "${profile.profileName}" has been created successfully.`,
+        });
       }
     } catch (error) {
-      toast.error(`Failed to save profile: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toast({
+        title: "Error",
+        description: `Failed to save profile: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        variant: "destructive",
+      });
     }
   };
-
 
   const openEditModal = (profile: Profile) => {
     setEditingProfile({
       ...profile,
-      // Ensure all number fields are actually numbers
       speedDown: Number(profile.speedDown),
       speedUp: Number(profile.speedUp),
       sessionTimeout: Number(profile.sessionTimeout),
@@ -282,43 +355,74 @@ const ProfilesComponent: React.FC = () => {
     setIsModalOpen(true);
   };
 
-
   return (
-    <div className="w-full py-5">
-      <h1 className="text-3xl font-bold mb-6 text-gray-800">Network Profiles</h1>
-      <div className="flex flex-col sm:flex-row items-center justify-between py-4 mb-6 space-y-4 sm:space-y-0">
-        <div className="relative w-full sm:w-64">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-          <Input
-            placeholder="Search profiles..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10 pr-4 py-2 w-full focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        <Button
-          className="bg-blue-500 hover:bg-blue-600 text-white w-full sm:w-auto"
-          onClick={() => setIsModalOpen(true)}
-        >
-          <Plus className="w-4 h-4 mr-2" /> Add Profile
-        </Button>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredProfiles.map(profile => (
-          <div key={profile.id} className="relative">
-            <ProfileCard
-              key={profile.id}
-              profile={profile}
-              onEdit={() => openEditModal(profile)}
-            />
+    <div className="w-full py-6 space-y-6">
+      <header className="flex flex-col md:flex-row justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-primary/10">
+            <Network className="h-6 w-6 text-primary" />
           </div>
-        ))}
-      </div>
-      {filteredProfiles.length === 0 && (
-        <div className="text-center text-gray-500 mt-10">
-          No profiles found matching your search.
+          <div>
+            <h1 className="text-3xl font-bold">Network Profiles</h1>
+            <p className="text-sm text-muted-foreground">
+              Manage and configure network access profiles
+            </p>
+          </div>
         </div>
-      )}
+
+        <div className="flex gap-2">
+          <Button
+            onClick={() => setIsModalOpen(true)}
+          >
+            <Plus className="w-4 h-4 mr-2" /> Add Profile
+          </Button>
+        </div>
+      </header>
+
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+              <CardTitle>Available Profiles</CardTitle>
+              <CardDescription>
+                {filteredProfiles.length} profile{filteredProfiles.length !== 1 ? 's' : ''} found
+              </CardDescription>
+            </div>
+            <div className="relative w-full sm:w-64">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+              <Input
+                placeholder="Search profiles..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredProfiles.map(profile => (
+              <ProfileCard
+                key={profile.id}
+                profile={profile}
+                onEdit={() => openEditModal(profile)}
+              />
+            ))}
+          </div>
+          {filteredProfiles.length === 0 && (
+            <div className="text-center py-12">
+              <div className="p-3 rounded-full bg-muted inline-block mb-4">
+                <Search className="h-6 w-6 text-muted-foreground" />
+              </div>
+              <h3 className="text-lg font-semibold">No profiles found</h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                {searchTerm ? 'Try adjusting your search' : 'Create your first profile'}
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <ProfileFormModal
           profile={editingProfile}
@@ -332,7 +436,6 @@ const ProfilesComponent: React.FC = () => {
     </div>
   );
 };
-
 
 export default ProfilesComponent;
 
