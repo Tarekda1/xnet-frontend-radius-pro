@@ -20,6 +20,7 @@ import { useSidebar } from './Sidebar.context';
 import { useIsMobile } from '../../../hooks/use-mobile';
 import { Button } from '../button';
 import { FileText, Upload } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 const Sidebar: React.FC = () => {
   const {
@@ -28,8 +29,27 @@ const Sidebar: React.FC = () => {
     toggleCollapse,
     toggleMobileMenu,
     setMobileMenuOpen,
+    setIsCollapsed,
   } = useSidebar();
   const isMobile = useIsMobile();
+
+  // Handle screen size changes
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 768) { // md breakpoint
+        setIsCollapsed(false);
+      }
+    };
+
+    // Set initial state
+    handleResize();
+
+    // Add event listener
+    window.addEventListener('resize', handleResize);
+
+    // Cleanup
+    return () => window.removeEventListener('resize', handleResize);
+  }, [setIsCollapsed]);
 
   // Close mobile menu when clicking outside
   useEffect(() => {
@@ -45,7 +65,7 @@ const Sidebar: React.FC = () => {
 
   // Internal helper components
   const SidebarHeader = () => (
-    <div className="flex items-center p-4">
+    <div className="flex items-center p-4 border-b border-gray-700/50">
       {/* Show toggle button only on desktop */}
       {isMobile === false && (
         <button
@@ -53,16 +73,22 @@ const Sidebar: React.FC = () => {
             e.stopPropagation();
             toggleCollapse();
           }}
-          className={`text-gray-300 hover:text-white focus:outline-none transition-transform duration-300 ${isCollapsed ? '' : 'rotate-180'
-            }`}
+          className={cn(
+            "text-gray-300 hover:text-white focus:outline-none transition-all duration-300",
+            "p-2 rounded-lg hover:bg-gray-700/50",
+            isCollapsed ? '' : 'rotate-180'
+          )}
           aria-label="Toggle Sidebar"
         >
           <FaBars size={20} />
         </button>
       )}
       <span
-        className={`ml-3 text-lg font-semibold whitespace-nowrap transition-opacity duration-300 ${!isMobile && isCollapsed ? 'opacity-0 pointer-events-none w-0' : 'opacity-100 w-auto'
-          }`}
+        className={cn(
+          "ml-3 text-lg font-semibold whitespace-nowrap transition-all duration-300",
+          "bg-gradient-to-r from-blue-400 to-blue-600 bg-clip-text text-transparent",
+          !isMobile && isCollapsed ? 'w-0 overflow-hidden opacity-0' : 'w-auto opacity-100'
+        )}
       >
         Xnet Billing
       </span>
@@ -85,38 +111,53 @@ const Sidebar: React.FC = () => {
         label: "External Invoices",
         to: "/external-invoices",
         icon: FileText,
-        isAdmin: true, // Set this to false if all users should see it
+        isAdmin: true,
       },
       { to: '/profiles/list', label: 'Profiles', icon: FaCreditCard },
-      { to: '/nas', label: 'NAS', icon: FaServer }, // Add this new line for NAS
-
-      //{ to: '/reports', label: 'Reports', icon: FaChartLine },
-      // { to: '/payments', label: 'Payments', icon: FaCreditCard },
+      { to: '/nas', label: 'NAS', icon: FaServer },
       { to: '/settings', label: 'Settings', icon: FaCogs },
-      //{ to: '/support', label: 'Help/Support', icon: FaLifeRing },
     ];
 
     return (
-      <nav className="flex-grow">
+      <nav className="flex-grow py-4 space-y-1">
         {navItems.map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}
             className={({ isActive }) =>
-              `flex items-center px-4 py-3 space-x-3 ${isActive ? 'bg-gray-700' : 'hover:bg-gray-600'
-              }`
+              cn(
+                "flex items-center px-4 py-3 space-x-3 transition-all duration-200",
+                "hover:bg-gray-700/50 rounded-lg mx-2",
+                "group relative",
+                isActive 
+                  ? "bg-blue-500/10 text-blue-400" 
+                  : "text-gray-300 hover:text-white"
+              )
             }
             onClick={() => isMobile && setMobileMenuOpen(false)}
           >
-            <Icon size={20} className="flex-shrink-0" />
+            <Icon 
+              size={20} 
+              className={cn(
+                "flex-shrink-0 transition-transform duration-200",
+                "group-hover:scale-110"
+              )} 
+            />
             <span
-              className={`whitespace-nowrap transition-all duration-300 ${!isMobile && isCollapsed
-                ? 'w-0 overflow-hidden opacity-0'
-                : 'w-auto opacity-100'
-                }`}
+              className={cn(
+                "whitespace-nowrap transition-all duration-300",
+                !isMobile && isCollapsed
+                  ? 'w-0 overflow-hidden opacity-0'
+                  : 'w-auto opacity-100'
+              )}
             >
               {label}
             </span>
+            {!isMobile && isCollapsed && (
+              <div className="absolute left-full ml-2 px-2 py-1 bg-gray-800 rounded-md text-sm whitespace-nowrap opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+                {label}
+              </div>
+            )}
           </NavLink>
         ))}
       </nav>
@@ -124,11 +165,16 @@ const Sidebar: React.FC = () => {
   };
 
   const SidebarFooter = () => (
-    <div className="p-4 mt-auto">
+    <div className="p-4 mt-auto border-t border-gray-700/50">
       {!isCollapsed && !isMobile && (
-        <p className="text-sm text-gray-400">
-          © 2024 MyApp. All rights reserved.
-        </p>
+        <div className="space-y-2">
+          <p className="text-sm text-gray-400">
+            © 2024 Xnet Billing
+          </p>
+          <p className="text-xs text-gray-500">
+            All rights reserved
+          </p>
+        </div>
       )}
     </div>
   );
@@ -152,14 +198,17 @@ const Sidebar: React.FC = () => {
       {/* Sidebar Container */}
       <div
         id="sidebar"
-        className={`z-1000 fixed xs:mt-[20px] sm:mt-[0px] h-screen bg-gray-800 text-white transition-all duration-300 ease-in-out flex flex-col z-40 ${isMobile
-          ? isMobileMenuOpen
-            ? 'left-0 w-64 shadow-2xl'
-            : '-left-full'
-          : isCollapsed
-            ? 'w-20'
-            : 'w-64'
-          } md:relative`}
+        className={cn(
+          "h-screen bg-gray-800 text-white",
+          "transition-all duration-300 ease-in-out flex flex-col",
+          "border-r border-gray-700/50",
+          // Mobile styles
+          isMobile && "fixed z-40",
+          isMobile && (isMobileMenuOpen ? 'left-0 w-64 shadow-2xl' : '-left-full'),
+          // Desktop styles
+          !isMobile && "sticky top-0",
+          !isMobile && (isCollapsed ? 'w-20' : 'w-64')
+        )}
       >
         <SidebarHeader />
         <SidebarContent />

@@ -4,6 +4,7 @@ import Navbar from './ui/Navbar';
 import Breadcrumb from '../components/ui/Breadcrumbs';
 import { ToastContainer } from 'react-toastify';
 import { Outlet } from 'react-router-dom';
+import { cn } from '@/lib/utils';
 
 interface DashboardLayoutProps {
   childre?: React.ReactNode;
@@ -17,23 +18,27 @@ const Layout: React.FC<DashboardLayoutProps> = ({ }) => {
   };
 
   return (
-    <div
-      className={`grid-container ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}
-    >
+    <div className="min-h-screen bg-gray-100">
       {/* Navbar */}
       <Navbar />
 
-      {/* Sidebar */}
-      {/* isCollapsed={isSidebarCollapsed} toggleSidebar={toggleSidebar} */}
-      <Sidebar />
+      {/* Main Container */}
+      <div className="flex h-[calc(100vh-64px)]"> {/* 64px is the navbar height */}
+        {/* Sidebar */}
+        <Sidebar />
 
-      {/* Main Content */}
-      <main className="flex flex-col flex-grow overflow-y-auto bg-gray-100 p-6 mb-[15px] px-8 main-content">
-        {/* Breadcrumb */}
-        <Breadcrumb />
-        {/* Page Content */}
-        <Outlet/>
-      </main>
+        {/* Main Content */}
+        <main className={cn(
+          "flex-1 overflow-y-auto bg-gray-100",
+          "transition-all duration-300 ease-in-out",
+          "p-6 mb-[15px] px-8"
+        )}>
+          {/* Breadcrumb */}
+          <Breadcrumb />
+          {/* Page Content */}
+          <Outlet/>
+        </main>
+      </div>
 
       {/* Toast Notifications */}
       <ToastContainer />

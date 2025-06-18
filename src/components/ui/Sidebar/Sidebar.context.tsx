@@ -6,6 +6,7 @@ type SidebarContextType = {
   toggleCollapse: () => void;
   toggleMobileMenu: () => void;
   setMobileMenuOpen: (open: boolean) => void;
+  setIsCollapsed: (collapsed: boolean) => void;
 };
 
 const SidebarContext = createContext<SidebarContextType | undefined>(undefined);
@@ -31,7 +32,8 @@ export const SidebarProvider: React.FC<{ children: React.ReactNode }> = ({ child
         isMobileMenuOpen,
         toggleCollapse,
         toggleMobileMenu,
-        setMobileMenuOpen, // This setter is now included
+        setMobileMenuOpen,
+        setIsCollapsed,
       }}
     >
       {children}
