@@ -15,11 +15,12 @@ import {
   FaUserClock,
   FaServer,
   FaUserShield,
+  FaBell,
 } from 'react-icons/fa';
 import { useSidebar } from './Sidebar.context';
 import { useIsMobile } from '../../../hooks/use-mobile';
 import { Button } from '../button';
-import { FileText, Upload } from 'lucide-react';
+import { FileText, Upload, BarChart3 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const Sidebar: React.FC = () => {
@@ -99,6 +100,8 @@ const Sidebar: React.FC = () => {
     const navItems = [
       { to: '/', label: 'Home', icon: FaHome },
       { to: '/dashboard', label: 'Dashboard', icon: FaTachometerAlt },
+      { to: '/analytics', label: 'Analytics', icon: BarChart3 },
+      { to: '/alerts', label: 'Alerts', icon: FaBell },
       { to: '/auth-users', label: 'Auth Users', icon: FaUserShield },
       { to: '/users/list', label: 'Users', icon: FaUsers },
       { to: '/online-users', label: 'Online Users', icon: FaUserClock },

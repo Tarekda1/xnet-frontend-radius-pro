@@ -7,6 +7,7 @@ import { FaBars, FaTimes, FaBell } from 'react-icons/fa';
 import { useInvoiceNotifications } from '@/hooks/useInvoiceNotifications';
 import { NotificationPopup } from './NotificationPopup';
 import { UserMenu } from './UserMenu';
+import HeaderAlertWidget from './HeaderAlertWidget';
 
 const Navbar: React.FC = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -105,6 +106,9 @@ const Navbar: React.FC = () => {
 
         {/* Desktop Controls */}
         <div className="hidden sm:flex items-center gap-3">
+          {/* Alert Widget */}
+          <HeaderAlertWidget />
+          
           {/* Notification Button */}
           <div className="relative">
             <button

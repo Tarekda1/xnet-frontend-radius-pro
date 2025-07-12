@@ -227,7 +227,7 @@ const Home: React.FC = () => {
   const { totalOnlineUsers, totalActiveUsers } = useOnlineMetrics();
 
   return (
-    <div className="container space-y-8 p-8 animate-in fade-in-50">
+    <div className="container space-y-8 p-y-8 animate-in fade-in-50">
       {/* Header Section */}
       <div className="space-y-2">
         <h1 className="text-3xl font-bold tracking-tight">Welcome to RADIUS Pro</h1>

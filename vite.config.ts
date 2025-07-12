@@ -12,6 +12,10 @@ export default defineConfig({
     strictPort: true, // Optional: fail if 5173 is taken
     cors: true, // Enable cross-origin if needed
     allowedHosts: ['radius.xnetcloud.tech'],
+    middlewareMode: false,
+    fs: {
+      strict: false,
+    },
     watch: {
       usePolling: true,
       interval: 100,

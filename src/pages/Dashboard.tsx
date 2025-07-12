@@ -31,12 +31,21 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { formatDistanceToNow } from 'date-fns';
+import AnalyticsWidget from '@/components/AnalyticsWidget';
+import AlertNotification from '@/components/AlertNotification';
+import BandwidthWidget from '@/components/BandwidthWidget';
+import { useOnlineUsers } from '@/hooks/useOnlineUsers';
+import { useAlerts } from '@/hooks/useAlerts';
 
 const Dashboard: React.FC = () => {
-  const { totalOnlineUsers, totalActiveUsers } = useOnlineMetrics();
-  const invoiceNotifications = useInvoiceNotifications();
   const [isLoading, setIsLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
+  const { data: alerts, isLoading: alertsLoading } = useAlerts();
+  const { data: onlineUsersData, isLoading: onlineUsersLoading } = useOnlineUsers();
+
+  // Extract data from hooks
+  const totalOnlineUsers = onlineUsersData?.data?.length || 0;
+  const totalActiveUsers = onlineUsersData?.totalUsers || 0;
 
   useEffect(() => {
     // Simulate initial loading
@@ -149,6 +158,12 @@ const Dashboard: React.FC = () => {
             <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
             Refresh Data
           </Button>
+          <Button variant="outline" size="sm" asChild>
+            <a href="/analytics">
+              <LineChart className="mr-2 h-4 w-4" />
+              View Analytics
+            </a>
+          </Button>
           <Button variant="outline" size="icon">
             <Settings className="h-4 w-4" />
           </Button>
@@ -227,14 +242,18 @@ const Dashboard: React.FC = () => {
             {/* Failed Attempts Card */}
             <Card className="hover:shadow-lg transition-shadow">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Failed Attempts</CardTitle>
+                <CardTitle className="text-sm font-medium">Active Alerts</CardTitle>
                 <AlertTriangle className="h-4 w-4 text-red-600" />
               </CardHeader>
               <CardContent>
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="text-2xl font-bold text-red-600">145</div>
-                    <p className="text-xs text-muted-foreground">Past 24 hours</p>
+                    <div className="text-2xl font-bold text-red-600">
+                      {alertsLoading ? '...' : (alerts && Array.isArray(alerts) ? alerts.filter(a => !a.resolved).length : 0)}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {alerts && Array.isArray(alerts) ? alerts.filter(a => !a.acknowledged && !a.resolved).length : 0} unacknowledged
+                    </p>
                   </div>
                   <Badge variant="secondary" className="flex gap-1 items-center">
                     <ArrowDownRight className="h-3 w-3 text-red-600" />
@@ -352,91 +371,20 @@ const Dashboard: React.FC = () => {
               </CardContent>
             </Card>
 
-            {/* Recent Activity */}
-            <Card className="md:col-span-3 hover:shadow-lg transition-shadow">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>Recent Activity</CardTitle>
-                    <CardDescription>Latest system events and notifications</CardDescription>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" className="h-8" onClick={handleRefresh} disabled={isLoading}>
-                      <RefreshCw className={`mr-2 h-3 w-3 ${isLoading ? 'animate-spin' : ''}`} />
-                      Refresh
-                    </Button>
-                    <Button variant="ghost" size="icon">
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {invoiceNotifications.slice(0, 5).map((notification, index) => (
-                    <div key={index} className="flex items-center gap-4 rounded-lg border p-3 hover:bg-accent/50 transition-colors group">
-                      <div className="rounded-full bg-green-100 p-2 group-hover:bg-green-200 transition-colors">
-                        <Receipt className="h-4 w-4 text-green-600" />
-                      </div>
-                      <div className="flex-1 space-y-1">
-                        <p className="text-sm font-medium">{notification.message}</p>
-                        <div className="flex items-center gap-2">
-                          <p className="text-xs text-muted-foreground">
-                            {formatDistanceToNow(new Date(notification.timestamp), { addSuffix: true })}
-                          </p>
-                          {notification.data?.amount && (
-                            <Badge variant="secondary" className="text-xs">
-                              ${notification.data.amount.toFixed(2)}
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  {/* Fallback content when no notifications */}
-                  {invoiceNotifications.length === 0 && (
-                    <>
-                      <div className="flex items-center gap-4 rounded-lg border p-3 hover:bg-accent/50 transition-colors group">
-                        <div className="rounded-full bg-blue-100 p-2 group-hover:bg-blue-200 transition-colors">
-                          <Shield className="h-4 w-4 text-blue-600" />
-                        </div>
-                        <div className="flex-1 space-y-1">
-                          <p className="text-sm font-medium">User authentication successful</p>
-                          <div className="flex items-center gap-2">
-                            <p className="text-xs text-muted-foreground">2 minutes ago</p>
-                            <Badge variant="outline" className="text-xs">Security</Badge>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-4 rounded-lg border p-3 hover:bg-accent/50 transition-colors group">
-                        <div className="rounded-full bg-red-100 p-2 group-hover:bg-red-200 transition-colors">
-                          <AlertTriangle className="h-4 w-4 text-red-600" />
-                        </div>
-                        <div className="flex-1 space-y-1">
-                          <p className="text-sm font-medium">Failed login attempt</p>
-                          <div className="flex items-center gap-2">
-                            <p className="text-xs text-muted-foreground">15 minutes ago</p>
-                            <Badge variant="destructive" className="text-xs">Alert</Badge>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-4 rounded-lg border p-3 hover:bg-accent/50 transition-colors group">
-                        <div className="rounded-full bg-green-100 p-2 group-hover:bg-green-200 transition-colors">
-                          <UserCheck className="h-4 w-4 text-green-600" />
-                        </div>
-                        <div className="flex-1 space-y-1">
-                          <p className="text-sm font-medium">New user added</p>
-                          <div className="flex items-center gap-2">
-                            <p className="text-xs text-muted-foreground">1 hour ago</p>
-                            <Badge variant="outline" className="text-xs">User</Badge>
-                          </div>
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+            {/* Bandwidth Widget */}
+            <div className="col-span-full lg:col-span-3">
+              <BandwidthWidget />
+            </div>
+
+            {/* Analytics Widget */}
+            <div className="col-span-full lg:col-span-2">
+              <AnalyticsWidget />
+            </div>
+
+            {/* Alert Notifications */}
+            <div className="col-span-full lg:col-span-1">
+              <AlertNotification maxAlerts={5} />
+            </div>
           </div>
         </>
       )}
