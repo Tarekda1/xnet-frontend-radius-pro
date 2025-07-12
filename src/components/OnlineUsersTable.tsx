@@ -301,8 +301,9 @@ const TableRows = function TableRows({
                     key={u.session_username} 
                     className={cn(
                         "hover:bg-muted/50 transition-colors",
-                        u.session_status === 'active' && "bg-blue-50/50",
-                        u.session_status === 'idle' && "bg-yellow-50/50"
+                        u.session_status === 'active' && "bg-white/50",
+                        u.session_status === 'idle' && "bg-yellow-50/50",
+                        u.is_fallback && "bg-red-50/50 border-l-4 border-l-red-500"
                     )}
                 >
                     <TableCell className={cn(profileClass(u.profile_profile_name), "p-4")}>
@@ -328,13 +329,21 @@ const TableRows = function TableRows({
                     </TableCell>
                     <TableCell>
                         <div className="flex items-center gap-1.5">
-                            <HardDrive className="h-3.5 w-3.5 text-muted-foreground" />
-                            <span className={cn(
-                                "text-sm",
+                            <HardDrive className={cn(
+                                "h-3.5 w-3.5",
                                 u.is_fallback ? "text-red-600" : "text-green-600"
-                            )}>
+                            )} />
+                            <Badge 
+                                variant="outline" 
+                                className={cn(
+                                    "text-sm",
+                                    u.is_fallback 
+                                        ? "bg-red-100 text-red-700 border-red-200" 
+                                        : "bg-green-100 text-green-700 border-green-200"
+                                )}
+                            >
                                 {u.is_fallback ? "Yes" : "No"}
-                            </span>
+                            </Badge>
                         </div>
                     </TableCell>
                     <TableCell>

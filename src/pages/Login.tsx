@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardHeader, CardBody } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import useLogin from '@/hooks/useLogin';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
+import { Loader2, Lock, User } from 'lucide-react';
+import Alert from '@/components/ui/Alert';
 
 const Login: React.FC = () => {
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const { login, isLoading, error } = useLogin();
   const { login: authLogin } = useAuth();
@@ -15,68 +17,89 @@ const Login: React.FC = () => {
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    const resp = await login(email, password);
+    const resp = await login(username, password);
     if (resp?.data.accessToken) {
-      console.log('Login successful', resp.data.user);
-      alert(JSON.stringify(resp?.data.user));
-      authLogin(resp?.data.user,resp?.data.accessToken);
-      // Redirect or update app state here
+      authLogin(resp?.data.user, resp?.data.accessToken);
       navigate('/');
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <h1 className="text-2xl font-bold text-blue-600 mb-2">Welcome to Xnet Radius Pro</h1>
-          <h2 className="text-2xl font-bold">Login</h2>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-50 p-4">
+      <Card className="w-full max-w-md shadow-lg border-0">
+        <CardHeader className="space-y-1">
+          <div className="flex items-center justify-center mb-4">
+            <div className="p-3 rounded-full bg-blue-100">
+              <Lock className="h-6 w-6 text-blue-600" />
+            </div>
+          </div>
+          <CardTitle className="text-2xl font-bold text-center">Welcome back</CardTitle>
+          <CardDescription className="text-center">
+            Enter your credentials to access your account
+          </CardDescription>
         </CardHeader>
-        <CardBody>
-          <form onSubmit={handleSubmit}>
-            <div className="mb-4">
-              <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="email">
-                Email
-              </label>
-              <Input
-                id="email"
-                type="text"
-                placeholder="Enter your email"
-                className="w-full"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <div className="relative">
+                <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                <Input
+                  id="username"
+                  type="text"
+                  placeholder="Enter your username"
+                  className="pl-9"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  required
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="Enter your password"
+                  className="pl-9"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+              </div>
+            </div>
+            {error && (
+              <Alert
+                type="error"
+                message={error}
               />
-            </div>
-            <div className="mb-6">
-              <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="password">
-                Password
-              </label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="Enter your password"
-                className="w-full"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </div>
-            {error && <div className="mb-4 text-red-500">{error}</div>}
-            <div className="flex items-center justify-between flex-col gap-2">
-              <Button 
-                className="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-                disabled={isLoading}
-              >
-                {isLoading ? 'Logging in...' : 'Log In'}
-              </Button>
-              <a
-                className="inline-block align-baseline font-bold text-sm text-blue-500 hover:text-blue-800"
-                href="#"
-              >
-                Forgot Password?
-              </a>
-            </div>
+            )}
+            <Button 
+              className="w-full bg-blue-600 hover:bg-blue-700"
+              disabled={isLoading}
+              type="submit"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Signing in...
+                </>
+              ) : (
+                'Sign in'
+              )}
+            </Button>
           </form>
-        </CardBody>
+        </CardContent>
+        <CardFooter className="flex flex-col space-y-4">
+          <div className="text-sm text-center text-muted-foreground">
+            <a
+              href="#"
+              className="text-blue-600 hover:text-blue-800 underline-offset-4 hover:underline"
+            >
+              Forgot your password?
+            </a>
+          </div>
+        </CardFooter>
       </Card>
     </div>
   );

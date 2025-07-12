@@ -24,6 +24,8 @@ const AuthUsers = React.lazy(() => import('./pages/AuthUsers'));
 const InvoicesComponent = React.lazy(() => import('./pages/Invoices'));
 const InvoiceUpload = React.lazy(() => import('./pages/InvoiceUpload'));
 const ExternalInvoicesComponent = React.lazy(() => import('./pages/Externalnvoices'));
+const AnalyticsComponent = React.lazy(() => import('./pages/Analytics'));
+const AlertsComponent = React.lazy(() => import('./pages/Alerts'));
 
 const ProtectedRoute: React.FC<{ element: React.ReactElement }> = ({ element }) => {
   const { isAuthenticated } = useAuth();
@@ -51,6 +53,8 @@ const AppRoutes: React.FC = () => {
                 <Route path="/online-users" element={<ProtectedRoute element={<OnlineUsersComponent />} />} />
                 <Route path="/invoice-upload" element={<InvoiceUpload />} />
                 <Route path="/external-invoices" element={<ExternalInvoicesComponent />} />
+                <Route path="/analytics" element={<ProtectedRoute element={<AnalyticsComponent />} />} />
+                <Route path="/alerts" element={<ProtectedRoute element={<AlertsComponent />} />} />
               </Route>
             </Routes>
           </AuthProvider>
