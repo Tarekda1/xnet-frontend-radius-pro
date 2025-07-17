@@ -20,7 +20,7 @@ services:
       - ${HOME}/.npm:/root/.npm:cached
     ports:
       - "${PORT:-5173}:5173"
-      - "24678:24678"
+      - "24679:24678"
     environment:
       - NODE_ENV=development
       - VITE_API_URL=${VITE_API_URL:-https://radius.xnetcloud.tech/api}
