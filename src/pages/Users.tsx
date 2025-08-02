@@ -8,7 +8,8 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Plus, RefreshCw, Users as UsersIcon, ChevronDown, ChevronUp, Wifi, WifiOff, UserCheck, UserX, Edit, Star, User as UserIcon } from 'lucide-react';
+import { Plus, RefreshCw, Users as UsersIcon, ChevronDown, ChevronUp, Wifi, WifiOff, UserCheck, UserX, Edit, Star, User as UserIcon, Download } from 'lucide-react';
+import { utils, writeFile } from 'xlsx';
 import SearchBar from '@/components/SearchBar';
 import UsersTable from '@/components/UsersTable';
 import AddUserModal from '../components/AddUserModal';
@@ -64,10 +65,9 @@ const MetricItem = ({
 const UsersPage: React.FC = () => {
     const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
-    const [isSearchExpanded, setIsSearchExpanded] = useState(false);
-    const [isMetricsExpanded, setIsMetricsExpanded] = useState(true);
     const [pageSize, setPageSize] = useState(50);
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [statusFilter, setStatusFilter] = useState<string>('');
     const { toast } = useToast();
 
     const {
@@ -82,6 +82,31 @@ const UsersPage: React.FC = () => {
         deleteUserMutation,
         resetMacAddressMutation
     } = useUsers(1, pageSize);
+
+    // Filter users locally based on status
+    const filteredUsers = React.useMemo(() => {
+        const users = data?.data?.users ?? [];
+        if (!statusFilter) return users;
+        
+        return users.filter(user => {
+            switch (statusFilter) {
+                case 'active':
+                    return user.accountStatus === 'active';
+                case 'suspended':
+                    return user.accountStatus === 'suspended';
+                case 'online':
+                    return user.isOnline === true;
+                case 'offline':
+                    return user.isOnline === false;
+                case 'profile:premium':
+                    return user.profile.profileName.toLowerCase() === 'premium';
+                case 'profile:basic':
+                    return user.profile.profileName.toLowerCase() === 'basic';
+                default:
+                    return true;
+            }
+        });
+    }, [data?.data?.users, statusFilter]);
 
     const handleSearch = useCallback((term: string) => {
         setSearchQuery(term);
@@ -119,23 +144,25 @@ const UsersPage: React.FC = () => {
 
     const handleQuickFilter = useCallback((filter: string) => {
         switch (filter) {
+            case 'all':
+                setStatusFilter('');
+                break;
             case 'active':
-                setSearchQuery('status:active');
+                setStatusFilter('active');
                 break;
             case 'suspended':
-                setSearchQuery('status:suspended');
+                setStatusFilter('suspended');
                 break;
             case 'online':
-                setSearchQuery('status:online');
+                setStatusFilter('online');
                 break;
             case 'offline':
-                setSearchQuery('status:offline');
+                setStatusFilter('offline');
                 break;
             default:
-                setSearchQuery('');
+                setStatusFilter('');
         }
-        setCurrentPage(1);
-    }, [setSearchQuery, setCurrentPage]);
+    }, []);
 
     const confirmAndExecute = useCallback((message: string, action: () => void, successMessage: string) => {
         if (window.confirm(message)) {
@@ -181,6 +208,39 @@ const UsersPage: React.FC = () => {
         setCurrentPage(1); // Reset to first page when changing page size
     }, [setCurrentPage]);
 
+    const handleExportUsers = useCallback(() => {
+        if (filteredUsers.length > 0) {
+            // Prepare data for export with only the required fields
+            const exportData = filteredUsers.map(user => ({
+                Name: user.userDetails.fullName || 'N/A',
+                Phone: user.userDetails.phoneNumber || 'N/A',
+                Username: user.username || 'N/A'
+            }));
+
+            const ws = utils.json_to_sheet(exportData);
+            const wb = utils.book_new();
+            utils.book_append_sheet(wb, ws, "Users");
+            
+            // Generate filename with current date and filter info
+            const date = new Date().toISOString().split('T')[0];
+            const filterSuffix = statusFilter ? `_${statusFilter}` : '';
+            const filename = `users${filterSuffix}_${date}.xlsx`;  // <-- This creates .xlsx file
+            
+            writeFile(wb, filename);
+            
+            toast({
+                title: "Export successful",
+                description: `${filteredUsers.length} users exported to ${filename}`,
+            });
+        } else {
+            toast({
+                title: "No data to export",
+                description: "There are no users to export.",
+                variant: "destructive",
+            });
+        }
+    }, [filteredUsers, statusFilter, toast]);
+
     if (isLoading) {
         return (
             <div className="w-full py-6 space-y-6">
@@ -225,14 +285,14 @@ const UsersPage: React.FC = () => {
 
     if (error) return <div className="text-red-500 text-center">Error: {error.message}</div>;
 
-    // Calculate metrics
-    const users = data?.data?.users ?? [];
+    // Calculate metrics based on filtered users
+    const allUsers = data?.data?.users ?? [];
     const metrics = {
-        total: users.length,
-        active: users.filter(u => u.accountStatus === 'active').length,
-        suspended: users.filter(u => u.accountStatus === 'suspended').length,
-        online: users.filter(u => u.isOnline).length,
-        offline: users.filter(u => !u.isOnline).length,
+        total: allUsers.length, // Always show total count of all users
+        active: filteredUsers.filter(u => u.accountStatus === 'active').length,
+        suspended: filteredUsers.filter(u => u.accountStatus === 'suspended').length,
+        online: filteredUsers.filter(u => u.isOnline).length,
+        offline: filteredUsers.filter(u => !u.isOnline).length,
     };
 
     return (
@@ -256,35 +316,35 @@ const UsersPage: React.FC = () => {
                         {/* Quick Action Filters */}
                         <div className="flex flex-wrap gap-2">
                             <Badge 
-                                variant="secondary" 
+                                variant={!statusFilter ? "secondary" : "outline"}
                                 className="cursor-pointer hover:bg-secondary/80"
                                 onClick={() => handleQuickFilter('all')}
                             >
                                 All Users
                             </Badge>
                             <Badge 
-                                variant="outline" 
+                                variant={statusFilter === 'active' ? "secondary" : "outline"}
                                 className="cursor-pointer hover:bg-accent"
                                 onClick={() => handleQuickFilter('active')}
                             >
                                 Active
                             </Badge>
                             <Badge 
-                                variant="outline" 
+                                variant={statusFilter === 'suspended' ? "secondary" : "outline"}
                                 className="cursor-pointer hover:bg-accent"
                                 onClick={() => handleQuickFilter('suspended')}
                             >
                                 Suspended
                             </Badge>
                             <Badge 
-                                variant="outline" 
+                                variant={statusFilter === 'online' ? "secondary" : "outline"}
                                 className="cursor-pointer hover:bg-accent"
                                 onClick={() => handleQuickFilter('online')}
                             >
                                 Online
                             </Badge>
                             <Badge 
-                                variant="outline" 
+                                variant={statusFilter === 'offline' ? "secondary" : "outline"}
                                 className="cursor-pointer hover:bg-accent"
                                 onClick={() => handleQuickFilter('offline')}
                             >
@@ -301,6 +361,14 @@ const UsersPage: React.FC = () => {
                             >
                                 <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
                                 {isRefreshing ? 'Refreshing...' : 'Refresh'}
+                            </Button>
+                            <Button 
+                                variant="outline" 
+                                onClick={handleExportUsers}
+                                disabled={filteredUsers.length === 0}
+                            >
+                                <Download className="h-4 w-4 mr-2" />
+                                Export
                             </Button>
                             <Button onClick={handleAddUser}>
                                 <Plus className="h-4 w-4 mr-2" />
@@ -393,7 +461,7 @@ const UsersPage: React.FC = () => {
                         <div className="flex items-center gap-3">
                             <MetricItem
                                 label="Premium"
-                                value={users.filter(u => u.profile.profileName.toLowerCase() === 'premium').length}
+                                value={filteredUsers.filter(u => u.profile.profileName.toLowerCase() === 'premium').length}
                                 icon={Star}
                                 color="text-yellow-600"
                                 onClick={() => handleQuickFilter('profile:premium')}
@@ -401,7 +469,7 @@ const UsersPage: React.FC = () => {
                             />
                             <MetricItem
                                 label="Basic"
-                                value={users.filter(u => u.profile.profileName.toLowerCase() === 'basic').length}
+                                value={filteredUsers.filter(u => u.profile.profileName.toLowerCase() === 'basic').length}
                                 icon={UserIcon}
                                 color="text-blue-600"
                                 onClick={() => handleQuickFilter('profile:basic')}
@@ -414,7 +482,7 @@ const UsersPage: React.FC = () => {
 
             {/* Users Table */}
             <UsersTable
-                users={users}
+                users={filteredUsers}
                 currentPage={currentPage}
                 totalPages={data?.data?.totalPages ?? 0}
                 totalUsers={data?.data?.totalUsers ?? 0}
