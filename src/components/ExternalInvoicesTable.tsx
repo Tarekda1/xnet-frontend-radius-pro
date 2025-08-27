@@ -1,25 +1,25 @@
 // ExternalInvoicesTable.tsx
 import React from "react";
+import { useSearchParams } from "react-router-dom";
 import {
     OnChangeFn,
     SortingState,
     RowSelectionState,
 } from "@tanstack/react-table";
-import { RefreshCw } from "lucide-react";
 
-import { useExternalInvoices, InvoiceMetrics } from "@/hooks/useExternalInvoices";
+import { useExternalInvoices } from "@/hooks/useExternalInvoices";
 
 import Loader from "@/components/ui/loader";
 import Alert from "@/components/ui/Alert";
-import { Button } from "@/components/ui/button";
-import ExternalInvoiceSummaryCard from "@/components/ExternalInvoiceSummaryCard";
+// import { Button } from "@/components/ui/button"; // not used here
 import ExternalInvoiceCard from "@/components/ExternalInvoiceCard";
 import ExternalInvoiceDetailView from "@/components/ExternalInvoiceDetailView";
 import DesktopTable from "@/components/DesktopTable"; // <— the TanStack table you wrote earlier
 import type { ExternalInvoice } from "@/types/api";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "./ui/alert-dialog";
+import { useToast } from "@/components/ui/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 
-const pageSize = 100;
 const initialPage = 1;
 
 type Props = { 
@@ -46,6 +46,9 @@ const ExternalInvoicesTable: React.FC<Props> = ({
     onLastPage,
     totalItems,
 }) => {
+    /* ── URL state ─────────────────────────────────────────── */
+    const [searchParams, setSearchParams] = useSearchParams();
+
     /* ── fetch everything through the hook ─────────────────── */
     const {
         data,
@@ -56,14 +59,26 @@ const ExternalInvoicesTable: React.FC<Props> = ({
         setCurrentPage,
         setInvoiceAsPaidMutation,
         updateInvoiceMutation,
-        deleteInvoiceMutation
-    } = useExternalInvoices({ initialPage, pageSize, search }); /* ← add `search` param to your hook */
+        deleteInvoiceMutation,
+        sendReminderMutation
+    } = useExternalInvoices({
+        initialPage,
+        pageSize,
+        search,
+        from: searchParams.get('from') || undefined,
+        to: searchParams.get('to') || undefined,
+        status: searchParams.get('status') || undefined,
+        sortBy: (searchParams.get('sort') || '').split(':')[0] || undefined,
+        sortDir: ((searchParams.get('sort') || '').split(':')[1] as 'asc' | 'desc') || undefined,
+    });
 
     /* ── UI state local to this component ──────────────────── */
     const [sorting, setSorting] = React.useState<SortingState>([]);
     const [internalRowSelection, setInternalRowSelection] = React.useState<RowSelectionState>({});
     const [selectedInvoice, setSelected] = React.useState<ExternalInvoice | null>(null);
     const [invoiceToDelete, setInvoiceToDelete] = React.useState<number | null>(null);
+    const { toast } = useToast();
+    
 
     // Use external row selection if provided, otherwise use internal
     const rowSelection = externalRowSelection ?? internalRowSelection;
@@ -74,8 +89,22 @@ const ExternalInvoicesTable: React.FC<Props> = ({
     const onRowSelectionChange: OnChangeFn<RowSelectionState> = setRowSelection;
 
     /* ── mutations ─────────────────────────────────────────── */
-    const markPaid = (id: number) =>
-        setInvoiceAsPaidMutation.mutate(id, { onSuccess: () => refetch() });
+    const markPaid = (id: number) => {
+        const prev = (data?.data.data ?? []).find((x) => x.id === id)?.status || 'pending';
+        setInvoiceAsPaidMutation.mutate(id, {
+            onSuccess: () => {
+                refetch();
+                toast({
+                    title: `Invoice #${id} marked as paid`,
+                    action: (
+                        <ToastAction altText="Undo" onClick={() => updateInvoiceMutation.mutate({ invoiceId: id, invoiceData: { status: prev } }, { onSuccess: () => refetch() })}>
+                            Undo
+                        </ToastAction>
+                    ),
+                });
+            }
+        });
+    };
 
     const handleDelete = (id: number) => {
         setInvoiceToDelete(id);
@@ -97,11 +126,44 @@ const ExternalInvoicesTable: React.FC<Props> = ({
         setSelected(null);
     };
 
+    // Restore currentPage and sorting from URL on mount
+    React.useEffect(() => {
+        const p = Number(searchParams.get('p') || '');
+        if (!Number.isNaN(p) && p > 0) {
+            setCurrentPage(p);
+        }
+        const sortParam = searchParams.get('sort');
+        if (sortParam) {
+            const [col, dir] = sortParam.split(":");
+            if (col) {
+                setSorting([{ id: col, desc: dir === 'desc' }]);
+            }
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // Persist currentPage and sorting to URL
+    React.useEffect(() => {
+        const next = new URLSearchParams(searchParams);
+        if (currentPage) next.set('p', String(currentPage)); else next.delete('p');
+        if (sorting && sorting[0]) {
+            const s = `${sorting[0].id}:${sorting[0].desc ? 'desc' : 'asc'}`;
+            next.set('sort', s);
+        } else {
+            next.delete('sort');
+        }
+        setSearchParams(next, { replace: true } as any);
+    }, [currentPage, sorting]);
+
     /* ── guards ────────────────────────────────────────────── */
     if (isLoading) return <Loader />;
     if (error) return <Alert type="error" message={String(error)} />;
 
     const rows = data?.data.data ?? [];
+    const activeStatus = searchParams.get('status');
+    const filteredRows = activeStatus && activeStatus !== 'all'
+        ? rows.filter((r) => r.status === activeStatus)
+        : rows;
     const pages = data?.data.totalPages ?? 1;
 
     return (
@@ -109,7 +171,7 @@ const ExternalInvoicesTable: React.FC<Props> = ({
             {/* desktop table */}
             <div className="hidden md:block rounded-md border">
                 <DesktopTable
-                    invoices={rows}
+                    invoices={filteredRows}
                     currentPage={currentPage}
                     totalPages={pages}
                     pageSize={pageSize}
@@ -133,7 +195,7 @@ const ExternalInvoicesTable: React.FC<Props> = ({
 
             {/* mobile list */}
             <div className="md:hidden">
-                {rows.map((inv) => (
+                {filteredRows.map((inv) => (
                     <ExternalInvoiceCard
                         key={inv.id}
                         invoice={inv}

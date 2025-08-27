@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../api/client';
 import { toast } from 'react-toastify';
 import { ExternalInvoice } from '@/types/api';
-import { RowSelectionState, SortingState } from '@tanstack/react-table';
+// Removed unused local table states (sorting/rowSelection) from this hook
 
 // interface ExternalInvoice {
 //     id: number;
@@ -42,8 +42,26 @@ interface ApiResponse<T> {
     data: T;
 }
 
-const fetchExternalInvoices = async (page: number, limit: number, searchQuery: string): Promise<ApiResponse<PaginatedResponse<ExternalInvoice>>> => {
-    const response = await apiClient.get(`/invoices/external?page=${page}&limit=${limit}&search=${searchQuery}`);
+const fetchExternalInvoices = async (
+    page: number,
+    limit: number,
+    searchQuery: string,
+    from?: string,
+    to?: string,
+    status?: string,
+    sortBy?: string,
+    sortDir?: 'asc' | 'desc'
+): Promise<ApiResponse<PaginatedResponse<ExternalInvoice>>> => {
+    const params = new URLSearchParams();
+    params.set('page', String(page));
+    params.set('limit', String(limit));
+    if (searchQuery) params.set('search', searchQuery);
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    if (status && status !== 'all') params.set('status', status);
+    if (sortBy) params.set('sortBy', sortBy);
+    if (sortDir) params.set('sortDir', sortDir);
+    const response = await apiClient.get(`/invoices/external?${params.toString()}`);
     return response.data;
 };
 
@@ -63,22 +81,25 @@ const deleteInvoice = async (invoiceId: number): Promise<ApiResponse<ExternalInv
     return response.data;
 };
 
+const sendReminder = async (invoiceId: number): Promise<ApiResponse<{ ok: boolean }>> => {
+    const response = await apiClient.post(`/invoices/external/${invoiceId}/remind`);
+    return response.data;
+};
+
 type UpdateInvoiceVariables = {
     invoiceId: number;
     invoiceData: Partial<ExternalInvoice>;
 };
 
-type Props = { search: string; initialPage: number; pageSize: number; };
+type Props = { search: string; initialPage: number; pageSize: number; from?: string; to?: string; status?: string; sortBy?: string; sortDir?: 'asc' | 'desc' };
 
-export const useExternalInvoices = ({ initialPage, pageSize, search }: Props) => {
+export const useExternalInvoices = ({ initialPage, pageSize, search, from, to, status, sortBy, sortDir }: Props) => {
     const [currentPage, setCurrentPage] = useState(initialPage);
-    const [sorting, setSorting] = useState<SortingState>([]);
-    const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
     const queryClient = useQueryClient();
 
     const { data, error, isLoading, refetch } = useQuery<ApiResponse<PaginatedResponse<ExternalInvoice>>, Error>({
-        queryKey: ['externalInvoices', currentPage, pageSize, search],
-        queryFn: () => fetchExternalInvoices(currentPage, pageSize, search),
+        queryKey: ['externalInvoices', currentPage, pageSize, search, from, to, status, sortBy, sortDir],
+        queryFn: () => fetchExternalInvoices(currentPage, pageSize, search, from, to, status, sortBy, sortDir),
     });
 
     const updateInvoiceMutation = useMutation<ApiResponse<ExternalInvoice>, Error, UpdateInvoiceVariables>({
@@ -112,6 +133,16 @@ export const useExternalInvoices = ({ initialPage, pageSize, search }: Props) =>
         },
     });
 
+    const sendReminderMutation = useMutation({
+        mutationFn: sendReminder,
+        onSuccess: () => {
+            toast.success('Reminder sent.');
+        },
+        onError: (error: Error) => {
+            toast.error(`Failed to send reminder: ${error.message}`);
+        },
+    });
+
     return {
         data,
         error,
@@ -121,6 +152,7 @@ export const useExternalInvoices = ({ initialPage, pageSize, search }: Props) =>
         currentPage,
         setInvoiceAsPaidMutation,
         updateInvoiceMutation,
-        deleteInvoiceMutation
+        deleteInvoiceMutation,
+        sendReminderMutation
     };
 };

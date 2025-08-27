@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { format } from "date-fns";
 import { CalendarIcon } from "lucide-react";
 
@@ -16,7 +16,11 @@ import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { ExternalInvoice } from "@/types/api";
+import { useExternalInvoices } from "@/hooks/useExternalInvoices";
+import { useToast } from "@/components/ui/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type Props = {
   invoice: ExternalInvoice;
@@ -33,6 +37,17 @@ const ExternalInvoiceDetailView: React.FC<Props> = ({
   const [editedInvoice, setEditedInvoice] = useState<ExternalInvoice>({
     ...invoice,
   });
+
+  const historyItems = useMemo(() => {
+    const items: Array<{ label: string; date: string | null }> = [];
+    items.push({ label: "Created", date: (invoice as any).createdAt || null });
+    if ((invoice as any).paidAt) items.push({ label: "Paid", date: (invoice as any).paidAt });
+    return items;
+  }, [invoice]);
+
+  // lightweight access to mutations via hook (pageSize 1 to avoid heavy work)
+  const { updateInvoiceMutation, setInvoiceAsPaidMutation, sendReminderMutation, refetch } = useExternalInvoices({ initialPage: 1, pageSize: 1, search: "", });
+  const { toast } = useToast();
 
   /* ── handlers ─────────────────────────────── */
   const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -113,40 +128,139 @@ const ExternalInvoiceDetailView: React.FC<Props> = ({
     setIsEditing(false);
   };
 
+  const markPaidLocal = () => {
+    const prev = { status: editedInvoice.status, paidAt: (editedInvoice as any).paidAt } as any;
+    setEditedInvoice((prevInv: any) => ({ ...prevInv, status: "paid", paidAt: new Date().toISOString() }));
+    setInvoiceAsPaidMutation.mutate(editedInvoice.id, {
+      onSuccess: () => {
+        refetch();
+        toast({
+          title: `Invoice #${editedInvoice.id} marked as paid`,
+          action: (
+            <ToastAction altText="Undo" onClick={() => updateInvoiceMutation.mutate({ invoiceId: editedInvoice.id, invoiceData: prev }, { onSuccess: () => refetch() })}>
+              Undo
+            </ToastAction>
+          ),
+        });
+      },
+      onError: () => setEditedInvoice((_) => ({ ..._, ...prev })),
+    });
+  };
+
+  const markUnpaidLocal = () => {
+    const prev = { status: editedInvoice.status, paidAt: (editedInvoice as any).paidAt } as any;
+    setEditedInvoice((prevInv: any) => ({ ...prevInv, status: "unpaid", paidAt: null }));
+    updateInvoiceMutation.mutate({ invoiceId: editedInvoice.id, invoiceData: { status: 'unpaid', paidAt: null } }, {
+      onSuccess: () => {
+        refetch();
+        toast({
+          title: `Invoice #${editedInvoice.id} marked as unpaid`,
+          action: (
+            <ToastAction altText="Undo" onClick={() => updateInvoiceMutation.mutate({ invoiceId: editedInvoice.id, invoiceData: prev }, { onSuccess: () => refetch() })}>
+              Undo
+            </ToastAction>
+          ),
+        });
+      },
+      onError: () => setEditedInvoice((_) => ({ ..._, ...prev })),
+    });
+  };
+
   /* ── render ───────────────────────────────── */
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[425px]">
-        <DialogHeader>
-          <DialogTitle>External Invoice Details</DialogTitle>
-        </DialogHeader>
-
-        <div className="grid grid-cols-2 gap-x-6 py-4">
-          <div>
-            {Object.entries(editedInvoice).slice(0, Math.ceil(Object.keys(editedInvoice).length / 2)).map(([key, value]) => renderField(key, value))}
-          </div>
-          <div>
-            {Object.entries(editedInvoice).slice(Math.ceil(Object.keys(editedInvoice).length / 2)).map(([key, value]) => renderField(key, value))}
+      <DialogContent className="lg:max-w-4xl w-full p-0 overflow-hidden">
+        {/* Sticky header */}
+        <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-3 border-b bg-background/90 backdrop-blur">
+          <DialogHeader>
+            <DialogTitle>External Invoice Details</DialogTitle>
+          </DialogHeader>
+          <div className="flex items-center gap-2">
+            {editedInvoice.status !== "paid" ? (
+              <Button variant="outline" size="sm" onClick={markPaidLocal}>
+                Mark Paid
+              </Button>
+            ) : (
+              <Button variant="outline" size="sm" onClick={markUnpaidLocal}>
+                Mark Unpaid
+              </Button>
+            )}
+            <Button size="sm" variant="ghost" onClick={() => sendReminderMutation.mutate(editedInvoice.id)}>
+              Send Reminder
+            </Button>
+            {isEditing ? (
+              <>
+                <Button size="sm" onClick={saveAndClose}>Save</Button>
+                <Button size="sm" variant="outline" onClick={() => setIsEditing(false)}>Cancel</Button>
+              </>
+            ) : (
+              <Button size="sm" variant="secondary" onClick={() => setIsEditing(true)}>Edit</Button>
+            )}
+            <Button size="sm" variant="ghost" onClick={onClose}>Close</Button>
           </div>
         </div>
 
-        <DialogFooter>
-          {isEditing ? (
-            <>
-              <Button onClick={saveAndClose}>Save</Button>
-              <Button variant="outline" onClick={() => setIsEditing(false)}>
-                Cancel
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button onClick={() => setIsEditing(true)}>Edit</Button>
-              <Button variant="outline" onClick={onClose}>
-                Close
-              </Button>
-            </>
-          )}
-        </DialogFooter>
+        {/* Body with tabs */}
+        <div className="p-4">
+          <Tabs defaultValue="overview" className="w-full">
+            <TabsList className="grid grid-cols-4 w-full mb-4">
+              <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="payments">Payments</TabsTrigger>
+              <TabsTrigger value="history">History</TabsTrigger>
+              <TabsTrigger value="attachments">Attachments</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="overview" className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  {Object.entries(editedInvoice)
+                    .slice(0, Math.ceil(Object.keys(editedInvoice).length / 2))
+                    .map(([key, value]) => renderField(key, value))}
+                </div>
+                <div>
+                  {Object.entries(editedInvoice)
+                    .slice(Math.ceil(Object.keys(editedInvoice).length / 2))
+                    .map(([key, value]) => renderField(key, value))}
+                </div>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="payments" className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {renderField("status", (editedInvoice as any).status)}
+                {renderField("paidAt", (editedInvoice as any).paidAt)}
+              </div>
+              <div className="flex items-center gap-2">
+                {editedInvoice.status !== "paid" ? (
+                  <Button onClick={markPaidLocal}>Mark Paid</Button>
+                ) : (
+                  <Button variant="outline" onClick={markUnpaidLocal}>Mark Unpaid</Button>
+                )}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="history" className="space-y-3">
+              {historyItems.length === 0 && (
+                <div className="text-sm text-muted-foreground">No history available.</div>
+              )}
+              <div className="space-y-3">
+                {historyItems.map((h, idx) => (
+                  <div key={idx} className="flex items-center gap-3">
+                    <div className="h-2 w-2 rounded-full bg-primary" />
+                    <div className="text-sm">
+                      <span className="font-medium mr-2">{h.label}</span>
+                      <span className="text-muted-foreground">{h.date ? new Date(h.date).toLocaleString() : "—"}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="attachments" className="space-y-3">
+              <div className="text-sm text-muted-foreground">Attachments feature coming soon.</div>
+            </TabsContent>
+          </Tabs>
+        </div>
       </DialogContent>
     </Dialog>
   );
