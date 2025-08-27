@@ -36,6 +36,7 @@ import { AlertDialog } from '@radix-ui/react-alert-dialog';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/use-toast";
+import PageHeader from "@/components/PageHeader";
 
 const UserCard: React.FC<{ user: AuthUser; onEdit: () => void; onDelete: () => void }> = ({ user, onEdit, onDelete }) => {
     return (
@@ -306,30 +307,23 @@ const AuthUsersComponent: React.FC = () => {
 
     return (
         <div className="w-full py-6 space-y-6">
-            <header className="flex flex-col md:flex-row justify-between gap-4">
-                <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-primary/10">
-                        <Users className="h-6 w-6 text-primary" />
+            <PageHeader
+                title="Auth Users"
+                subtitle="Manage and configure user access"
+                icon={Users}
+                actions={(
+                    <div className="flex gap-2">
+                        <Button variant="outline" onClick={handleRefresh}>
+                            <RefreshCw className="h-4 w-4 mr-2" />
+                            Refresh
+                        </Button>
+                        <Button onClick={handleAddUser}>
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add User
+                        </Button>
                     </div>
-                    <div>
-                        <h1 className="text-3xl font-bold">Auth Users</h1>
-                        <p className="text-sm text-muted-foreground">
-                            Manage and configure user access
-                        </p>
-                    </div>
-                </div>
-
-                <div className="flex gap-2">
-                    <Button variant="outline" onClick={handleRefresh}>
-                        <RefreshCw className="h-4 w-4 mr-2" />
-                        Refresh
-                    </Button>
-                    <Button onClick={handleAddUser}>
-                        <Plus className="h-4 w-4 mr-2" />
-                        Add User
-                    </Button>
-                </div>
-            </header>
+                )}
+            />
 
             <Card>
                 <CardHeader>

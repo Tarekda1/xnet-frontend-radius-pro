@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import PageHeader from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useInvoiceUpload } from '@/hooks/useInvoiceUpload';
@@ -100,17 +101,11 @@ const InvoiceUpload: React.FC = () => {
 
   return (
     <div className="w-full py-6 space-y-6">
-      <div className="flex items-center gap-3">
-        <div className="p-2 rounded-lg bg-primary/10">
-          <FileSpreadsheet className="h-6 w-6 text-primary" />
-        </div>
-        <div>
-          <h1 className="text-3xl font-bold">Upload Invoice</h1>
-          <p className="text-sm text-muted-foreground">
-            Upload your invoice in Excel format (.xlsx or .xls)
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title="Upload Invoice"
+        subtitle="Upload your invoice in Excel format (.xlsx or .xls)"
+        icon={FileSpreadsheet}
+      />
 
       <Card>
         <CardHeader>

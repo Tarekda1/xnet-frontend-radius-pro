@@ -85,35 +85,6 @@ const SearchBar: React.FC<Props> = React.memo(({
             </button>
           )}
         </div>
-
-        {/* Search hints dropdown */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="absolute right-12 top-1/2 -translate-y-1/2 h-8 w-8 p-0 hover:bg-accent"
-            >
-              <SlidersHorizontal className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-[200px]">
-            <DropdownMenuLabel>Search Tips</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              {searchHints.map((hint, index) => (
-                <DropdownMenuItem
-                  key={index}
-                  className="flex flex-col items-start"
-                  onClick={() => setValue(hint.example)}
-                >
-                  <span className="text-sm font-medium">{hint.label}</span>
-                  <span className="text-xs text-muted-foreground">{hint.example}</span>
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
       </div>
 
       <Button

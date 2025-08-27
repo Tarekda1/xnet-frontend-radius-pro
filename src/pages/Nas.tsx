@@ -21,7 +21,8 @@ import useNas from '../hooks/useNas';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Nas } from '../types/api'; // Make sure to define this type
-import { ArrowUpDown, Edit, MoreHorizontal, Plus, RefreshCw } from 'lucide-react';
+import { ArrowUpDown, Edit, MoreHorizontal, Plus, RefreshCw, Server } from 'lucide-react';
+import PageHeader from "@/components/PageHeader";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -186,25 +187,41 @@ const NasComponent: React.FC = () => {
     if (error) return <div className="text-red-500 text-center">Error: {error.message}</div>;
 
     return (
-        <div className="w-full py-5">
-            <h1 className="text-3xl font-bold mb-6">Network Access Servers (NAS)</h1>
-            <div className="flex items-center justify-between py-4">
+        <div className="w-full py-5 space-y-4">
+            <PageHeader
+                title="Network Access Servers (NAS)"
+                subtitle="Manage NAS entries and settings"
+                icon={Server}
+                rightContent={(
+                    <div className="hidden md:block">
+                        <Input
+                            placeholder="Search NAS..."
+                            value={globalFilter ?? ''}
+                            onChange={(event) => setGlobalFilter(String(event.target.value))}
+                            className="max-w-sm bg-white/20 border-white/30 text-white placeholder:text-white/80"
+                        />
+                    </div>
+                )}
+                actions={(
+                    <div className="flex space-x-2">
+                        <Button onClick={handleRefresh} className="bg-white/20 border-white/30 text-white hover:bg-white/30">
+                            <RefreshCw className="h-4 w-4 mr-2" />
+                            Refresh
+                        </Button>
+                        <Button onClick={handleAddNas}>
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add NAS
+                        </Button>
+                    </div>
+                )}
+            />
+            <div className="flex items-center justify-between py-2 md:hidden">
                 <Input
                     placeholder="Search NAS..."
                     value={globalFilter ?? ''}
                     onChange={(event) => setGlobalFilter(String(event.target.value))}
                     className="max-w-sm"
                 />
-                <div className="flex space-x-2">
-                    <Button onClick={handleRefresh}>
-                        <RefreshCw className="h-4 w-2 mr-1" />
-                        Refresh
-                    </Button>
-                    <Button onClick={handleAddNas}>
-                        <Plus className="h-4 w-2 mr-1" />
-                        Add NAS
-                    </Button>
-                </div>
             </div>
             <div className="rounded-md border shadow-sm overflow-hidden hidden md:block">
                 <Table>

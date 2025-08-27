@@ -26,6 +26,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import PageHeader from "@/components/PageHeader";
 
 const MetricItem = ({ 
   label, 
@@ -164,73 +165,62 @@ export default function ExternalInvoicesPage() {
 
   return (
     <div className="w-full space-y-6 p-y-8 animate-in fade-in-50">
-      {/* Header Section */}
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10">
-              <FileText className="h-6 w-6 text-primary" />
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight">External Invoices</h1>
-              <p className="text-muted-foreground">Manage and track all external invoices</p>
-            </div>
+      <PageHeader
+        title="External Invoices"
+        subtitle="Manage and track all external invoices"
+        icon={FileText}
+        rightContent={(
+          <div className="flex flex-wrap gap-2">
+            <Badge 
+              variant="secondary" 
+              className="cursor-pointer hover:bg-secondary/80"
+              onClick={() => handleQuickFilter('all')}
+            >
+              All Invoices
+            </Badge>
+            <Badge 
+              variant="outline" 
+              className="cursor-pointer hover:bg-accent"
+              onClick={() => handleQuickFilter('pending')}
+            >
+              Pending
+            </Badge>
+            <Badge 
+              variant="outline" 
+              className="cursor-pointer hover:bg-accent"
+              onClick={() => handleQuickFilter('paid')}
+            >
+              Paid
+            </Badge>
+            <Badge 
+              variant="outline" 
+              className="cursor-pointer hover:bg-accent"
+              onClick={() => handleQuickFilter('overdue')}
+            >
+              Overdue
+            </Badge>
+            <Badge 
+              variant="outline" 
+              className="cursor-pointer hover:bg-accent"
+              onClick={() => handleQuickFilter('today')}
+            >
+              Today
+            </Badge>
           </div>
-
-          <div className="flex flex-col lg:flex-row gap-3 items-start lg:items-center">
-            {/* Quick Action Filters */}
-            <div className="flex flex-wrap gap-2">
-              <Badge 
-                variant="secondary" 
-                className="cursor-pointer hover:bg-secondary/80"
-                onClick={() => handleQuickFilter('all')}
-              >
-                All Invoices
-              </Badge>
-              <Badge 
-                variant="outline" 
-                className="cursor-pointer hover:bg-accent"
-                onClick={() => handleQuickFilter('pending')}
-              >
-                Pending
-              </Badge>
-              <Badge 
-                variant="outline" 
-                className="cursor-pointer hover:bg-accent"
-                onClick={() => handleQuickFilter('paid')}
-              >
-                Paid
-              </Badge>
-              <Badge 
-                variant="outline" 
-                className="cursor-pointer hover:bg-accent"
-                onClick={() => handleQuickFilter('overdue')}
-              >
-                Overdue
-              </Badge>
-              <Badge 
-                variant="outline" 
-                className="cursor-pointer hover:bg-accent"
-                onClick={() => handleQuickFilter('today')}
-              >
-                Today
-              </Badge>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={handleRefresh}>
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Refresh
-              </Button>
-              <Button onClick={() => {}}>
-                <Plus className="h-4 w-4 mr-2" />
-                New Invoice
-              </Button>
-            </div>
+        )}
+        actions={(
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={handleRefresh} className="bg-white/20 border-white/30 text-white hover:bg-white/30">
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh
+            </Button>
+            <Button onClick={() => {}} className="bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white">
+              <Plus className="h-4 w-4 mr-2" />
+              New Invoice
+            </Button>
           </div>
-        </div>
-      </div>
+        )}
+      />
 
       {/* Dashboard Controls Card */}
       <Card className="p-4">
