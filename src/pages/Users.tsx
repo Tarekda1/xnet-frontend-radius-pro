@@ -525,9 +525,11 @@ const UsersPage: React.FC = () => {
     }, [setCurrentPage]);
 
     const handleExportUsers = useCallback(() => {
-        if (filteredUsers.length > 0) {
+        // Exclude suspended users from export
+        const exportableUsers = filteredUsers.filter(u => u.accountStatus !== 'suspended');
+        if (exportableUsers.length > 0) {
             // Prepare data for export with only the required fields
-            const exportData = filteredUsers.map(user => ({
+            const exportData = exportableUsers.map(user => ({
                 Name: user.userDetails.fullName || 'N/A',
                 Phone: user.userDetails.phoneNumber || 'N/A',
                 Username: user.username || 'N/A'
@@ -540,13 +542,13 @@ const UsersPage: React.FC = () => {
             // Generate filename with current date and filter info
             const date = new Date().toISOString().split('T')[0];
             const filterSuffix = statusFilter ? `_${statusFilter}` : '';
-            const filename = `users${filterSuffix}_${date}.xlsx`;  // <-- This creates .xlsx file
+            const filename = `users${filterSuffix}_${date}.xlsx`;
             
             writeFile(wb, filename);
             
             toast({
                 title: "Export successful",
-                description: `${filteredUsers.length} users exported to ${filename}`,
+                description: `${exportableUsers.length} users exported to ${filename}`,
             });
         } else {
             toast({
