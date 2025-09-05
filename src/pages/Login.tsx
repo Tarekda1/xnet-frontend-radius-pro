@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import useLogin from '@/hooks/useLogin';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Loader2, Lock, User } from 'lucide-react';
 import Alert from '@/components/ui/Alert';
@@ -14,13 +14,26 @@ const Login: React.FC = () => {
   const { login, isLoading, error } = useLogin();
   const { login: authLogin } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     const resp = await login(username, password);
     if (resp?.data.accessToken) {
       authLogin(resp?.data.user, resp?.data.accessToken);
-      navigate('/');
+      let redirectPath = '/';
+      const state = location.state as { from?: Location } | null;
+      const fromStatePathname = state?.from?.pathname;
+      const storedPath = localStorage.getItem('redirectTo');
+      if (fromStatePathname && fromStatePathname !== '/login') {
+        redirectPath = fromStatePathname;
+      } else if (storedPath && storedPath !== '/login') {
+        redirectPath = storedPath;
+      }
+      if (storedPath) {
+        localStorage.removeItem('redirectTo');
+      }
+      navigate(redirectPath, { replace: true });
     }
   };
 

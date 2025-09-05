@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import PageHeader from "@/components/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -87,17 +88,13 @@ const Analytics: React.FC = () => {
 
   return (
     <div className="w-full space-y-6 p-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Analytics Dashboard</h1>
-          <p className="text-muted-foreground">
-            Real-time insights into your RADIUS system performance and user activity.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeader
+        title="Analytics Dashboard"
+        subtitle="Real-time insights into your RADIUS system performance and user activity."
+        icon={Activity}
+        rightContent={(
           <Select value={timeRange} onValueChange={setTimeRange}>
-            <SelectTrigger className="w-[180px]">
+            <SelectTrigger className="w-[180px] bg-white/20 border-white/30 text-white">
               <SelectValue placeholder="Select time range" />
             </SelectTrigger>
             <SelectContent>
@@ -107,16 +104,20 @@ const Analytics: React.FC = () => {
               <SelectItem value="30d">Last 30 Days</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={chartLoading || metricsLoading}>
-            <RefreshCw className={`mr-2 h-4 w-4 ${(chartLoading || metricsLoading) ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-          <Button variant="outline" size="sm">
-            <Download className="mr-2 h-4 w-4" />
-            Export
-          </Button>
-        </div>
-      </div>
+        )}
+        actions={(
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={handleRefresh} disabled={chartLoading || metricsLoading} className="bg-white/20 border-white/30 text-white hover:bg-white/30">
+              <RefreshCw className={`mr-2 h-4 w-4 ${(chartLoading || metricsLoading) ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+            <Button variant="outline" size="sm" className="bg-white/20 border-white/30 text-white hover:bg-white/30">
+              <Download className="mr-2 h-4 w-4" />
+              Export
+            </Button>
+          </div>
+        )}
+      />
 
       {/* Key Metrics */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import PageHeader from "@/components/PageHeader";
 import {
     Table,
     TableBody,
@@ -598,8 +599,12 @@ const InvoicesComponent: React.FC = () => {
     const totalSum = data?.data?.data.reduce((sum, invoice) => sum + invoice.amount, 0) ?? 0;
 
     return (
-        <div className="w-full py-6 pt-2">
-            <h1 className="text-3xl font-bold">Invoices</h1>
+        <div className="w-full py-6 pt-2 space-y-4">
+            <PageHeader
+                title="Invoices"
+                subtitle="View and manage generated invoices"
+                icon={FileText}
+            />
             {error && (
                 <Alert
                     type="error"

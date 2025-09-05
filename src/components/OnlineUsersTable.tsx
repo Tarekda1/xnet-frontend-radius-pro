@@ -303,7 +303,7 @@ const TableRows = function TableRows({
                         "hover:bg-muted/50 transition-colors",
                         u.session_status === 'active' && "bg-white/50",
                         u.session_status === 'idle' && "bg-yellow-50/50",
-                        u.is_fallback && "bg-red-50/50 border-l-4 border-l-red-500"
+                        u.is_fallback && "bg-purple-50/50 border-l-4 border-l-purple-500"
                     )}
                 >
                     <TableCell className={cn(profileClass(u.profile_profile_name), "p-4")}>
@@ -331,14 +331,14 @@ const TableRows = function TableRows({
                         <div className="flex items-center gap-1.5">
                             <HardDrive className={cn(
                                 "h-3.5 w-3.5",
-                                u.is_fallback ? "text-red-600" : "text-green-600"
+                                u.is_fallback ? "text-purple-600" : "text-green-600"
                             )} />
                             <Badge 
                                 variant="outline" 
                                 className={cn(
                                     "text-sm",
                                     u.is_fallback 
-                                        ? "bg-red-100 text-red-700 border-red-200" 
+                                        ? "bg-purple-100 text-purple-700 border-purple-200" 
                                         : "bg-green-100 text-green-700 border-green-200"
                                 )}
                             >

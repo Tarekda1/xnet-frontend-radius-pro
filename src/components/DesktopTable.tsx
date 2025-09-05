@@ -18,8 +18,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { utils, writeFile } from "xlsx";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -29,7 +31,6 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import {
-  ArrowUpDown,
   CalendarIcon,
   Check,
   CheckCircle,
@@ -58,7 +59,7 @@ const providerStyles = {
   default: { color: "text-gray-700", bg: "bg-gray-100" },
 } as const;
 
-const PAGE_SIZE_OPTIONS = [10, 20, 50, 100, 200];
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100, 200,500];
 
 type Props = {
   invoices: ExternalInvoice[];
@@ -253,7 +254,7 @@ const DesktopTable: React.FC<Props> = ({
               );
           }
         },
-        sortingFn: (rowA, rowB, columnId) => {
+        sortingFn: (rowA, rowB) => {
           const statusOrder = { paid: 2, pending: 1, unpaid: 0 };
           const a = statusOrder[rowA.original.status as keyof typeof statusOrder] ?? 0;
           const b = statusOrder[rowB.original.status as keyof typeof statusOrder] ?? 0;
@@ -324,9 +325,84 @@ const DesktopTable: React.FC<Props> = ({
     manualPagination: true,
   });
 
+  /* ── persist column visibility + density ───── */
+  React.useEffect(() => {
+    const storedCols = localStorage.getItem('extInv.columns');
+    const storedDensity = localStorage.getItem('extInv.density');
+    if (storedCols) {
+      try {
+        const vis = JSON.parse(storedCols) as Record<string, boolean>;
+        table.setColumnVisibility(vis);
+      } catch {}
+    }
+    if (storedDensity === 'compact') {
+      document.documentElement.classList.add('table-compact');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  React.useEffect(() => {
+    localStorage.setItem('extInv.columns', JSON.stringify(table.getState().columnVisibility));
+  }, [table.getState().columnVisibility]);
+
   return (
     <>
       <div className="min-w-[768px]">
+        {/* Table toolbar: column visibility + density */}
+        <div className="flex items-center justify-between py-2 px-2 border-b">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Columns:</span>
+            {table.getAllLeafColumns().map((col) => (
+              <label key={col.id} className="flex items-center gap-1 text-sm">
+                <Checkbox
+                  checked={col.getIsVisible()}
+                  onCheckedChange={(v) => col.toggleVisibility(!!v)}
+                />
+                {col.columnDef.header && typeof col.columnDef.header === 'function'
+                  ? String(col.id)
+                  : String(col.columnDef.header)}
+              </label>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const visibleCols = table.getAllLeafColumns().filter(c => c.getIsVisible());
+                const dataToExport = table.getCoreRowModel().rows.map(r => {
+                  const obj: Record<string, any> = {};
+                  visibleCols.forEach(col => {
+                    const key = col.id;
+                    // @ts-ignore - access original for simple export
+                    obj[key] = (r.original as any)[key];
+                  });
+                  return obj;
+                });
+                const ws = utils.json_to_sheet(dataToExport);
+                const wb = utils.book_new();
+                utils.book_append_sheet(wb, ws, "External Invoices");
+                writeFile(wb, "external_invoices_view.xlsx");
+              }}
+            >
+              Export view
+            </Button>
+            <span className="text-sm text-muted-foreground">Compact</span>
+            <Switch
+              onCheckedChange={(v) => {
+                const root = document.documentElement;
+                if (v) {
+                  root.classList.add('table-compact');
+                  localStorage.setItem('extInv.density', 'compact');
+                } else {
+                  root.classList.remove('table-compact');
+                  localStorage.setItem('extInv.density', 'comfortable');
+                }
+              }}
+              defaultChecked={typeof window !== 'undefined' && localStorage.getItem('extInv.density') === 'compact'}
+            />
+          </div>
+        </div>
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((hg) => (
@@ -350,9 +426,10 @@ const DesktopTable: React.FC<Props> = ({
                     "hover:bg-gray-100",
                     row.getIsSelected() && "bg-primary/50"
                   )}
+                  onDoubleClick={() => onViewInvoice(row.original)}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id} className="text-left">
+                    <TableCell key={cell.id} className="text-left table-cell">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
                   ))}

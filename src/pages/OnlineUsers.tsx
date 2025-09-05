@@ -1,14 +1,13 @@
 // OnlineUsersPage.tsx (or wherever you host the page)
-import React, { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import SearchBar from "../components/SearchBar";
 import OnlineUsersTable from "../components/OnlineUsersTable";
-import { RefreshCw, Users, Activity, Clock } from "lucide-react";
+import { RefreshCw, Users, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import PageHeader from "@/components/PageHeader";
 import { websocketService } from "@/services/websocket";
 import { useToast } from "@/components/ui/use-toast";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function OnlineUsersPage() {
@@ -106,30 +105,24 @@ export default function OnlineUsersPage() {
 
   return (
     <div className="w-full py-6 space-y-6">
-      <header className="flex flex-col md:flex-row justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-primary/10">
-            <Users className="h-6 w-6 text-primary" />
+      <PageHeader
+        title="Online Users"
+        subtitle="Monitor and manage active user sessions"
+        icon={Users}
+        actions={(
+          <div className="flex gap-2 items-center">
+            <Button 
+              variant="outline" 
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className="bg-white/20 border-white/30 text-white hover:bg-white/30 backdrop-blur-sm transition-all duration-300 hover:scale-105"
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+              {isRefreshing ? 'Refreshing...' : 'Refresh'}
+            </Button>
           </div>
-          <div>
-            <h1 className="text-3xl font-bold">Online Users</h1>
-            <p className="text-sm text-muted-foreground">
-              Monitor and manage active user sessions
-            </p>
-          </div>
-        </div>
-
-        <div className="flex gap-2">
-          <Button 
-            variant="outline" 
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-            {isRefreshing ? 'Refreshing...' : 'Refresh'}
-          </Button>
-        </div>
-      </header>
+        )}
+      />
 
       {/* Dashboard Controls Card */}
       <Card className="p-4">

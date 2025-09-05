@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import PageHeader from "@/components/PageHeader";
 import { Profile, useProfiles } from '../hooks/useProfiles';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -357,27 +358,18 @@ const ProfilesComponent: React.FC = () => {
 
   return (
     <div className="w-full py-6 space-y-6">
-      <header className="flex flex-col md:flex-row justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-primary/10">
-            <Network className="h-6 w-6 text-primary" />
+      <PageHeader
+        title="Network Profiles"
+        subtitle="Manage and configure network access profiles"
+        icon={Network}
+        actions={(
+          <div className="flex gap-2">
+            <Button onClick={() => setIsModalOpen(true)}>
+              <Plus className="w-4 h-4 mr-2" /> Add Profile
+            </Button>
           </div>
-          <div>
-            <h1 className="text-3xl font-bold">Network Profiles</h1>
-            <p className="text-sm text-muted-foreground">
-              Manage and configure network access profiles
-            </p>
-          </div>
-        </div>
-
-        <div className="flex gap-2">
-          <Button
-            onClick={() => setIsModalOpen(true)}
-          >
-            <Plus className="w-4 h-4 mr-2" /> Add Profile
-          </Button>
-        </div>
-      </header>
+        )}
+      />
 
       <Card>
         <CardHeader>

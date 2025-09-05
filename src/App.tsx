@@ -1,5 +1,5 @@
 import React, { Suspense, useEffect } from 'react';
-import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Route, Routes, Navigate, useLocation } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import queryClient from './api/queryClient';
 import Layout from './components/Layout';
@@ -29,7 +29,10 @@ const AlertsComponent = React.lazy(() => import('./pages/Alerts'));
 
 const ProtectedRoute: React.FC<{ element: React.ReactElement }> = ({ element }) => {
   const { isAuthenticated } = useAuth();
-  return isAuthenticated ? element : <Navigate to="/login" replace />;
+  const location = useLocation();
+  return isAuthenticated
+    ? element
+    : <Navigate to="/login" replace state={{ from: location }} />;
 };
 
 const AppRoutes: React.FC = () => {

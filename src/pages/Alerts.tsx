@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import PageHeader from "@/components/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -218,29 +219,27 @@ const Alerts: React.FC = () => {
 
   return (
     <div className="w-full space-y-6 p-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Alert Management</h1>
-          <p className="text-muted-foreground">
-            Monitor system metrics and configure threshold-based notifications.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm">
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Refresh
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setIsSettingsDialogOpen(true)}>
-            <Settings className="mr-2 h-4 w-4" />
-            Settings
-          </Button>
-          <Button onClick={() => setIsCreateDialogOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Create Alert Rule
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Alert Management"
+        subtitle="Monitor system metrics and configure threshold-based notifications."
+        icon={AlertTriangle}
+        actions={(
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm">
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Refresh
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setIsSettingsDialogOpen(true)}>
+              <Settings className="mr-2 h-4 w-4" />
+              Settings
+            </Button>
+            <Button onClick={() => setIsCreateDialogOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              Create Alert Rule
+            </Button>
+          </div>
+        )}
+      />
 
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

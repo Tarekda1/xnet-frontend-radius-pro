@@ -1,6 +1,6 @@
 import { useOnlineMetrics } from '@/hooks/useOnlineMetrics';
-import { useInvoiceNotifications } from '@/hooks/useInvoiceNotifications';
 import React, { useState, useEffect } from 'react';
+import PageHeader from "@/components/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,6 @@ import {
   UserCheck, 
   Shield, 
   AlertTriangle, 
-  Server, 
   Activity, 
   RefreshCw,
   ArrowUpRight,
@@ -19,7 +18,6 @@ import {
   CircuitBoard,
   HardDrive,
   MoreHorizontal,
-  Receipt,
   Bell,
   Settings,
   LineChart
@@ -30,22 +28,21 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { formatDistanceToNow } from 'date-fns';
+ 
 import AnalyticsWidget from '@/components/AnalyticsWidget';
 import AlertNotification from '@/components/AlertNotification';
 import BandwidthWidget from '@/components/BandwidthWidget';
-import { useOnlineUsers } from '@/hooks/useOnlineUsers';
 import { useAlerts } from '@/hooks/useAlerts';
 
 const Dashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
-  const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
+  
   const { data: alerts, isLoading: alertsLoading } = useAlerts();
-  const { data: onlineUsersData, isLoading: onlineUsersLoading } = useOnlineUsers();
+  const onlineMetrics = useOnlineMetrics();
 
   // Extract data from hooks
-  const totalOnlineUsers = onlineUsersData?.data?.length || 0;
-  const totalActiveUsers = onlineUsersData?.totalUsers || 0;
+  const totalOnlineUsers = onlineMetrics.totalOnlineUsers;
+  const totalActiveUsers = onlineMetrics.totalActiveUsers;
 
   useEffect(() => {
     // Simulate initial loading
@@ -58,7 +55,7 @@ const Dashboard: React.FC = () => {
 
   const handleRefresh = () => {
     setIsLoading(true);
-    setLastRefresh(new Date());
+    
     // Simulate refresh loading
     setTimeout(() => {
       setIsLoading(false);
@@ -147,31 +144,31 @@ const Dashboard: React.FC = () => {
 
   return (
     <div className="w-full space-y-6 p-y-8 animate-in fade-in-50">
-      {/* Header Section */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-muted-foreground">Monitor your system's performance and user activity.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="w-fit" onClick={handleRefresh} disabled={isLoading}>
-            <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-            Refresh Data
-          </Button>
-          <Button variant="outline" size="sm" asChild>
-            <a href="/analytics">
-              <LineChart className="mr-2 h-4 w-4" />
-              View Analytics
-            </a>
-          </Button>
-          <Button variant="outline" size="icon">
-            <Settings className="h-4 w-4" />
-          </Button>
-          <Button variant="outline" size="icon">
-            <Bell className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Dashboard"
+        subtitle="Monitor your system's performance and user activity."
+        icon={Activity}
+        actions={(
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" className="w-fit text-black" onClick={handleRefresh} disabled={isLoading}>
+              <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+              Refresh Data
+            </Button>
+            <Button variant="outline" size="sm" className="text-black" asChild>
+              <a href="/analytics">
+                <LineChart className="mr-2 h-4 w-4" />
+                View Analytics
+              </a>
+            </Button>
+            <Button variant="outline" size="icon" className="text-black">
+              <Settings className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="icon" className="text-black">
+              <Bell className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+      />
 
       {isLoading ? (
         <LoadingSkeleton />
