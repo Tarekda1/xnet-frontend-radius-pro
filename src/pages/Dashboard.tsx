@@ -150,20 +150,20 @@ const Dashboard: React.FC = () => {
         icon={Activity}
         actions={(
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="w-fit" onClick={handleRefresh} disabled={isLoading}>
+            <Button variant="outline" size="sm" className="w-fit text-black" onClick={handleRefresh} disabled={isLoading}>
               <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
               Refresh Data
             </Button>
-            <Button variant="outline" size="sm" asChild>
+            <Button variant="outline" size="sm" className="text-black" asChild>
               <a href="/analytics">
                 <LineChart className="mr-2 h-4 w-4" />
                 View Analytics
               </a>
             </Button>
-            <Button variant="outline" size="icon">
+            <Button variant="outline" size="icon" className="text-black">
               <Settings className="h-4 w-4" />
             </Button>
-            <Button variant="outline" size="icon">
+            <Button variant="outline" size="icon" className="text-black">
               <Bell className="h-4 w-4" />
             </Button>
           </div>

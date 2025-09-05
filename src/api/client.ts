@@ -27,6 +27,12 @@ apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     if (error.response?.status === 401) {
+      try {
+        const currentPath = window.location.pathname + window.location.search + window.location.hash;
+        if (currentPath && currentPath !== '/login') {
+          localStorage.setItem('redirectTo', currentPath);
+        }
+      } catch {}
       localStorage.removeItem('accessToken');
       window.location.href = '/login';
     }
