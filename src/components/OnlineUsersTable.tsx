@@ -459,6 +459,7 @@ const OnlineUsersTable: React.FC<Props> = ({
         page,
         setPage,
         resetDailyUserQuotaMutation,
+        disconnectUserSessionMutation,
     } = useOnlineUsers(search, 1, 100);
     //search,
     const onAction = useCallback(
@@ -468,10 +469,28 @@ const OnlineUsersTable: React.FC<Props> = ({
                     { username },
                     { onSuccess: () => refetch(), onError: (e) => alert(e.message) }
                 );
+                return;
             }
-            // TODO other server actions
+
+            if (action === "disconnect") {
+                // Choose NAS IP/secret. For now, use env-configured values via Vite.
+                const ip = import.meta.env.VITE_DEFAULT_NAS_IP as string;
+                const code = import.meta.env.VITE_DEFAULT_NAS_SECRET as string;
+                const port = Number(import.meta.env.VITE_DEFAULT_NAS_COA_PORT || 1700);
+
+                if (!ip || !code) {
+                    alert("NAS IP/secret not configured");
+                    return;
+                }
+
+                disconnectUserSessionMutation.mutate(
+                    { username, ip, code, port },
+                    { onSuccess: () => refetch(), onError: (e) => alert(e.message) }
+                );
+                return;
+            }
         },
-        [resetDailyUserQuotaMutation, refetch]
+        [resetDailyUserQuotaMutation, disconnectUserSessionMutation, refetch]
     );
 
     useEffect(() => {

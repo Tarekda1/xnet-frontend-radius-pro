@@ -13,6 +13,9 @@ services:
       - NODE_ENV=development
       - VITE_API_URL=https://api.xnetcloud.tech/api
       - VITE_WS_URL=ws://rabbitmq:15674
+      - VITE_DEFAULT_NAS_IP=172.8.16.200
+      - VITE_DEFAULT_NAS_SECRET=tisp123
+      - VITE_DEFAULT_NAS_COA_PORT=1700
       - CHOKIDAR_USEPOLLING=true
     command: npm run dev -- --host 0.0.0.0 --port 5173 --strictPort
     networks:

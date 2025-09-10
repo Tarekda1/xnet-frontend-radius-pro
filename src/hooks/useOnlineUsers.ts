@@ -38,6 +38,11 @@ interface ResetDailyQuotaResponse {
   message: string;
 }
 
+interface DisconnectSessionResponse {
+  success: boolean;
+  message: string;
+}
+
 const fetchOnlineUsers = async (page: number = 1, limit: number = 10, search: string): Promise<OnlineUsersResponse> => {
   const response = await apiClient.get<OnlineUsersResponse>(`/online-users?page=${page}&limit=${limit}&search=${search}`);
   return response.data;
@@ -46,6 +51,26 @@ const fetchOnlineUsers = async (page: number = 1, limit: number = 10, search: st
 // Define the API call for resetting the daily quota
 const resetDailyQuota = async ({ username }: { username: string }): Promise<ResetDailyQuotaResponse> => {
   const response = await apiClient.put<ResetDailyQuotaResponse>(`/radius/users/resetQuota/${username}`);
+  return response.data;
+};
+
+const disconnectSession = async ({
+  username,
+  ip,
+  code,
+  port,
+}: {
+  username: string;
+  ip: string;
+  code: string;
+  port?: number;
+}): Promise<DisconnectSessionResponse> => {
+  const response = await apiClient.post<DisconnectSessionResponse>(`/sessions/disconnect`, {
+    username,
+    ip,
+    code,
+    port,
+  });
   return response.data;
 };
 
@@ -68,9 +93,17 @@ export const useOnlineUsers = (search = "", initialPage: number = 1, initialLimi
     },
   });
 
+  const disconnectUserSessionMutation = useMutation<DisconnectSessionResponse, Error, { username: string; ip: string; code: string; port?: number }>({
+    mutationFn: disconnectSession,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['onlineUsers'] });
+    },
+  });
+
   return {
     ...userQuery,
     resetDailyUserQuotaMutation,
+    disconnectUserSessionMutation,
     page,
     setPage,
     limit,

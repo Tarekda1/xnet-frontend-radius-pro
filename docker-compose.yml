@@ -22,6 +22,9 @@ services:
     environment:
       - NODE_ENV=development
       - VITE_API_URL=${VITE_API_URL:-https://radius.xnetcloud.tech/api}
+      - VITE_DEFAULT_NAS_IP=172.8.16.200
+      - VITE_DEFAULT_NAS_SECRET=tisp123
+      - VITE_DEFAULT_NAS_COA_PORT=1700
       - CHOKIDAR_USEPOLLING=true
       - WATCHPACK_POLLING=true
     healthcheck:
