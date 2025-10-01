@@ -525,8 +525,8 @@ const UsersPage: React.FC = () => {
     }, [setCurrentPage]);
 
     const handleExportUsers = useCallback(() => {
-        // Exclude suspended users from export
-        const exportableUsers = filteredUsers.filter(u => u.accountStatus !== 'suspended');
+        // Export only active users (exclude suspended/inactive/etc.)
+        const exportableUsers = filteredUsers.filter(u => u.accountStatus === 'active');
         if (exportableUsers.length > 0) {
             // Prepare data for export with only the required fields
             const exportData = exportableUsers.map(user => ({
