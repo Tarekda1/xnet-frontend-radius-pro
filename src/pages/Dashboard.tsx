@@ -33,6 +33,7 @@ import AnalyticsWidget from '@/components/AnalyticsWidget';
 import AlertNotification from '@/components/AlertNotification';
 import BandwidthWidget from '@/components/BandwidthWidget';
 import { useAlerts } from '@/hooks/useAlerts';
+import CollectedSummaryCards from '@/components/CollectedSummaryCards';
 
 const Dashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
@@ -235,6 +236,9 @@ const Dashboard: React.FC = () => {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Collected Summary Cards */}
+            <CollectedSummaryCards />
 
             {/* Failed Attempts Card */}
             <Card className="hover:shadow-lg transition-shadow">

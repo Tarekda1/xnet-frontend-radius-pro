@@ -347,67 +347,72 @@ export default function ExternalInvoicesPage() {
   const selectedCount = Object.keys(rowSelection).length;
 
   return (
-    <div className="w-full space-y-6 p-y-8 animate-in fade-in-50">
+    <div className="w-full space-y-6 py-6 sm:py-8 px-2 sm:px-0 animate-in fade-in-50">
       <PageHeader
         title="External Invoices"
         subtitle="Manage and track all external invoices"
         icon={FileText}
         rightContent={(
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="text-sm text-muted-foreground mr-2">Status:</div>
-            <Button
-              variant={searchParams.get('status') === null ? 'default' : 'secondary'}
-              size="sm"
-              onClick={() => handleQuickFilter('all')}
-              className={
-                (searchParams.get('status') === null ? 'text-white ' : 'text-foreground ') +
-                (searchParams.get('status') === null ? 'ring-2 ring-primary/40' : '')
-              }
-            >
-              {searchParams.get('status') === null && <CheckCircle className="h-3 w-3 mr-1" />}
-              All ({metrics?.totalInvoices ?? 0})
-            </Button>
-            <Button
-              variant={searchParams.get('status') === 'pending' ? 'default' : 'secondary'}
-              size="sm"
-              onClick={() => handleQuickFilter('pending')}
-              className={
-                (searchParams.get('status') === 'pending' ? 'text-white ' : 'text-foreground ') +
-                (searchParams.get('status') === 'pending' ? 'ring-2 ring-primary/40' : '')
-              }
-            >
-              {searchParams.get('status') === 'pending' && <CheckCircle className="h-3 w-3 mr-1" />}
-              Pending ({metrics?.totalPending ?? 0})
-            </Button>
-            <Button
-              variant={searchParams.get('status') === 'paid' ? 'default' : 'secondary'}
-              size="sm"
-              onClick={() => handleQuickFilter('paid')}
-              className={
-                (searchParams.get('status') === 'paid' ? 'text-white ' : 'text-foreground ') +
-                (searchParams.get('status') === 'paid' ? 'ring-2 ring-primary/40' : '')
-              }
-            >
-              {searchParams.get('status') === 'paid' && <CheckCircle className="h-3 w-3 mr-1" />}
-              Paid ({metrics?.totalPaid ?? 0})
-            </Button>
-            {/* <Button
-              variant={searchParams.get('status') === 'overdue' ? 'default' : 'secondary'}
-              size="sm"
-              onClick={() => handleQuickFilter('overdue')}
-              className={
-                (searchParams.get('status') === 'overdue' ? 'text-white ' : 'text-foreground ') +
-                (searchParams.get('status') === 'overdue' ? 'ring-2 ring-primary/40' : '')
-              }
-            >
-              {searchParams.get('status') === 'overdue' && <CheckCircle className="h-3 w-3 mr-1" />}
-              Overdue ({metrics?.totalUnpaid ?? 0})
-            </Button> */}
-            <div className="w-px h-6 bg-border mx-2" />
-            <Button variant="secondary" size="sm" onClick={() => handleQuickFilter('today')} className="text-foreground">Today</Button>
-            <div className="w-px h-6 bg-border mx-2" />
-            {/* Saved Views inline for compact header */}
-            <div className="flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+            {/* Compact status select on mobile */}
+            <div className="flex sm:hidden items-center gap-2 w-full">
+              <div className="text-sm text-muted-foreground">Status</div>
+              <Select onValueChange={(val) => handleQuickFilter(val)}>
+                <SelectTrigger className="h-8 w-full sm:w-[120px]">
+                  <SelectValue placeholder={(searchParams.get('status') || 'all').toUpperCase()} />
+                </SelectTrigger>
+                <SelectContent align="end">
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="paid">Paid</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Full status buttons on sm+ */}
+            <div className="hidden sm:flex items-center gap-2">
+              <div className="text-sm text-muted-foreground mr-1">Status:</div>
+              <Button
+                variant={searchParams.get('status') === null ? 'default' : 'secondary'}
+                size="sm"
+                onClick={() => handleQuickFilter('all')}
+                className={
+                  (searchParams.get('status') === null ? 'text-white ' : 'text-foreground ') +
+                  (searchParams.get('status') === null ? 'ring-2 ring-primary/40' : '')
+                }
+              >
+                {searchParams.get('status') === null && <CheckCircle className="h-3 w-3 mr-1" />}
+                All ({metrics?.totalInvoices ?? 0})
+              </Button>
+              <Button
+                variant={searchParams.get('status') === 'pending' ? 'default' : 'secondary'}
+                size="sm"
+                onClick={() => handleQuickFilter('pending')}
+                className={
+                  (searchParams.get('status') === 'pending' ? 'text-white ' : 'text-foreground ') +
+                  (searchParams.get('status') === 'pending' ? 'ring-2 ring-primary/40' : '')
+                }
+              >
+                {searchParams.get('status') === 'pending' && <CheckCircle className="h-3 w-3 mr-1" />}
+                Pending ({metrics?.totalPending ?? 0})
+              </Button>
+              <Button
+                variant={searchParams.get('status') === 'paid' ? 'default' : 'secondary'}
+                size="sm"
+                onClick={() => handleQuickFilter('paid')}
+                className={
+                  (searchParams.get('status') === 'paid' ? 'text-white ' : 'text-foreground ') +
+                  (searchParams.get('status') === 'paid' ? 'ring-2 ring-primary/40' : '')
+                }
+              >
+                {searchParams.get('status') === 'paid' && <CheckCircle className="h-3 w-3 mr-1" />}
+                Paid ({metrics?.totalPaid ?? 0})
+              </Button>
+            </div>
+
+            <div className="hidden md:block w-px h-6 bg-border mx-2" />
+            {/* Saved Views: hide on small screens for cleaner mobile header */}
+            <div className="hidden md:flex items-center gap-2">
               <div className="flex items-center gap-1">
                 <Input
                   placeholder="Save view…"
@@ -474,15 +479,17 @@ export default function ExternalInvoicesPage() {
           </div>
         )}
         actions={(
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={handleRefresh} className="bg-white/20 border-white/30 text-white hover:bg-white/30">
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Refresh
-            </Button>
-            <Button onClick={() => {}} className="bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white">
-              <Plus className="h-4 w-4 mr-2" />
-              New Invoice
-            </Button>
+          <div className="w-full sm:w-auto">
+            <div className="flex gap-2 flex-col sm:flex-row w-full">
+              <Button variant="outline" onClick={handleRefresh} className="w-full sm:w-auto bg-white/20 border-white/30 text-white hover:bg-white/30">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Refresh
+              </Button>
+              <Button onClick={() => {}} className="w-full sm:w-auto bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white">
+                <Plus className="h-4 w-4 mr-2" />
+                New Invoice
+              </Button>
+            </div>
           </div>
         )}
       />
@@ -491,7 +498,7 @@ export default function ExternalInvoicesPage() {
       <Card className="p-4">
         <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
           {/* Search Section */}
-          <div className="flex-1 min-w-0 lg:max-w-xl">
+          <div className="flex-1 min-w-0 w-full lg:max-w-xl">
             <SearchBar 
               currentSearchTerm={searchInput} 
               onSearch={handleSearch}
@@ -501,7 +508,7 @@ export default function ExternalInvoicesPage() {
           </div>
 
           {/* Metrics Section */}
-          <div className="flex items-center gap-4 lg:border-l lg:border-border lg:pl-4">
+          <div className="flex items-center gap-3 lg:gap-4 lg:border-l lg:border-border lg:pl-4 overflow-x-auto w-full lg:w-auto">
             {/* Amount Stats */}
             <div className="flex items-center gap-3">
               <MetricItem
@@ -622,7 +629,7 @@ export default function ExternalInvoicesPage() {
         </Badge>
         {/* Active filter chips */}
         {(searchParams.get('from') || searchParams.get('to')) && (
-          <Badge variant="secondary" className="flex items-center gap-2">
+          <Badge variant="secondary" className="flex items-center gap-2 max-w-full">
             Date: {searchParams.get('from') || '…'} → {searchParams.get('to') || '…'}
             <Button variant="ghost" size="sm" onClick={() => setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('from'); n.delete('to'); return n; }, { replace: true } as any)}>×</Button>
           </Badge>
@@ -640,7 +647,7 @@ export default function ExternalInvoicesPage() {
           </Badge>
         )}
         {(searchParams.get('from') || searchParams.get('to') || searchParams.get('status') || searchTerm) && (
-          <Button variant="outline" size="sm" onClick={() => setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('from'); n.delete('to'); n.delete('status'); n.delete('q'); return n; }, { replace: true } as any)}>
+          <Button variant="outline" size="sm" className="w-full sm:w-auto" onClick={() => setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('from'); n.delete('to'); n.delete('status'); n.delete('q'); return n; }, { replace: true } as any)}>
             Clear all
           </Button>
         )}

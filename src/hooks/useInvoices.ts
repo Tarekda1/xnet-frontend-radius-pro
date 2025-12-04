@@ -1,5 +1,29 @@
+import { useQuery } from '@tanstack/react-query';
+import { fetchCollectedMetrics, fetchCollectedInvoicesList, fetchCollectorBreakdown, type CollectedInvoicesList, type CollectedMetrics, type CollectorBreakdown } from '@/api/invoices';
+
+export function useCollectedMetrics(params?: { dateFrom?: string; dateTo?: string }) {
+  return useQuery<CollectedMetrics>({
+    queryKey: ['collectedMetrics', params?.dateFrom, params?.dateTo],
+    queryFn: () => fetchCollectedMetrics(params),
+  });
+}
+
+export function useCollectorBreakdown(params?: { dateFrom?: string; dateTo?: string }) {
+  return useQuery<CollectorBreakdown>({
+    queryKey: ['collectorBreakdown', params?.dateFrom, params?.dateTo],
+    queryFn: () => fetchCollectorBreakdown(params),
+  });
+}
+
+export function useCollectedInvoicesList(params: { page?: number; limit?: number; dateFrom?: string; dateTo?: string }) {
+  return useQuery<CollectedInvoicesList>({
+    queryKey: ['collectedInvoicesList', params.page, params.limit, params.dateFrom, params.dateTo],
+    queryFn: () => fetchCollectedInvoicesList(params),
+  });
+}
+
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/api/client';
 
 interface Invoice {

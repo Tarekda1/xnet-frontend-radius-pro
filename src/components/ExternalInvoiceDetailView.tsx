@@ -169,7 +169,7 @@ const ExternalInvoiceDetailView: React.FC<Props> = ({
   /* ── render ───────────────────────────────── */
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="lg:max-w-4xl w-full p-0 overflow-hidden">
+      <DialogContent className="lg:max-w-4xl w-full p-0 overflow-hidden relative flex flex-col max-h-[85vh]">
         {/* Sticky header */}
         <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-3 border-b bg-background/90 backdrop-blur">
           <DialogHeader>
@@ -200,8 +200,8 @@ const ExternalInvoiceDetailView: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Body with tabs */}
-        <div className="p-4">
+        {/* Body with tabs - scrolls within the dialog */}
+        <div className="p-4 flex-1 overflow-y-auto overflow-x-auto">
           <Tabs defaultValue="overview" className="w-full">
             <TabsList className="grid grid-cols-4 w-full mb-4">
               <TabsTrigger value="overview">Overview</TabsTrigger>

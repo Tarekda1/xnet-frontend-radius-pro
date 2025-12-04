@@ -1,7 +1,7 @@
 # Multi-stage Dockerfile for React + Vite + TypeScript
 
 # Build stage
-FROM node:20-alpine AS builder
+FROM ghcr.io/library/node:20-alpine AS builder
 
 # Add dependencies for npm performance
 RUN apk add --no-cache libc6-compat
@@ -24,7 +24,7 @@ COPY . .
 RUN npm run build
 
 # Production stage
-FROM nginx:alpine-slim
+FROM ghcr.io/library/nginx:alpine-slim
 
 # Copy custom nginx config
 COPY nginx.conf /etc/nginx/conf.d/default.conf

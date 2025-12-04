@@ -33,10 +33,14 @@ const PageHeader: React.FC<PageHeaderProps> = ({ title, subtitle, icon: Icon, ac
                         </div>
                     </div>
 
-                    <div className="flex flex-col lg:flex-row gap-3 items-start lg:items-center">
+                <div className="flex flex-col lg:flex-row gap-3 items-start lg:items-center w-full">
+                    <div className="w-full lg:w-auto">
                         {rightContent}
+                    </div>
+                    <div className="w-full lg:w-auto">
                         {actions}
                     </div>
+                </div>
                 </div>
             </div>
         </div>
