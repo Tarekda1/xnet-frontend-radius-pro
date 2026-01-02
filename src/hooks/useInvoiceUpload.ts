@@ -12,10 +12,14 @@ export const useInvoiceUpload = () => {
   const [error, setError] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
-  const uploadInvoiceMutation = useMutation<UploadResponse, Error, File>({
-    mutationFn: async (file: File) => {
+  const uploadInvoiceMutation = useMutation<UploadResponse, Error, { file: File; billingMonth?: string }>({
+    mutationFn: async ({ file, billingMonth }) => {
       const formData = new FormData();
       formData.append('file', file);
+      if (billingMonth) {
+        // Expect YYYY-MM format from UI; backend accepts YYYY-MM or full date
+        formData.append('billingMonth', billingMonth);
+      }
 
       const response = await apiClient.post<UploadResponse>('/invoices/upload', formData, {
         headers: {
@@ -26,6 +30,7 @@ export const useInvoiceUpload = () => {
     },
     onSuccess: () => {
       // Invalidate and refetch any relevant queries
+      queryClient.invalidateQueries({ queryKey: ['externalInvoices'] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
     },
     onError: (err) => {
@@ -34,9 +39,9 @@ export const useInvoiceUpload = () => {
     },
   });
 
-  const uploadInvoice = (file: File) => {
+  const uploadInvoice = (file: File, billingMonth?: string) => {
     setError(null);
-    return uploadInvoiceMutation.mutateAsync(file);
+    return uploadInvoiceMutation.mutateAsync({ file, billingMonth });
   };
 
   return { 

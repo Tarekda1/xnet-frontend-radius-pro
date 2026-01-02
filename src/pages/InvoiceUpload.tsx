@@ -13,6 +13,10 @@ const InvoiceUpload: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [billingMonth, setBillingMonth] = useState<string>(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
   const { uploadInvoice, isLoading, error } = useInvoiceUpload();
   const { toast } = useToast();
 
@@ -62,6 +66,14 @@ const InvoiceUpload: React.FC = () => {
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (file) {
+      if (!billingMonth) {
+        toast({
+          title: "Select billing month",
+          description: "Please choose the billing month before uploading.",
+          variant: "destructive",
+        });
+        return;
+      }
       try {
         // Simulate upload progress
         const progressInterval = setInterval(() => {
@@ -74,7 +86,7 @@ const InvoiceUpload: React.FC = () => {
           });
         }, 200);
 
-        const result = await uploadInvoice(file);
+        await uploadInvoice(file, billingMonth);
         clearInterval(progressInterval);
         setUploadProgress(100);
         
@@ -116,6 +128,20 @@ const InvoiceUpload: React.FC = () => {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="flex flex-col gap-2">
+                <label htmlFor="billing-month" className="text-sm font-medium">
+                  Billing month
+                </label>
+                <Input
+                  id="billing-month"
+                  type="month"
+                  value={billingMonth}
+                  onChange={(e) => setBillingMonth(e.target.value)}
+                />
+              </div>
+            </div>
+
             <div
               className={cn(
                 "border-2 border-dashed rounded-lg p-8 text-center transition-colors",

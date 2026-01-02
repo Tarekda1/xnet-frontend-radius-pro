@@ -613,6 +613,45 @@ export default function ExternalInvoicesPage() {
             }
           }}
         />
+        {/* Month selector for quick per-month filtering */}
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Month</span>
+          <Input
+            type="month"
+            className="w-[160px]"
+            value={(() => {
+              const from = searchParams.get('from');
+              const to = searchParams.get('to');
+              if (!from || !to) return '';
+              // If from is first day and to is last day of same month, reflect that month
+              try {
+                const y = parseInt(from.slice(0,4), 10);
+                const m = parseInt(from.slice(5,7), 10);
+                const first = `${y}-${String(m).padStart(2,'0')}-01`;
+                const last = new Date(y, m, 0).toISOString().slice(0,10);
+                if (from === first && to === last) return from.slice(0,7);
+              } catch {}
+              return '';
+            })()}
+            onChange={(e) => {
+              const val = e.target.value; // YYYY-MM
+              const next = new URLSearchParams(searchParams);
+              if (!val) {
+                next.delete('from'); next.delete('to');
+              } else {
+                const [yy, mm] = val.split('-').map(x => parseInt(x, 10));
+                const from = `${yy}-${String(mm).padStart(2,'0')}-01`;
+                const to = new Date(yy, mm, 0).toISOString().slice(0,10);
+                next.set('from', from);
+                next.set('to', to);
+              }
+              setSearchParams(next, { replace: true } as any);
+              setSearchInput("");
+              setSearchTerm("");
+              setCurrentPage(1);
+            }}
+          />
+        </div>
         <Badge 
           variant="outline" 
           className="cursor-pointer hover:bg-accent"
