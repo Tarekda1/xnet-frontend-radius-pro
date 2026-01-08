@@ -45,16 +45,17 @@ services:
       args:
         <<: *build-args
         NODE_ENV: production
-        VITE_API_URL: ${VITE_API_URL:-http://localhost:3000}
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:3000/api}
       cache_from:
         - type=registry,ref=node:20-alpine
         - type=registry,ref=nginx:alpine-slim
     restart: unless-stopped
     ports:
-      - "${PORT:-80}:80"
+      - "${PORT:-5173}:80"
     environment:
       - NODE_ENV=production
-      - VITE_API_URL=${VITE_API_URL:-http://localhost:3000}
+      # NOTE: Vite is already built at image build-time; runtime env won't change the built bundle.
+      - VITE_API_URL=${VITE_API_URL:-http://localhost:3000/api}
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:80"]
       interval: 30s

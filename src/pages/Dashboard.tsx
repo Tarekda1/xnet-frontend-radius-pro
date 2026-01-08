@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useExpenseMonthlyTotals } from '@/hooks/useExpenses';
 import { 
   Users, 
   UserCheck, 
@@ -20,7 +21,8 @@ import {
   MoreHorizontal,
   Bell,
   Settings,
-  LineChart
+  LineChart,
+  Receipt
 } from 'lucide-react';
 import {
   Tooltip,
@@ -40,10 +42,23 @@ const Dashboard: React.FC = () => {
   
   const { data: alerts, isLoading: alertsLoading } = useAlerts();
   const onlineMetrics = useOnlineMetrics();
+  const expenseMonthlyTotals = useExpenseMonthlyTotals();
 
   // Extract data from hooks
   const totalOnlineUsers = onlineMetrics.totalOnlineUsers;
   const totalActiveUsers = onlineMetrics.totalActiveUsers;
+
+  const now = new Date();
+  const thisMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const prevMonthKey = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
+  const mt = expenseMonthlyTotals.data?.data || [];
+  const thisMonth = mt.find((m) => m.month === thisMonthKey);
+  const prevMonth = mt.find((m) => m.month === prevMonthKey);
+  const spendThis = thisMonth?.totalAmount ?? 0;
+  const spendPrev = prevMonth?.totalAmount ?? 0;
+  const spendCurrency = thisMonth?.currency || mt[0]?.currency || 'USD';
+  const spendGrowth = spendPrev > 0 ? ((spendThis - spendPrev) / spendPrev) * 100 : (spendThis > 0 ? 100 : 0);
 
   useEffect(() => {
     // Simulate initial loading
@@ -212,6 +227,32 @@ const Dashboard: React.FC = () => {
                   <Badge variant="secondary" className="flex gap-1 items-center">
                     <ArrowUpRight className="h-3 w-3 text-green-600" />
                     +5%
+                  </Badge>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Expenses This Month */}
+            <Card className="hover:shadow-lg transition-shadow">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Expenses (This Month)</CardTitle>
+                <Receipt className="h-4 w-4 text-blue-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-2xl font-bold text-blue-600">
+                      {expenseMonthlyTotals.isLoading ? '...' : `${spendThis.toFixed(2)} ${spendCurrency}`}
+                    </div>
+                    <p className="text-xs text-muted-foreground">{thisMonthKey}</p>
+                  </div>
+                  <Badge variant="secondary" className="flex gap-1 items-center">
+                    {spendGrowth >= 0 ? (
+                      <ArrowUpRight className="h-3 w-3 text-green-600" />
+                    ) : (
+                      <ArrowDownRight className="h-3 w-3 text-red-600" />
+                    )}
+                    {Math.abs(spendGrowth).toFixed(1)}%
                   </Badge>
                 </div>
               </CardContent>

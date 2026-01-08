@@ -6,10 +6,7 @@ import {
   Download,
   Upload,
   Activity,
-  Wifi,
   WifiOff,
-  TrendingUp,
-  TrendingDown,
   Server
 } from 'lucide-react';
 import {
@@ -18,7 +15,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useBandwidthMetrics, formatBitsPerSecond, formatBytes, formatUptime, bitsToMbps } from '@/hooks/useBandwidth';
+import { useBandwidthMetrics, formatBytes, formatUptime } from '@/hooks/useBandwidth';
 
 export const bytesPerSecToMbps = (bps: number, decimals = 2) =>
   ((bps * 8) / 1_000_000).toFixed(decimals);   // returns string
@@ -79,8 +76,13 @@ const BandwidthWidget: React.FC = () => {
 
   const { bandwidth, system } = metrics;
 
-  const ether3DownloadMbps = bitsToMbps(bandwidth.download.rate) || '0';
-  const ether3UploadMbps = bitsToMbps(bandwidth.upload.rate) || '0';
+  // Prefer per-interface rxRate/txRate (matches backend interfaces[] payload), fallback to bandwidth.*.rate
+  const iface = Array.isArray(metrics.interfaces) ? metrics.interfaces[0] : undefined;
+  const downloadRate = (iface?.rxRate ?? bandwidth.download.rate) as number;
+  const uploadRate = (iface?.txRate ?? bandwidth.upload.rate) as number;
+
+  const downloadMbps = Number.isFinite(downloadRate) ? downloadRate.toFixed(1) : '0';
+  const uploadMbps = Number.isFinite(uploadRate) ? uploadRate.toFixed(1) : '0';
 
   return (
     <Card className="hover:shadow-lg transition-shadow">
@@ -110,7 +112,7 @@ const BandwidthWidget: React.FC = () => {
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">
-                  {ether3DownloadMbps} Mbps
+                  {downloadMbps} Mbps
                 </span>
                 <Badge variant="secondary" className="text-xs">
                   {bandwidth.download.utilization.toFixed(1)}%
@@ -127,7 +129,7 @@ const BandwidthWidget: React.FC = () => {
                 </div>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Download: {formatBitsPerSecond(bandwidth.download.rate)} ({formatBytes(bandwidth.download.bytes)} total)</p>
+                <p>Download: {downloadMbps} Mbps ({formatBytes(bandwidth.download.bytes)} total)</p>
               </TooltipContent>
             </Tooltip>
           </div>
@@ -141,7 +143,7 @@ const BandwidthWidget: React.FC = () => {
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">
-                  {ether3UploadMbps} Mbps
+                  {uploadMbps} Mbps
                 </span>
                 <Badge variant="secondary" className="text-xs">
                   {bandwidth.upload.utilization.toFixed(1)}%
@@ -158,7 +160,7 @@ const BandwidthWidget: React.FC = () => {
                 </div>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Upload: {formatBitsPerSecond(bandwidth.upload.rate)} ({formatBytes(bandwidth.upload.bytes)} total)</p>
+                <p>Upload: {uploadMbps} Mbps ({formatBytes(bandwidth.upload.bytes)} total)</p>
               </TooltipContent>
             </Tooltip>
           </div>

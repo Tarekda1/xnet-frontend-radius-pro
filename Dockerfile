@@ -1,7 +1,7 @@
 # Multi-stage Dockerfile for React + Vite + TypeScript
 
 # Build stage
-FROM ghcr.io/library/node:20-alpine AS builder
+FROM node:20-alpine AS builder
 
 # Add dependencies for npm performance
 RUN apk add --no-cache libc6-compat
@@ -9,22 +9,20 @@ RUN apk add --no-cache libc6-compat
 # Set working directory
 WORKDIR /app
 
-# Configure npm for better performance
-RUN npm config set registry https://registry.npmmirror.com/ && \
-    npm config set fetch-retries 3 && \
-    npm config set fetch-retry-mintimeout 5000 && \
-    npm config set fetch-retry-maxtimeout 60000
+# Build-time env (Vite only reads VITE_* at build time)
+ARG VITE_API_URL
+ENV VITE_API_URL=${VITE_API_URL}
 
-# Install dependencies
-COPY package*.json ./
-RUN npm install --prefer-offline --no-audit --no-fund --production
+# Install dependencies separately to improve build caching
+COPY package.json package-lock.json* ./
+RUN npm ci || npm install
 
 # Copy source code and build
 COPY . .
 RUN npm run build
 
 # Production stage
-FROM ghcr.io/library/nginx:alpine-slim
+FROM nginx:alpine-slim
 
 # Copy custom nginx config
 COPY nginx.conf /etc/nginx/conf.d/default.conf

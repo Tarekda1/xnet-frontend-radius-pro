@@ -67,6 +67,21 @@ export type ExternalInvoice = {
     modifiedBy: string | null;
 };
 
+export type Expense = {
+  id: number;
+  title: string;
+  category: string | null;
+  amount: number;
+  currency: string;
+  expenseDate: string; // YYYY-MM-DD
+  status: "paid" | "unpaid";
+  notes: string | null;
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export interface Nas {
   id: number;
   nasname: string;
