@@ -93,6 +93,7 @@ export default function ExternalInvoicesPage() {
   const [pageSize, setPageSize] = useState(defaultPageSize);
   const [currentPage, setCurrentPage] = useState(1);
   const [isConfirmBulkPaidOpen, setIsConfirmBulkPaidOpen] = useState(false);
+  const [isConfirmBulkDeleteOpen, setIsConfirmBulkDeleteOpen] = useState(false);
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const [viewsVersion, setViewsVersion] = useState(0);
@@ -186,7 +187,7 @@ export default function ExternalInvoicesPage() {
   }, [searchParams]);
 
   // Get quick stats for header
-  const { data: statsData, refetch, setInvoiceAsPaidMutation } = useExternalInvoices({ 
+  const { data: statsData, refetch, setInvoiceAsPaidMutation, bulkDeleteInvoicesMutation } = useExternalInvoices({ 
     initialPage: 1, 
     pageSize: 1,
     search: searchTerm,
@@ -312,12 +313,13 @@ export default function ExternalInvoicesPage() {
     setCurrentPage(1); // Reset to first page on filter change
   }, []);
 
+  const selectedIds = useMemo(() => {
+    return Object.keys(rowSelection)
+      .map((k) => parseInt(k, 10))
+      .filter((n) => Number.isFinite(n) && n > 0);
+  }, [rowSelection]);
+
   const handleBulkPaid = useCallback(() => {
-    const selectedIds = Object.keys(rowSelection).map(key => {
-      const invoice = allData?.data?.data?.[parseInt(key)];
-      return invoice?.id;
-    }).filter(Boolean);
-    
     selectedIds.forEach((id) => {
       if (id) {
         setInvoiceAsPaidMutation.mutate(id, { 
@@ -329,22 +331,44 @@ export default function ExternalInvoicesPage() {
       }
     });
     toast({ title: "Marking invoices as paid", description: `${selectedIds.length} invoice(s) queued.` });
-  }, [rowSelection, allData, setInvoiceAsPaidMutation, refetch, toast]);
+  }, [selectedIds, setInvoiceAsPaidMutation, refetch, toast]);
 
   const handleExportSelected = useCallback(() => {
-    const selectedRows = Object.keys(rowSelection).map(key => allData?.data?.data?.[parseInt(key)]).filter(Boolean) as any[];
+    const selectedRows = (allData?.data?.data ?? []).filter((inv: any) => selectedIds.includes(inv.id)) as any[];
     if (!selectedRows.length) return;
     const ws = utils.json_to_sheet(selectedRows);
     const wb = utils.book_new();
     utils.book_append_sheet(wb, ws, "Selected Invoices");
     writeFile(wb, "external_invoices_selected.xlsx");
     toast({ title: "Exported", description: `${selectedRows.length} selected invoice(s) exported.` });
-  }, [rowSelection, allData, toast]);
+  }, [selectedIds, allData, toast]);
+
+  const handleBulkDelete = useCallback(async () => {
+    if (selectedIds.length === 0) return;
+    try {
+      const result = await bulkDeleteInvoicesMutation.mutateAsync(selectedIds);
+      // Ensure table + stats refresh
+      refetch();
+      setRowSelection({});
+
+      if (result.failed.length > 0) {
+        const first = result.failed[0];
+        toast({
+          title: "Some deletions failed",
+          description: `Deleted ${result.deletedIds.length}. Failed ${result.failed.length}. Example: #${first.id} (${first.reason})`,
+        });
+      } else {
+        toast({ title: "Deleted", description: `Deleted ${result.deletedIds.length} invoice(s).` });
+      }
+    } catch (e: any) {
+      toast({ title: "Delete failed", description: e?.message || "Failed to delete invoices." });
+    }
+  }, [selectedIds, bulkDeleteInvoicesMutation, refetch, toast]);
 
   // keep full export behavior but wire into bulk bar; not used directly here
 
   const metrics = statsData?.data?.metrics;
-  const selectedCount = Object.keys(rowSelection).length;
+  const selectedCount = selectedIds.length;
 
   return (
     <div className="w-full space-y-6 py-6 sm:py-8 px-2 sm:px-0 animate-in fade-in-50">
@@ -703,6 +727,13 @@ export default function ExternalInvoicesPage() {
               <Button variant="default" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => setIsConfirmBulkPaidOpen(true)}>
                 <CheckCircle className="h-4 w-4 mr-2" /> Mark Paid
               </Button>
+              <Button
+                variant="destructive"
+                onClick={() => setIsConfirmBulkDeleteOpen(true)}
+                disabled={bulkDeleteInvoicesMutation.isPending}
+              >
+                Delete
+              </Button>
               <Button variant="outline" onClick={handleExportSelected}>
                 <FileText className="h-4 w-4 mr-2" /> Export Selected
               </Button>
@@ -747,6 +778,36 @@ export default function ExternalInvoicesPage() {
               className="bg-green-600 hover:bg-green-700 text-white"
             >
               Confirm
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirm bulk delete dialog */}
+      <Dialog open={isConfirmBulkDeleteOpen} onOpenChange={setIsConfirmBulkDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete selected invoices?</DialogTitle>
+          </DialogHeader>
+          <div className="text-sm text-muted-foreground space-y-2">
+            <div>
+              This will permanently delete <b>{selectedCount}</b> invoice{selectedCount > 1 ? 's' : ''}. This action cannot be undone.
+            </div>
+            <div className="text-xs">
+              Example IDs: {selectedIds.slice(0, 6).map((id) => `#${id}`).join(", ")}{selectedIds.length > 6 ? "…" : ""}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setIsConfirmBulkDeleteOpen(false)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              onClick={async () => {
+                setIsConfirmBulkDeleteOpen(false);
+                await handleBulkDelete();
+              }}
+              disabled={bulkDeleteInvoicesMutation.isPending}
+            >
+              Delete
             </Button>
           </DialogFooter>
         </DialogContent>

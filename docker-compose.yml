@@ -45,7 +45,7 @@ services:
       args:
         <<: *build-args
         NODE_ENV: production
-        VITE_API_URL: ${VITE_API_URL:-http://localhost:3000/api}
+        VITE_API_URL: ${VITE_API_URL:-https://radius.xnetcloud.tech/api}
       cache_from:
         - type=registry,ref=node:20-alpine
         - type=registry,ref=nginx:alpine-slim
@@ -55,7 +55,7 @@ services:
     environment:
       - NODE_ENV=production
       # NOTE: Vite is already built at image build-time; runtime env won't change the built bundle.
-      - VITE_API_URL=${VITE_API_URL:-http://localhost:3000/api}
+      - VITE_API_URL=${VITE_API_URL:-https://radius.xnetcloud.tech/api}
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:80"]
       interval: 30s

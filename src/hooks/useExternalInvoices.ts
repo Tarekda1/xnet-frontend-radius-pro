@@ -81,6 +81,46 @@ const deleteInvoice = async (invoiceId: number): Promise<ApiResponse<ExternalInv
     return response.data;
 };
 
+type BulkDeleteResult = {
+    deletedIds: number[];
+    failed: Array<{ id: number; reason: string }>;
+};
+
+const deleteInvoicesBulk = async (invoiceIds: number[]): Promise<BulkDeleteResult> => {
+    const uniqueIds = Array.from(new Set(invoiceIds)).filter((x) => Number.isFinite(x) && x > 0);
+    if (uniqueIds.length === 0) return { deletedIds: [], failed: [] };
+
+    // Prefer backend bulk endpoint (soft-delete); fallback to per-id deletes if unavailable
+    try {
+        const response = await apiClient.post(`/invoices/external/bulk-delete`, { invoiceIds: uniqueIds });
+        const payload = response?.data?.data ?? response?.data; // backend uses { success, message, data }
+        const deletedIds = Array.isArray(payload?.deletedIds) ? payload.deletedIds : [];
+        const failed = Array.isArray(payload?.failed) ? payload.failed : [];
+        return { deletedIds, failed };
+    } catch {
+        const results = await Promise.allSettled(
+            uniqueIds.map(async (id) => {
+                await deleteInvoice(id);
+                return id;
+            })
+        );
+
+        const deletedIds: number[] = [];
+        const failed: Array<{ id: number; reason: string }> = [];
+
+        results.forEach((r, idx) => {
+            const id = uniqueIds[idx];
+            if (r.status === 'fulfilled') {
+                deletedIds.push(id);
+            } else {
+                failed.push({ id, reason: (r as any).reason?.message || String((r as any).reason || 'Unknown error') });
+            }
+        });
+
+        return { deletedIds, failed };
+    }
+};
+
 const sendReminder = async (invoiceId: number): Promise<ApiResponse<{ ok: boolean }>> => {
     const response = await apiClient.post(`/invoices/external/${invoiceId}/remind`);
     return response.data;
@@ -122,6 +162,22 @@ export const useExternalInvoices = ({ initialPage, pageSize, search, from, to, s
         }
     });
 
+    const bulkDeleteInvoicesMutation = useMutation<BulkDeleteResult, Error, number[]>({
+        mutationFn: (invoiceIds: number[]) => deleteInvoicesBulk(invoiceIds),
+        onSuccess: (result) => {
+            queryClient.invalidateQueries({ queryKey: ['externalInvoices'] });
+            if (result.deletedIds.length > 0) {
+                toast.success(`Deleted ${result.deletedIds.length} invoice(s).`);
+            }
+            if (result.failed.length > 0) {
+                toast.error(`Failed to delete ${result.failed.length} invoice(s).`);
+            }
+        },
+        onError: (error: Error) => {
+            toast.error(`Failed to delete invoices: ${error.message}`);
+        }
+    });
+
     const setInvoiceAsPaidMutation = useMutation({
         mutationFn: setInvoiceAsPaid,
         onSuccess: () => {
@@ -153,6 +209,7 @@ export const useExternalInvoices = ({ initialPage, pageSize, search, from, to, s
         setInvoiceAsPaidMutation,
         updateInvoiceMutation,
         deleteInvoiceMutation,
+        bulkDeleteInvoicesMutation,
         sendReminderMutation
     };
 };

@@ -12,6 +12,13 @@ export function useExpenses(params: {
 }) {
   const queryClient = useQueryClient();
 
+  const invalidateExpenseQueries = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["expenses"] }),
+      queryClient.invalidateQueries({ queryKey: ["expenseMonthlyTotals"] }),
+    ]);
+  };
+
   const query = useQuery({
     queryKey: [
       "expenses",
@@ -29,7 +36,7 @@ export function useExpenses(params: {
   const createMutation = useMutation({
     mutationFn: createExpense,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      return invalidateExpenseQueries();
     },
   });
 
@@ -37,14 +44,14 @@ export function useExpenses(params: {
     mutationFn: ({ id, input }: { id: number; input: Parameters<typeof updateExpense>[1] }) =>
       updateExpense(id, input),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      return invalidateExpenseQueries();
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: deleteExpense,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      return invalidateExpenseQueries();
     },
   });
 

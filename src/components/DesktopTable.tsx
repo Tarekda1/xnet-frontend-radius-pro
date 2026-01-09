@@ -317,6 +317,8 @@ const DesktopTable: React.FC<Props> = ({
     data: invoices,
     columns,
     state: { sorting, rowSelection },
+    // Use stable IDs so selection keys are invoice IDs (not row indexes)
+    getRowId: (row) => String(row.id),
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     onSortingChange,
