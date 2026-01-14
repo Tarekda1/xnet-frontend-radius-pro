@@ -127,9 +127,18 @@ const UserRow: React.FC<{
                             </TooltipTrigger>
                             <TooltipContent>
                                 <p>{user.isOnline ? 'User is currently connected' : 'User is not connected'}</p>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                    Last active: {user.lastTimeActive ? new Date(user.lastTimeActive).toLocaleString() : "—"}
+                                </p>
                             </TooltipContent>
                         </Tooltip>
                     </TooltipProvider>
+                </TableCell>
+
+                <TableCell>
+                    <span className="text-sm text-muted-foreground">
+                        {user.lastTimeActive ? new Date(user.lastTimeActive).toLocaleString() : "—"}
+                    </span>
                 </TableCell>
 
                 <TableCell>
@@ -214,7 +223,7 @@ const UserRow: React.FC<{
 
             {isExpanded && (
                 <TableRow className="bg-slate-50/80 border-y border-y-slate-200">
-                    <TableCell colSpan={7}>
+                    <TableCell colSpan={8}>
                         <div className="p-4 space-y-4">
                             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                                 <div className="space-y-2 bg-white rounded-lg p-3 shadow-sm">
@@ -264,6 +273,9 @@ const UserRow: React.FC<{
                                         </p>
                                         <p className="text-sm text-muted-foreground">
                                             Fallback: {user.isFallback ? 'Yes' : 'No'}
+                                        </p>
+                                        <p className="text-sm text-muted-foreground">
+                                            Last Active: {user.lastTimeActive ? new Date(user.lastTimeActive).toLocaleString() : "—"}
                                         </p>
                                     </div>
                                 </div>
@@ -326,6 +338,10 @@ const UsersTable: React.FC<UsersTableProps> = ({
         {
             accessorKey: "isOnline",
             header: "Status",
+        },
+        {
+            accessorKey: "lastTimeActive",
+            header: "Last Active",
         },
         {
             accessorKey: "profile.profileName",

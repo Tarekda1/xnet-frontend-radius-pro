@@ -25,6 +25,7 @@ export interface User {
     email: string | null;
   };
   isOnline: boolean;
+  lastTimeActive?: string | null;
 }
 
 export type ExternalInvoice = {
@@ -115,6 +116,9 @@ export interface AuthUser {
   email: string;
   password?: string;
   role: string;
+  permissions?: string[];
+  resellerId?: number | null;
+  mustChangePassword?: boolean;
   isActive: number;
   createdAt: string;
   updatedAt: string;

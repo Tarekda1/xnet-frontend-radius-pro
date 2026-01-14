@@ -32,7 +32,6 @@ import AddUserModal from '../components/AddUserModal';
 import useUsers from '../hooks/useUsers';
 import { User } from '../types/api';
 // Loader import removed as unused
-import { useToast } from "@/components/ui/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 // Tabs imports removed as unused
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -46,6 +45,8 @@ import {
     Tooltip as RechartsTooltip, 
     ResponsiveContainer 
 } from 'recharts';
+import { notify } from "@/lib/notify";
+import { MESSAGES } from "@/constants/messages";
 
 const MetricItem = ({ 
     label, 
@@ -327,8 +328,6 @@ const UsersPage: React.FC = () => {
         hasMacAddress: false,
         hasContactInfo: false
     });
-    const { toast } = useToast();
-
     const {
         data,
         error,
@@ -434,13 +433,10 @@ const UsersPage: React.FC = () => {
         refetch().finally(() => {
             setTimeout(() => {
                 setIsRefreshing(false);
-                toast({
-                    title: "Users refreshed",
-                    description: "The users list has been updated.",
-                });
+                notify.success(MESSAGES.users.refreshedTitle, MESSAGES.users.refreshedDescription);
             }, 1000);
         });
-    }, [refetch, toast]);
+    }, [refetch]);
 
     const handleAddUser = useCallback(() => {
         setEditingUser(null);
@@ -480,10 +476,9 @@ const UsersPage: React.FC = () => {
         }
     }, []);
 
-    const confirmAndExecute = useCallback((message: string, action: () => void, successMessage: string) => {
+    const confirmAndExecute = useCallback((message: string, action: () => void) => {
         if (window.confirm(message)) {
             action();
-            alert(successMessage);
             refetch();
         }
     }, [refetch]);
@@ -496,13 +491,11 @@ const UsersPage: React.FC = () => {
             },
             delete: () => confirmAndExecute(
                 `Are you sure you want to delete user ${user.username}?`,
-                () => deleteUserMutation.mutate(user.username),
-                'User deleted successfully'
+                () => deleteUserMutation.mutate(user.username)
             ),
             'reset-mac': () => confirmAndExecute(
                 `Are you sure you want to reset MAC address for user ${user.username}?`,
-                () => resetMacAddressMutation.mutate(user.username),
-                'MAC address reset successfully'
+                () => resetMacAddressMutation.mutate(user.username)
             ),
             'reset-quota': () => {
                 // Implement reset quota logic here
@@ -545,19 +538,11 @@ const UsersPage: React.FC = () => {
             const filename = `users${filterSuffix}_${date}.xlsx`;
             
             writeFile(wb, filename);
-            
-            toast({
-                title: "Export successful",
-                description: `${exportableUsers.length} users exported to ${filename}`,
-            });
+            notify.success(MESSAGES.users.exportSuccessTitle, `${exportableUsers.length} users exported to ${filename}`);
         } else {
-            toast({
-                title: "No data to export",
-                description: "There are no users to export.",
-                variant: "destructive",
-            });
+            notify.error(MESSAGES.users.exportEmptyTitle, MESSAGES.users.exportEmptyDescription);
         }
-    }, [filteredUsers, statusFilter, toast]);
+    }, [filteredUsers, statusFilter]);
 
     // New handlers for enhanced features
     const handleSelectAll = useCallback((selected: boolean) => {
@@ -575,19 +560,13 @@ const UsersPage: React.FC = () => {
             case 'suspend':
                 if (confirm(`Suspend ${selectedUserList.length} users?`)) {
                     // Implement bulk suspend
-                    toast({
-                        title: "Bulk action",
-                        description: `${selectedUserList.length} users suspended`,
-                    });
+                    notify.success("Bulk action", `${selectedUserList.length} users suspended`);
                 }
                 break;
             case 'activate':
                 if (confirm(`Activate ${selectedUserList.length} users?`)) {
                     // Implement bulk activate
-                    toast({
-                        title: "Bulk action",
-                        description: `${selectedUserList.length} users activated`,
-                    });
+                    notify.success("Bulk action", `${selectedUserList.length} users activated`);
                 }
                 break;
             case 'export':
@@ -596,14 +575,11 @@ const UsersPage: React.FC = () => {
             case 'delete':
                 if (confirm(`Delete ${selectedUserList.length} users? This action cannot be undone.`)) {
                     // Implement bulk delete
-                    toast({
-                        title: "Bulk action",
-                        description: `${selectedUserList.length} users deleted`,
-                    });
+                    notify.success("Bulk action", `${selectedUserList.length} users deleted`);
                 }
                 break;
         }
-    }, [selectedUsers, filteredUsers, handleExportUsers, toast]);
+    }, [selectedUsers, filteredUsers, handleExportUsers]);
 
     if (isLoading) {
         return (

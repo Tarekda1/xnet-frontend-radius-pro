@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import PageHeader from "@/components/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -35,8 +34,6 @@ import {
   RefreshCw,
   Wifi,
   Globe,
-  BarChart3,
-  PieChart as PieChartIcon,
   LineChart as LineChartIcon,
   Loader2
 } from 'lucide-react';
@@ -48,6 +45,8 @@ import {
   usePeakHoursData,
   getGrowthColor
 } from '@/hooks/useAnalytics';
+import { useOnlineMetrics } from '@/hooks/useOnlineMetrics';
+import { useBandwidthMetrics } from '@/hooks/useBandwidth';
 
 const Analytics: React.FC = () => {
   const [timeRange, setTimeRange] = useState('24h');
@@ -58,10 +57,56 @@ const Analytics: React.FC = () => {
   const { data: authData, isLoading: authLoading } = useAuthDistribution();
   const { data: geographicData, isLoading: geoLoading } = useGeographicData();
   const { data: peakHoursData, isLoading: peakLoading } = usePeakHoursData();
+  const onlineMetrics = useOnlineMetrics();
+  const bandwidthQuery = useBandwidthMetrics();
+
+  // Live series for this page (active users + rx/tx rate)
+  const [activeUsersSeries, setActiveUsersSeries] = useState<Array<{ time: string; activeUsers: number }>>([]);
+  const [bandwidthSeries, setBandwidthSeries] = useState<Array<{ time: string; rx: number; tx: number }>>([]);
+
+  const currentActiveUsers = onlineMetrics.totalActiveUsers ?? 0;
+
+  const currentBandwidth = useMemo(() => {
+    const m = bandwidthQuery.data;
+    if (!m) return { rx: 0, tx: 0 };
+    const iface = Array.isArray(m.interfaces) ? m.interfaces[0] : undefined;
+    const rx = Number((iface?.rxRate ?? m.bandwidth.download.rate) || 0);
+    const tx = Number((iface?.txRate ?? m.bandwidth.upload.rate) || 0);
+    return { rx, tx };
+  }, [bandwidthQuery.data]);
+
+  const activeUsersGrowth = useMemo(() => {
+    const prev = activeUsersSeries[activeUsersSeries.length - 2]?.activeUsers ?? currentActiveUsers;
+    return prev > 0 ? ((currentActiveUsers - prev) / prev) * 100 : 0;
+  }, [activeUsersSeries, currentActiveUsers]);
+
+  const rxGrowth = useMemo(() => {
+    const prev = bandwidthSeries[bandwidthSeries.length - 2]?.rx ?? currentBandwidth.rx;
+    return prev > 0 ? ((currentBandwidth.rx - prev) / prev) * 100 : 0;
+  }, [bandwidthSeries, currentBandwidth.rx]);
+
+  const txGrowth = useMemo(() => {
+    const prev = bandwidthSeries[bandwidthSeries.length - 2]?.tx ?? currentBandwidth.tx;
+    return prev > 0 ? ((currentBandwidth.tx - prev) / prev) * 100 : 0;
+  }, [bandwidthSeries, currentBandwidth.tx]);
+
+  useEffect(() => {
+    const now = new Date();
+    const label = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    setActiveUsersSeries((prev) => [...prev, { time: label, activeUsers: currentActiveUsers }].slice(-60));
+  }, [currentActiveUsers]);
+
+  useEffect(() => {
+    if (!bandwidthQuery.data) return;
+    const now = new Date();
+    const label = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    setBandwidthSeries((prev) => [...prev, { time: label, rx: currentBandwidth.rx, tx: currentBandwidth.tx }].slice(-60));
+  }, [bandwidthQuery.data, currentBandwidth.rx, currentBandwidth.tx]);
 
   const handleRefresh = () => {
     refetchChart();
     refetchMetrics();
+    bandwidthQuery.refetch();
   };
 
   const CustomTooltip = ({ active, payload, label }: any) => {
@@ -127,49 +172,55 @@ const Analytics: React.FC = () => {
             <Users className="h-4 w-4 text-blue-600" />
           </CardHeader>
           <CardContent>
-            {metricsLoading ? (
-              <div className="flex items-center space-x-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span className="text-sm text-muted-foreground">Loading...</span>
+            <>
+              <div className="text-2xl font-bold text-blue-600">
+                {currentActiveUsers.toLocaleString()}
               </div>
-            ) : (
-              <>
-                <div className="text-2xl font-bold text-blue-600">
-                  {metrics?.activeUsers?.toLocaleString() || '0'}
-                </div>
-                <p className={`text-xs text-muted-foreground flex items-center gap-1`}>
-                  <TrendingUp className={`h-3 w-3 ${getGrowthColor(metrics?.userGrowth || 0)}`} />
-                  <span className={getGrowthColor(metrics?.userGrowth || 0)}>
-                    {metrics?.userGrowth && metrics.userGrowth > 0 ? '+' : ''}{metrics?.userGrowth || 0}% from last hour
-                  </span>
-                </p>
-              </>
-            )}
+              <p className={`text-xs text-muted-foreground flex items-center gap-1`}>
+                {activeUsersGrowth >= 0 ? (
+                  <TrendingUp className={`h-3 w-3 ${getGrowthColor(activeUsersGrowth)}`} />
+                ) : (
+                  <TrendingDown className={`h-3 w-3 ${getGrowthColor(activeUsersGrowth)}`} />
+                )}
+                <span className={getGrowthColor(activeUsersGrowth)}>
+                  {activeUsersGrowth > 0 ? '+' : ''}{activeUsersGrowth.toFixed(1)}% vs previous sample
+                </span>
+              </p>
+            </>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Bandwidth Usage</CardTitle>
+            <CardTitle className="text-sm font-medium">Bandwidth (Rx / Tx)</CardTitle>
             <Wifi className="h-4 w-4 text-green-600" />
           </CardHeader>
           <CardContent>
-            {metricsLoading ? (
+            {bandwidthQuery.isLoading ? (
               <div className="flex items-center space-x-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 <span className="text-sm text-muted-foreground">Loading...</span>
               </div>
             ) : (
               <>
-                <div className="text-2xl font-bold text-green-600">
-                  {metrics?.bandwidthUsage || '0 GB/s'}
+                <div className="space-y-1">
+                  <div className="text-lg font-bold text-blue-600">
+                    Rx: {currentBandwidth.rx.toFixed(1)} Mbps
+                  </div>
+                  <div className="text-lg font-bold text-green-600">
+                    Tx: {currentBandwidth.tx.toFixed(1)} Mbps
+                  </div>
                 </div>
-                <p className={`text-xs text-muted-foreground flex items-center gap-1`}>
-                  <TrendingUp className={`h-3 w-3 ${getGrowthColor(metrics?.bandwidthGrowth || 0)}`} />
-                  <span className={getGrowthColor(metrics?.bandwidthGrowth || 0)}>
-                    {metrics?.bandwidthGrowth && metrics.bandwidthGrowth > 0 ? '+' : ''}{metrics?.bandwidthGrowth || 0}% from last hour
-                  </span>
-                </p>
+                <div className="mt-1 flex flex-col gap-1 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-1">
+                    {rxGrowth >= 0 ? <TrendingUp className={`h-3 w-3 ${getGrowthColor(rxGrowth)}`} /> : <TrendingDown className={`h-3 w-3 ${getGrowthColor(rxGrowth)}`} />}
+                    <span className={getGrowthColor(rxGrowth)}>{rxGrowth > 0 ? '+' : ''}{rxGrowth.toFixed(1)}% Rx</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {txGrowth >= 0 ? <TrendingUp className={`h-3 w-3 ${getGrowthColor(txGrowth)}`} /> : <TrendingDown className={`h-3 w-3 ${getGrowthColor(txGrowth)}`} />}
+                    <span className={getGrowthColor(txGrowth)}>{txGrowth > 0 ? '+' : ''}{txGrowth.toFixed(1)}% Tx</span>
+                  </div>
+                </div>
               </>
             )}
           </CardContent>
@@ -259,11 +310,11 @@ const Analytics: React.FC = () => {
                 <CardDescription>Real-time user count and activity patterns</CardDescription>
               </CardHeader>
               <CardContent>
-                {chartLoading ? (
+                {activeUsersSeries.length < 2 ? (
                   <LoadingSpinner />
-                ) : chartData && Array.isArray(chartData) && chartData.length > 0 ? (
+                ) : (
                   <ResponsiveContainer width="100%" height={300}>
-                    <LineChart data={chartData}>
+                    <LineChart data={activeUsersSeries}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="time" />
                       <YAxis />
@@ -271,32 +322,29 @@ const Analytics: React.FC = () => {
                       <Legend />
                       <Line 
                         type="monotone" 
-                        dataKey="users" 
+                        dataKey="activeUsers" 
+                        name="Active Users"
                         stroke="#3b82f6" 
                         strokeWidth={2}
                         dot={{ fill: '#3b82f6', strokeWidth: 2, r: 4 }}
                       />
                     </LineChart>
                   </ResponsiveContainer>
-                ) : (
-                  <div className="flex items-center justify-center h-64">
-                    <p className="text-muted-foreground">No data available</p>
-                  </div>
                 )}
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle>Bandwidth Usage</CardTitle>
-                <CardDescription>Network bandwidth consumption over time</CardDescription>
+                <CardTitle>Bandwidth (Rx / Tx)</CardTitle>
+                <CardDescription>Network bandwidth rates over time</CardDescription>
               </CardHeader>
               <CardContent>
-                {chartLoading ? (
+                {bandwidthSeries.length < 2 ? (
                   <LoadingSpinner />
-                ) : chartData && Array.isArray(chartData) && chartData.length > 0 ? (
+                ) : (
                   <ResponsiveContainer width="100%" height={300}>
-                    <AreaChart data={chartData}>
+                    <AreaChart data={bandwidthSeries}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="time" />
                       <YAxis />
@@ -304,17 +352,22 @@ const Analytics: React.FC = () => {
                       <Legend />
                       <Area 
                         type="monotone" 
-                        dataKey="bandwidth" 
-                        stroke="#10b981" 
-                        fill="#10b981" 
+                        dataKey="rx" 
+                        name="Rx (Mbps)"
+                        stroke="#2563eb" 
+                        fill="#2563eb" 
                         fillOpacity={0.3}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="tx"
+                        name="Tx (Mbps)"
+                        stroke="#16a34a"
+                        fill="#16a34a"
+                        fillOpacity={0.2}
                       />
                     </AreaChart>
                   </ResponsiveContainer>
-                ) : (
-                  <div className="flex items-center justify-center h-64">
-                    <p className="text-muted-foreground">No data available</p>
-                  </div>
                 )}
               </CardContent>
             </Card>

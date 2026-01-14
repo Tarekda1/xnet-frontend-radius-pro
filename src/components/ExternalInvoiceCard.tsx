@@ -14,7 +14,7 @@ import { ExternalInvoice } from "@/types/api";
 
 type Props = {
   invoice: ExternalInvoice;
-  onSetPaid: () => void;
+  onSetPaid?: () => void;
 };
 
 const ExternalInvoiceCard: React.FC<Props> = ({ invoice, onSetPaid }) => {
@@ -61,18 +61,20 @@ const ExternalInvoiceCard: React.FC<Props> = ({ invoice, onSetPaid }) => {
       </CardContent>
 
       <CardFooter className="flex justify-end">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onSetPaid}
-          disabled={isPaid}
-          className={
-            isPaid ? "" : "text-green-600 hover:text-green-700 hover:bg-green-50"
-          }
-        >
-          <Check className="h-4 w-4 mr-1" />
-          Set as Paid
-        </Button>
+        {onSetPaid ? (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onSetPaid}
+            disabled={isPaid}
+            className={
+              isPaid ? "" : "text-green-600 hover:text-green-700 hover:bg-green-50"
+            }
+          >
+            <Check className="h-4 w-4 mr-1" />
+            Set as Paid
+          </Button>
+        ) : null}
       </CardFooter>
     </Card>
   );

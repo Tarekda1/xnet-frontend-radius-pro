@@ -36,8 +36,11 @@ import {
   SelectItem,
   SelectValue
 } from "@/components/ui/select";
-import { useToast } from "@/components/ui/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/permissions";
+import { notify } from "@/lib/notify";
+import { MESSAGES } from "@/constants/messages";
 
 const MetricItem = ({ 
   label, 
@@ -85,6 +88,10 @@ const MetricItem = ({
 );
 
 export default function ExternalInvoicesPage() {
+  const { user } = useAuth();
+  const canViewTotals = can(user, 'billing.externalInvoices.viewTotals');
+  const canPayExternalInvoices = can(user, 'billing.externalInvoices.pay');
+
   const [searchTerm, setSearchTerm] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
@@ -94,7 +101,6 @@ export default function ExternalInvoicesPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [isConfirmBulkPaidOpen, setIsConfirmBulkPaidOpen] = useState(false);
   const [isConfirmBulkDeleteOpen, setIsConfirmBulkDeleteOpen] = useState(false);
-  const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const [viewsVersion, setViewsVersion] = useState(0);
   const savedViews = useMemo(() => Object.keys(JSON.parse(localStorage.getItem('externalInvoices.views') || '{}')), [viewsVersion]);
@@ -114,8 +120,8 @@ export default function ExternalInvoicesPage() {
     all[n] = view;
     localStorage.setItem('externalInvoices.views', JSON.stringify(all));
     setViewsVersion((v) => v + 1);
-    toast({ title: 'View saved', description: `Saved “${n}”.` });
-  }, [searchParams, toast]);
+    notify.success(MESSAGES.externalInvoices.viewSavedTitle, `Saved “${n}”.`);
+  }, [searchParams]);
 
   // Initialize state from URL/localStorage
   useEffect(() => {
@@ -320,9 +326,10 @@ export default function ExternalInvoicesPage() {
   }, [rowSelection]);
 
   const handleBulkPaid = useCallback(() => {
+    if (!canPayExternalInvoices) return;
     selectedIds.forEach((id) => {
       if (id) {
-        setInvoiceAsPaidMutation.mutate(id, { 
+        setInvoiceAsPaidMutation.mutate({ invoiceId: id, silent: true }, { 
           onSuccess: () => {
             refetch();
             setRowSelection({});
@@ -330,8 +337,8 @@ export default function ExternalInvoicesPage() {
         });
       }
     });
-    toast({ title: "Marking invoices as paid", description: `${selectedIds.length} invoice(s) queued.` });
-  }, [selectedIds, setInvoiceAsPaidMutation, refetch, toast]);
+    notify.success(MESSAGES.externalInvoices.markingPaidTitle, `${selectedIds.length} invoice(s) queued.`);
+  }, [selectedIds, setInvoiceAsPaidMutation, refetch]);
 
   const handleExportSelected = useCallback(() => {
     const selectedRows = (allData?.data?.data ?? []).filter((inv: any) => selectedIds.includes(inv.id)) as any[];
@@ -340,8 +347,8 @@ export default function ExternalInvoicesPage() {
     const wb = utils.book_new();
     utils.book_append_sheet(wb, ws, "Selected Invoices");
     writeFile(wb, "external_invoices_selected.xlsx");
-    toast({ title: "Exported", description: `${selectedRows.length} selected invoice(s) exported.` });
-  }, [selectedIds, allData, toast]);
+    notify.success(MESSAGES.externalInvoices.exportedTitle, `${selectedRows.length} selected invoice(s) exported.`);
+  }, [selectedIds, allData]);
 
   const handleBulkDelete = useCallback(async () => {
     if (selectedIds.length === 0) return;
@@ -353,17 +360,17 @@ export default function ExternalInvoicesPage() {
 
       if (result.failed.length > 0) {
         const first = result.failed[0];
-        toast({
-          title: "Some deletions failed",
-          description: `Deleted ${result.deletedIds.length}. Failed ${result.failed.length}. Example: #${first.id} (${first.reason})`,
-        });
+        notify.error(
+          MESSAGES.externalInvoices.partialDeleteTitle,
+          `Deleted ${result.deletedIds.length}. Failed ${result.failed.length}. Example: #${first.id} (${first.reason})`
+        );
       } else {
-        toast({ title: "Deleted", description: `Deleted ${result.deletedIds.length} invoice(s).` });
+        notify.success(MESSAGES.externalInvoices.deletedTitle, `Deleted ${result.deletedIds.length} invoice(s).`);
       }
     } catch (e: any) {
-      toast({ title: "Delete failed", description: e?.message || "Failed to delete invoices." });
+      notify.error(MESSAGES.externalInvoices.deleteFailedTitle, e?.message || MESSAGES.common.deleteFailed);
     }
-  }, [selectedIds, bulkDeleteInvoicesMutation, refetch, toast]);
+  }, [selectedIds, bulkDeleteInvoicesMutation, refetch]);
 
   // keep full export behavior but wire into bulk bar; not used directly here
 
@@ -534,26 +541,28 @@ export default function ExternalInvoicesPage() {
           {/* Metrics Section */}
           <div className="flex items-center gap-3 lg:gap-4 lg:border-l lg:border-border lg:pl-4 overflow-x-auto w-full lg:w-auto">
             {/* Amount Stats */}
-            <div className="flex items-center gap-3">
-              <MetricItem
-                label="Total Amount"
-                value={metrics?.totalAmount?.toLocaleString() ?? 0}
-                icon={DollarSign}
-                color="text-primary"
-                tooltipText={`Total value of all invoices: $${metrics?.totalAmount?.toLocaleString() ?? 0}`}
-                suffix="$"
-              />
-              <MetricItem
-                label="Average"
-                value={metrics?.totalAmount && metrics?.totalInvoices 
-                  ? Math.round(metrics.totalAmount / metrics.totalInvoices).toLocaleString() 
-                  : '0'}
-                icon={TrendingUp}
-                color="text-violet-600"
-                tooltipText="Average invoice amount"
-                suffix="$"
-              />
-            </div>
+            {canViewTotals ? (
+              <div className="flex items-center gap-3">
+                <MetricItem
+                  label="Total Amount"
+                  value={metrics?.totalAmount?.toLocaleString() ?? 0}
+                  icon={DollarSign}
+                  color="text-primary"
+                  tooltipText={`Total value of all invoices: $${metrics?.totalAmount?.toLocaleString() ?? 0}`}
+                  suffix="$"
+                />
+                <MetricItem
+                  label="Average"
+                  value={metrics?.totalAmount && metrics?.totalInvoices 
+                    ? Math.round(metrics.totalAmount / metrics.totalInvoices).toLocaleString() 
+                    : '0'}
+                  icon={TrendingUp}
+                  color="text-violet-600"
+                  tooltipText="Average invoice amount"
+                  suffix="$"
+                />
+              </div>
+            ) : null}
 
             {/* Status Stats */}
             <div className="flex items-center gap-3">
@@ -599,7 +608,7 @@ export default function ExternalInvoicesPage() {
                 tooltipText={selectedCount > 0 
                   ? `${selectedCount} invoices selected - Click to mark as paid` 
                   : "No invoices selected"}
-                onClick={selectedCount > 0 ? () => setIsConfirmBulkPaidOpen(true) : undefined}
+                onClick={(selectedCount > 0 && canPayExternalInvoices) ? () => setIsConfirmBulkPaidOpen(true) : undefined}
                 showDot={selectedCount > 0}
               />
             </div>
@@ -724,9 +733,11 @@ export default function ExternalInvoicesPage() {
               {selectedCount} invoice{selectedCount > 1 ? 's' : ''} selected
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="default" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => setIsConfirmBulkPaidOpen(true)}>
-                <CheckCircle className="h-4 w-4 mr-2" /> Mark Paid
-              </Button>
+              {canPayExternalInvoices ? (
+                <Button variant="default" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => setIsConfirmBulkPaidOpen(true)}>
+                  <CheckCircle className="h-4 w-4 mr-2" /> Mark Paid
+                </Button>
+              ) : null}
               <Button
                 variant="destructive"
                 onClick={() => setIsConfirmBulkDeleteOpen(true)}
@@ -775,6 +786,7 @@ export default function ExternalInvoicesPage() {
                 setIsConfirmBulkPaidOpen(false);
                 handleBulkPaid();
               }}
+              disabled={!canPayExternalInvoices}
               className="bg-green-600 hover:bg-green-700 text-white"
             >
               Confirm

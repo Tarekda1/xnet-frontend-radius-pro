@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createExpense, deleteExpense, fetchExpenseMonthlyTotals, fetchExpenses, updateExpense } from "@/api/expenses";
+import { notify } from "@/lib/notify";
+import { MESSAGES } from "@/constants/messages";
 
 export function useExpenses(params: {
   page: number;
@@ -36,7 +38,11 @@ export function useExpenses(params: {
   const createMutation = useMutation({
     mutationFn: createExpense,
     onSuccess: () => {
+      notify.success("Created", MESSAGES.expenses.created);
       return invalidateExpenseQueries();
+    },
+    onError: (error: unknown) => {
+      notify.error("Create failed", error instanceof Error ? error.message : MESSAGES.common.createFailed);
     },
   });
 
@@ -44,14 +50,22 @@ export function useExpenses(params: {
     mutationFn: ({ id, input }: { id: number; input: Parameters<typeof updateExpense>[1] }) =>
       updateExpense(id, input),
     onSuccess: () => {
+      notify.success("Saved", MESSAGES.expenses.updated);
       return invalidateExpenseQueries();
+    },
+    onError: (error: unknown) => {
+      notify.error("Save failed", error instanceof Error ? error.message : MESSAGES.common.updateFailed);
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: deleteExpense,
     onSuccess: () => {
+      notify.success("Deleted", MESSAGES.expenses.deleted);
       return invalidateExpenseQueries();
+    },
+    onError: (error: unknown) => {
+      notify.error("Delete failed", error instanceof Error ? error.message : MESSAGES.common.deleteFailed);
     },
   });
 

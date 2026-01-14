@@ -36,17 +36,34 @@ import AlertNotification from '@/components/AlertNotification';
 import BandwidthWidget from '@/components/BandwidthWidget';
 import { useAlerts } from '@/hooks/useAlerts';
 import CollectedSummaryCards from '@/components/CollectedSummaryCards';
+import { useAuth } from '@/context/AuthContext';
+import { can } from '@/lib/permissions';
+import { fetchResellerMe } from '@/api/resellers';
+import { apiClient } from '@/api/client';
 
 const Dashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
+  const { user } = useAuth();
+  const isReseller = user?.role === 'reseller';
+  const canSeeOnline = can(user, 'users.online.view');
+  const canSeeExpenses = can(user, 'admin.expenses.view');
+  const canSeeAlerts = can(user, 'admin.alerts.view');
+  const canSeeAnalytics = can(user, 'admin.analytics.view');
+  const canSeeTotals = can(user, 'dashboard.widget.totalAmount');
+  const canSeeInvoiceCounts = can(user, 'dashboard.widget.invoiceCounts');
+  const canSeeCollections = can(user, 'billing.collections.view');
   
   const { data: alerts, isLoading: alertsLoading } = useAlerts();
   const onlineMetrics = useOnlineMetrics();
   const expenseMonthlyTotals = useExpenseMonthlyTotals();
 
   // Extract data from hooks
-  const totalOnlineUsers = onlineMetrics.totalOnlineUsers;
-  const totalActiveUsers = onlineMetrics.totalActiveUsers;
+  const [resellerBalance, setResellerBalance] = useState<number | null>(null);
+  const [resellerUserCount, setResellerUserCount] = useState<number | null>(null);
+  const [resellerOnlineCount, setResellerOnlineCount] = useState<number | null>(null);
+
+  const totalOnlineUsers = isReseller ? (resellerOnlineCount ?? 0) : onlineMetrics.totalOnlineUsers;
+  const totalActiveUsers = isReseller ? (resellerOnlineCount ?? 0) : onlineMetrics.totalActiveUsers;
 
   const now = new Date();
   const thisMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -68,6 +85,45 @@ const Dashboard: React.FC = () => {
 
     return () => clearTimeout(timer);
   }, []);
+
+  // Reseller dashboard data: balance + scoped counts
+  useEffect(() => {
+    let cancelled = false;
+    if (!isReseller) return;
+
+    (async () => {
+      try {
+        const me = await fetchResellerMe();
+        if (cancelled) return;
+        setResellerBalance(Number(me.balance ?? 0));
+      } catch {
+        // ignore; backend will enforce anyway
+      }
+
+      try {
+        const resp = await apiClient.get('/radius/users', { params: { page: 1, pageSize: 1 } });
+        const total = resp?.data?.data?.totalUsers ?? resp?.data?.data?.total ?? 0;
+        if (cancelled) return;
+        setResellerUserCount(Number(total) || 0);
+      } catch {
+        // ignore
+      }
+
+      try {
+        const resp = await apiClient.get('/online-users-metrics');
+        if (cancelled) return;
+        const d = resp?.data?.data;
+        const n = Number(d?.totalOnlineUsers ?? 0);
+        setResellerOnlineCount(Number.isFinite(n) ? n : 0);
+      } catch {
+        // ignore
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isReseller]);
 
   const handleRefresh = () => {
     setIsLoading(true);
@@ -170,18 +226,22 @@ const Dashboard: React.FC = () => {
               <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
               Refresh Data
             </Button>
-            <Button variant="outline" size="sm" className="text-black" asChild>
-              <a href="/analytics">
-                <LineChart className="mr-2 h-4 w-4" />
-                View Analytics
-              </a>
-            </Button>
+            {canSeeAnalytics ? (
+              <Button variant="outline" size="sm" className="text-black" asChild>
+                <a href="/analytics">
+                  <LineChart className="mr-2 h-4 w-4" />
+                  View Analytics
+                </a>
+              </Button>
+            ) : null}
             <Button variant="outline" size="icon" className="text-black">
               <Settings className="h-4 w-4" />
             </Button>
-            <Button variant="outline" size="icon" className="text-black">
-              <Bell className="h-4 w-4" />
-            </Button>
+            {canSeeAlerts ? (
+              <Button variant="outline" size="icon" className="text-black">
+                <Bell className="h-4 w-4" />
+              </Button>
+            ) : null}
           </div>
         )}
       />
@@ -192,7 +252,48 @@ const Dashboard: React.FC = () => {
         <>
           {/* Stats Grid */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            {/* Reseller balance */}
+            {isReseller ? (
+              <Card className="hover:shadow-lg transition-shadow">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Balance</CardTitle>
+                  <Receipt className="h-4 w-4 text-emerald-600" />
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-2xl font-bold text-emerald-600">
+                        {resellerBalance === null ? '…' : resellerBalance.toFixed(2)}
+                      </div>
+                      <p className="text-xs text-muted-foreground">Reseller wallet</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : null}
+
+            {/* Reseller users */}
+            {isReseller ? (
+              <Card className="hover:shadow-lg transition-shadow">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">My Users</CardTitle>
+                  <Users className="h-4 w-4 text-blue-600" />
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-2xl font-bold text-blue-600">
+                        {resellerUserCount === null ? '…' : resellerUserCount}
+                      </div>
+                      <p className="text-xs text-muted-foreground">Owned users</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : null}
+
             {/* Online Users Card */}
+            {(!isReseller && canSeeOnline) || isReseller ? (
             <Card className="hover:shadow-lg transition-shadow">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Online Users</CardTitle>
@@ -211,8 +312,10 @@ const Dashboard: React.FC = () => {
                 </div>
               </CardContent>
             </Card>
+            ) : null}
 
             {/* Active Users Card */}
+            {(!isReseller && canSeeOnline) || isReseller ? (
             <Card className="hover:shadow-lg transition-shadow">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Active Users</CardTitle>
@@ -231,8 +334,10 @@ const Dashboard: React.FC = () => {
                 </div>
               </CardContent>
             </Card>
+            ) : null}
 
             {/* Expenses This Month */}
+            {canSeeExpenses && canSeeTotals ? (
             <Card className="hover:shadow-lg transition-shadow">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Expenses (This Month)</CardTitle>
@@ -257,8 +362,10 @@ const Dashboard: React.FC = () => {
                 </div>
               </CardContent>
             </Card>
+            ) : null}
 
             {/* Auth Requests Card */}
+            {canSeeInvoiceCounts ? (
             <Card className="hover:shadow-lg transition-shadow">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Auth Requests</CardTitle>
@@ -277,11 +384,13 @@ const Dashboard: React.FC = () => {
                 </div>
               </CardContent>
             </Card>
+            ) : null}
 
             {/* Collected Summary Cards */}
-            <CollectedSummaryCards />
+            {canSeeCollections ? <CollectedSummaryCards /> : null}
 
             {/* Failed Attempts Card */}
+            {canSeeAlerts ? (
             <Card className="hover:shadow-lg transition-shadow">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Active Alerts</CardTitle>
@@ -304,6 +413,7 @@ const Dashboard: React.FC = () => {
                 </div>
               </CardContent>
             </Card>
+            ) : null}
           </div>
 
           {/* System Stats and Activity */}
@@ -420,12 +530,12 @@ const Dashboard: React.FC = () => {
 
             {/* Analytics Widget */}
             <div className="col-span-full lg:col-span-2">
-              <AnalyticsWidget />
+              {canSeeAnalytics ? <AnalyticsWidget /> : null}
             </div>
 
             {/* Alert Notifications */}
             <div className="col-span-full lg:col-span-1">
-              <AlertNotification maxAlerts={5} />
+              {canSeeAlerts ? <AlertNotification maxAlerts={5} /> : null}
             </div>
           </div>
         </>

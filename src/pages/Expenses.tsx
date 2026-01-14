@@ -17,8 +17,9 @@ import { Label } from "@/components/ui/label";
 import { DateRangePicker } from "@/components/ui/DateRangePicker";
 import { DateRange } from "react-day-picker";
 import { useExpenseMonthlyTotals, useExpenses } from "@/hooks/useExpenses";
-import { toast } from "react-toastify";
 import { DollarSign, Pencil, Plus, Receipt, Trash2 } from "lucide-react";
+import { notify } from "@/lib/notify";
+import { MESSAGES } from "@/constants/messages";
 
 function toYmd(d?: Date) {
   if (!d) return undefined;
@@ -94,10 +95,10 @@ export default function ExpensesPage() {
 
   const onSave = async () => {
     const title = draft.title.trim();
-    if (!title) return toast.error("Title is required");
+    if (!title) return notify.error("Validation", MESSAGES.validation.titleRequired);
     const amount = parseFloat(draft.amount);
-    if (!Number.isFinite(amount)) return toast.error("Amount is required");
-    if (!draft.expenseDate) return toast.error("Expense date is required");
+    if (!Number.isFinite(amount)) return notify.error("Validation", MESSAGES.validation.amountRequired);
+    if (!draft.expenseDate) return notify.error("Validation", MESSAGES.validation.expenseDateRequired);
 
     try {
       if (editingId == null) {
@@ -110,7 +111,6 @@ export default function ExpensesPage() {
           status: draft.status,
           notes: draft.notes.trim() || null,
         });
-        toast.success("Expense created");
       } else {
         await updateMutation.mutateAsync({
           id: editingId,
@@ -124,21 +124,19 @@ export default function ExpensesPage() {
             notes: draft.notes.trim() || null,
           },
         });
-        toast.success("Expense updated");
       }
       setIsModalOpen(false);
-    } catch (e: any) {
-      toast.error(e?.message || "Failed to save expense");
+    } catch {
+      // Toasts are handled in the hook
     }
   };
 
   const onDelete = async (id: number) => {
-    if (!confirm("Delete this expense?")) return;
+    if (!confirm(MESSAGES.validation.confirmDeleteExpense)) return;
     try {
       await deleteMutation.mutateAsync(id);
-      toast.success("Expense deleted");
-    } catch (e: any) {
-      toast.error(e?.message || "Failed to delete expense");
+    } catch {
+      // Toasts are handled in the hook
     }
   };
 

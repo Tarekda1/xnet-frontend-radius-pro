@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { fetchCollectedMetrics, fetchCollectedInvoicesList, fetchCollectorBreakdown, type CollectedInvoicesList, type CollectedMetrics, type CollectorBreakdown } from '@/api/invoices';
+import { notify } from '@/lib/notify';
+import { MESSAGES } from '@/constants/messages';
 
 export function useCollectedMetrics(params?: { dateFrom?: string; dateTo?: string }) {
   return useQuery<CollectedMetrics>({
@@ -83,9 +85,13 @@ export const useInvoices = (initialPage: number, pageSize: number) => {
     });
 
     const setInvoiceAsPaidMutation = useMutation({
-        mutationFn: setInvoiceAsPaid,
-        onSuccess: () => {
+        mutationFn: (vars: { invoiceId: number; silent?: boolean }) => setInvoiceAsPaid(vars.invoiceId),
+        onSuccess: (_data, vars) => {
             queryClient.invalidateQueries({ queryKey: ['invoices'] });
+            if (!vars?.silent) notify.success("Success", MESSAGES.invoices.paid);
+        },
+        onError: (error: unknown) => {
+            notify.error("Action failed", error instanceof Error ? error.message : MESSAGES.common.actionFailed);
         },
     });
 
@@ -93,6 +99,10 @@ export const useInvoices = (initialPage: number, pageSize: number) => {
         mutationFn: generateMonthlyInvoices,
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['invoices'] });
+            notify.success("Started", MESSAGES.invoices.monthlyGenerated);
+        },
+        onError: (error: unknown) => {
+            notify.error("Action failed", error instanceof Error ? error.message : MESSAGES.common.actionFailed);
         },
     });
 

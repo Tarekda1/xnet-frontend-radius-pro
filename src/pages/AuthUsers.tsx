@@ -35,8 +35,9 @@ import { AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDe
 import { AlertDialog } from '@radix-ui/react-alert-dialog';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from "@/components/ui/skeleton";
-import { useToast } from "@/components/ui/use-toast";
 import PageHeader from "@/components/PageHeader";
+import { MESSAGES } from "@/constants/messages";
+import { notify } from "@/lib/notify";
 
 const UserCard: React.FC<{ user: AuthUser; onEdit: () => void; onDelete: () => void }> = ({ user, onEdit, onDelete }) => {
     return (
@@ -177,23 +178,14 @@ const AuthUsersComponent: React.FC = () => {
     const [userToEdit, setUserToEdit] = useState<AuthUser | undefined>(undefined);
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const [userToDelete, setUserToDelete] = useState<AuthUser | null>(null);
-    const { toast } = useToast();
 
     const confirmDelete = async () => {
         if (userToDelete) {
             try {
                 await deleteAuthUserMutation.mutateAsync(userToDelete.username);
-                toast({
-                    title: "User Deleted",
-                    description: `User "${userToDelete.username}" has been deleted successfully.`,
-                });
                 refetch();
-            } catch (error) {
-                toast({
-                    title: "Error",
-                    description: `Failed to delete user: ${error instanceof Error ? error.message : 'Unknown error'}`,
-                    variant: "destructive",
-                });
+            } catch (error: unknown) {
+                notify.error("Delete failed", error instanceof Error ? error.message : MESSAGES.common.deleteFailed);
             }
         }
         setDeleteConfirmOpen(false);

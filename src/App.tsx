@@ -13,6 +13,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { Helmet } from 'react-helmet';
 import { Loader } from 'lucide-react';
 import { websocketService } from './services/websocket';
+import { Toaster } from './components/ui/toaster';
 
 const Home = React.lazy(() => import('./pages/Home'));
 const UsersComponent = React.lazy(() => import('./pages/Users'));
@@ -28,13 +29,25 @@ const AnalyticsComponent = React.lazy(() => import('./pages/Analytics'));
 const AlertsComponent = React.lazy(() => import('./pages/Alerts'));
 const CollectionsComponent = React.lazy(() => import('./pages/Collections'));
 const ExpensesComponent = React.lazy(() => import('./pages/Expenses'));
+const AccessComponent = React.lazy(() => import('./pages/Access'));
+const ResellersComponent = React.lazy(() => import('./pages/Resellers'));
+const ChangePasswordComponent = React.lazy(() => import('./pages/ChangePassword'));
 
 const ProtectedRoute: React.FC<{ element: React.ReactElement }> = ({ element }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const location = useLocation();
-  return isAuthenticated
-    ? element
-    : <Navigate to="/login" replace state={{ from: location }} />;
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace state={{ from: location }} />;
+  }
+
+  const mustChange = Boolean(user?.mustChangePassword);
+  if (mustChange && location.pathname !== "/change-password") {
+    localStorage.setItem("redirectTo", location.pathname);
+    return <Navigate to="/change-password" replace state={{ from: location }} />;
+  }
+
+  return element;
 };
 
 const AppRoutes: React.FC = () => {
@@ -45,6 +58,8 @@ const AppRoutes: React.FC = () => {
           <AuthProvider>
             <Routes>
               <Route path="/login" element={<Login />} />
+              <Route path="/change-password" element={<ProtectedRoute element={<ChangePasswordComponent />} />} />
+              <Route path="/reseller" element={<Navigate to="/dashboard" replace />} />
               <Route path="/" element={<ProtectedRoute element={<Layout />} />}>
                 <Route index element={<ProtectedRoute element={<Home />} />} />
                 <Route path="dashboard" element={<ProtectedRoute element={<Dashboard />} />} />
@@ -56,12 +71,14 @@ const AppRoutes: React.FC = () => {
                 <Route path="users/list" element={<ProtectedRoute element={<UsersComponent />} />} />
                 <Route path="profiles/list" element={<ProtectedRoute element={<ProfilesComponent />} />} />
                 <Route path="/online-users" element={<ProtectedRoute element={<OnlineUsersComponent />} />} />
-                <Route path="/invoice-upload" element={<InvoiceUpload />} />
-                <Route path="/external-invoices" element={<ExternalInvoicesComponent />} />
+                <Route path="/invoice-upload" element={<ProtectedRoute element={<InvoiceUpload />} />} />
+                <Route path="/external-invoices" element={<ProtectedRoute element={<ExternalInvoicesComponent />} />} />
+                <Route path="/access" element={<ProtectedRoute element={<AccessComponent />} />} />
                 <Route path="/analytics" element={<ProtectedRoute element={<AnalyticsComponent />} />} />
                 <Route path="/alerts" element={<ProtectedRoute element={<AlertsComponent />} />} />
                 <Route path="/collections" element={<ProtectedRoute element={<CollectionsComponent />} />} />
                 <Route path="expenses" element={<ProtectedRoute element={<ExpensesComponent />} />} />
+                <Route path="/admin/resellers" element={<ProtectedRoute element={<ResellersComponent />} />} />
               </Route>
             </Routes>
           </AuthProvider>
@@ -106,6 +123,7 @@ const App: React.FC = () => {
         <AppRoutes />
       </QueryClientProvider>
       <ToastContainer />
+      <Toaster />
     </>
   );
 };

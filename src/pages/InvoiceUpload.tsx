@@ -5,9 +5,10 @@ import { Input } from "@/components/ui/input";
 import { useInvoiceUpload } from '@/hooks/useInvoiceUpload';
 import { Upload, FileSpreadsheet, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useToast } from "@/components/ui/use-toast";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import { notify } from "@/lib/notify";
+import { MESSAGES } from "@/constants/messages";
 
 const InvoiceUpload: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
@@ -18,7 +19,6 @@ const InvoiceUpload: React.FC = () => {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
   const { uploadInvoice, isLoading, error } = useInvoiceUpload();
-  const { toast } = useToast();
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files) {
@@ -27,11 +27,7 @@ const InvoiceUpload: React.FC = () => {
         setFile(selectedFile);
         setUploadProgress(0);
       } else {
-        toast({
-          title: "Invalid file type",
-          description: "Please upload an Excel file (.xlsx or .xls)",
-          variant: "destructive",
-        });
+        notify.error(MESSAGES.invoiceUpload.invalidFileTitle, MESSAGES.invoiceUpload.invalidFileDescription);
       }
     }
   };
@@ -55,23 +51,15 @@ const InvoiceUpload: React.FC = () => {
       setFile(droppedFile);
       setUploadProgress(0);
     } else {
-      toast({
-        title: "Invalid file type",
-        description: "Please upload an Excel file (.xlsx or .xls)",
-        variant: "destructive",
-      });
+      notify.error(MESSAGES.invoiceUpload.invalidFileTitle, MESSAGES.invoiceUpload.invalidFileDescription);
     }
-  }, [toast]);
+  }, []);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (file) {
       if (!billingMonth) {
-        toast({
-          title: "Select billing month",
-          description: "Please choose the billing month before uploading.",
-          variant: "destructive",
-        });
+        notify.error(MESSAGES.invoiceUpload.billingMonthRequiredTitle, MESSAGES.invoiceUpload.billingMonthRequiredDescription);
         return;
       }
       try {
@@ -90,10 +78,7 @@ const InvoiceUpload: React.FC = () => {
         clearInterval(progressInterval);
         setUploadProgress(100);
         
-        toast({
-          title: "Upload successful",
-          description: "Your invoice has been uploaded successfully.",
-        });
+        notify.success(MESSAGES.invoiceUpload.uploadSuccessTitle, MESSAGES.invoiceUpload.uploadSuccessDescription);
         
         // Reset after success
         setTimeout(() => {
@@ -102,11 +87,7 @@ const InvoiceUpload: React.FC = () => {
         }, 2000);
       } catch (err) {
         console.error('Upload failed:', err);
-        toast({
-          title: "Upload failed",
-          description: error || "An error occurred while uploading the file.",
-          variant: "destructive",
-        });
+        notify.error(MESSAGES.invoiceUpload.uploadFailedTitle, error || MESSAGES.common.actionFailed);
       }
     }
   };

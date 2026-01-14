@@ -2,6 +2,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { UsersApiResponse, User } from '../types/api';
 import { apiClient } from '@/api/client';
 import { useState } from 'react';
+import { notify } from '@/lib/notify';
+import { MESSAGES } from '@/constants/messages';
 
 export enum AccountStatus {
   ACTIVE = 'active',
@@ -70,6 +72,10 @@ const useUsers = (initialPage = 1, pageSize = 10) => {
     mutationFn: createUser,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
+      notify.success("Created", MESSAGES.common.created);
+    },
+    onError: (error) => {
+      notify.error("Create failed", error.message);
     },
   });
 
@@ -77,6 +83,10 @@ const useUsers = (initialPage = 1, pageSize = 10) => {
     mutationFn: updateUser,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
+      notify.success("Saved", MESSAGES.common.updated);
+    },
+    onError: (error) => {
+      notify.error("Save failed", error.message);
     },
   });
   
@@ -85,6 +95,10 @@ const useUsers = (initialPage = 1, pageSize = 10) => {
     mutationFn: deleteUser,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
+      notify.success("Deleted", MESSAGES.users.deleted);
+    },
+    onError: (error) => {
+      notify.error("Delete failed", error.message);
     },
   });
 
@@ -92,6 +106,10 @@ const useUsers = (initialPage = 1, pageSize = 10) => {
     mutationFn: resetMacAddress,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
+      notify.success("Success", MESSAGES.users.macReset);
+    },
+    onError: (error) => {
+      notify.error("Action failed", error.message);
     },
   });
 

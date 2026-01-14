@@ -38,6 +38,10 @@ const UserCard: React.FC<UserCardProps> = ({ user, onEdit, onDelete, onResetMAC,
                     <div>
                         <span className="font-semibold">MAC Address:</span> {user.macAddress?.macAddress || 'Not set'}
                     </div>
+                    <div>
+                        <span className="font-semibold">Last Active:</span>{" "}
+                        {user.lastTimeActive ? new Date(user.lastTimeActive).toLocaleString() : "—"}
+                    </div>
                 </div>
             </CardContent>
             <CardFooter className="flex justify-between">

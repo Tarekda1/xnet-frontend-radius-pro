@@ -26,12 +26,13 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import Loader from '@/components/ui/loader';
 import { DateRangePicker } from '@/components/ui/DateRangePicker';
 import { DateRange } from 'react-day-picker';
-import { toast } from 'react-toastify';
 import Alert from '@/components/ui/Alert';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { utils, writeFile } from 'xlsx';
 import { Checkbox } from '@/components/ui/checkbox';
+import { notify } from '@/lib/notify';
+import { MESSAGES } from '@/constants/messages';
 
 interface Invoice {
     id: number;
@@ -385,34 +386,10 @@ const InvoicesComponent: React.FC = () => {
 
     const handleBulkSetPaid = () => {
         const selectedRows = table.getSelectedRowModel().rows;
-        selectedRows.forEach(row => {
-            setInvoiceAsPaidMutation.mutate(row.original.id, {
-                onSuccess: () => {
-                    toast.success("Selected invoices marked as paid.", {
-                        position: "bottom-left",
-                        autoClose: 5000,
-                        hideProgressBar: false,
-                        closeOnClick: true,
-                        pauseOnHover: true,
-                        draggable: true,
-                        progress: undefined,
-                    });
-                    refetch();
-                },
-                onError: () => {
-                    toast.error("Failed to mark invoices as paid.", {
-                        position: "bottom-left",
-                        autoClose: 5000,
-                        hideProgressBar: false,
-                        closeOnClick: true,
-                        pauseOnHover: true,
-                        draggable: true,
-                        progress: undefined,
-                    });
-                }
-            });
-        });
+        selectedRows.forEach((row) => setInvoiceAsPaidMutation.mutate({ invoiceId: row.original.id, silent: true }));
         table.resetRowSelection();
+        notify.success("Success", `Marked ${selectedRows.length} invoice(s) as paid.`);
+        refetch();
     };
 
     const handleNextPage = () => {
@@ -428,20 +405,8 @@ const InvoicesComponent: React.FC = () => {
     };
 
     const handleSetPaid = (invoiceId: number) => {
-        setInvoiceAsPaidMutation.mutate(invoiceId, {
-            onSuccess: () => {
-                toast.success("Invoice marked as paid.", {
-                    position: "top-right",
-                    autoClose: 5000,
-                    hideProgressBar: false,
-                    closeOnClick: true,
-                    pauseOnHover: true,
-                    draggable: true,
-                    progress: undefined,
-                });
-                refetch();
-            }
-        });
+        setInvoiceAsPaidMutation.mutate({ invoiceId });
+        refetch();
     };
 
     const handleRefresh = () => {
@@ -540,26 +505,9 @@ const InvoicesComponent: React.FC = () => {
     const handleGenerateInvoices = async () => {
         try {
             await generateInvoicesMutation.mutateAsync();
-            toast.success("New invoices have been successfully generated.", {
-                position: "top-right",
-                autoClose: 5000,
-                hideProgressBar: false,
-                closeOnClick: true,
-                pauseOnHover: true,
-                draggable: true,
-                progress: undefined,
-            });
             refetch();
-        } catch (error) {
-            toast.error("Failed to generate invoices. Please try again.", {
-                position: "top-right",
-                autoClose: 5000,
-                hideProgressBar: false,
-                closeOnClick: true,
-                pauseOnHover: true,
-                draggable: true,
-                progress: undefined,
-            });
+        } catch (error: unknown) {
+            notify.error("Action failed", error instanceof Error ? error.message : MESSAGES.common.actionFailed);
         }
     };
 
@@ -578,20 +526,6 @@ const InvoicesComponent: React.FC = () => {
             refetch();
         }
     }, [generateInvoicesMutation.isSuccess]);
-
-    useEffect(() => {
-        if (error) {
-            toast.error(`Error loading invoices: ${error instanceof Error ? error.message : 'An unknown error occurred.'}`, {
-                position: "top-right",
-                autoClose: 5000,
-                hideProgressBar: false,
-                closeOnClick: true,
-                pauseOnHover: true,
-                draggable: true,
-                progress: undefined,
-            });
-        }
-    }, [error]);
 
     if (isLoading) return <div className="flex justify-center items-center h-screen"><Loader />Loading...</div>;
     if (error) return <div className="text-red-500 text-center">Error: {error.message}</div>;

@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
+import { notify } from '@/lib/notify';
+import { MESSAGES } from '@/constants/messages';
 import { 
   AlertRule, 
   Alert, 
@@ -235,6 +237,10 @@ export const useCreateAlertRule = () => {
     mutationFn: createAlertRule,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['alerts', 'rules'] });
+      notify.success("Created", MESSAGES.alerts.ruleCreated);
+    },
+    onError: (error: unknown) => {
+      notify.error("Create failed", error instanceof Error ? error.message : MESSAGES.common.createFailed);
     },
   });
 };
@@ -247,6 +253,10 @@ export const useUpdateAlertRule = () => {
       updateAlertRule(id, updates),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['alerts', 'rules'] });
+      notify.success("Saved", MESSAGES.alerts.ruleUpdated);
+    },
+    onError: (error: unknown) => {
+      notify.error("Save failed", error instanceof Error ? error.message : MESSAGES.common.updateFailed);
     },
   });
 };
@@ -258,6 +268,10 @@ export const useDeleteAlertRule = () => {
     mutationFn: deleteAlertRule,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['alerts', 'rules'] });
+      notify.success("Deleted", MESSAGES.alerts.ruleDeleted);
+    },
+    onError: (error: unknown) => {
+      notify.error("Delete failed", error instanceof Error ? error.message : MESSAGES.common.deleteFailed);
     },
   });
 };
@@ -270,6 +284,10 @@ export const useAcknowledgeAlert = () => {
       acknowledgeAlert(id, acknowledgedBy),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['alerts'] });
+      notify.success("Success", MESSAGES.alerts.acknowledged);
+    },
+    onError: (error: unknown) => {
+      notify.error("Action failed", error instanceof Error ? error.message : MESSAGES.common.actionFailed);
     },
   });
 };
@@ -281,6 +299,10 @@ export const useResolveAlert = () => {
     mutationFn: resolveAlert,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['alerts'] });
+      notify.success("Success", MESSAGES.alerts.resolved);
+    },
+    onError: (error: unknown) => {
+      notify.error("Action failed", error instanceof Error ? error.message : MESSAGES.common.actionFailed);
     },
   });
 };
@@ -292,6 +314,10 @@ export const useUpdateAlertSettings = () => {
     mutationFn: updateAlertSettings,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['alerts', 'settings'] });
+      notify.success("Saved", MESSAGES.alerts.settingsUpdated);
+    },
+    onError: (error: unknown) => {
+      notify.error("Save failed", error instanceof Error ? error.message : MESSAGES.common.updateFailed);
     },
   });
 };

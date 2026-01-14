@@ -9,6 +9,8 @@ import { DollarSign, Users } from 'lucide-react';
 import { DateRange } from 'react-day-picker';
 import { DateRangePicker } from '@/components/ui/DateRangePicker';
 import { reconcileCollectedInvoice, type CollectedInvoicesList, type CollectedMetrics, type CollectorBreakdown } from '@/api/invoices';
+import { parseMysqlBool } from '@/lib/utils';
+import { CheckCircle2, XCircle } from 'lucide-react';
 
 function useQuery() {
   const { search } = useLocation();
@@ -39,6 +41,12 @@ const Collections: React.FC = () => {
     listQuery.refetch();
     metricsQuery.refetch();
     breakdownQuery.refetch();
+  };
+
+  const canReconcile = (inv: CollectedInvoicesList['data'][number]) => {
+    const pm = String(inv.paymentMethod ?? '').toLowerCase();
+    const reconciled = parseMysqlBool(inv.cashReconciled);
+    return pm === 'cash' && !reconciled;
   };
 
   return (
@@ -133,6 +141,7 @@ const Collections: React.FC = () => {
                     <TableHead>Payment Method</TableHead>
                     <TableHead>Collected By</TableHead>
                     <TableHead>Collected At</TableHead>
+                    <TableHead>Reconciled</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -147,7 +156,41 @@ const Collections: React.FC = () => {
                       <TableCell>{inv.collectedBy ?? '-'}</TableCell>
                       <TableCell>{inv.collectedAt ? new Date(inv.collectedAt).toLocaleString() : '-'}</TableCell>
                       <TableCell>
-                        <Button size="sm" variant="outline" onClick={() => onReconcile(inv.id)}>Set Reconciled</Button>
+                        <div className="flex items-center gap-2">
+                          {parseMysqlBool(inv.cashReconciled) ? (
+                            <>
+                              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                              <span className="text-sm text-emerald-700">Yes</span>
+                            </>
+                          ) : (
+                            <>
+                              <XCircle className="h-4 w-4 text-slate-400" />
+                              <span className="text-sm text-slate-600">No</span>
+                            </>
+                          )}
+                          {inv.reconciledAt ? (
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(inv.reconciledAt).toLocaleString()}
+                            </span>
+                          ) : null}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={!canReconcile(inv)}
+                          title={
+                            parseMysqlBool(inv.cashReconciled)
+                              ? 'Already reconciled'
+                              : String(inv.paymentMethod ?? '').toLowerCase() !== 'cash'
+                                ? 'Only cash invoices can be reconciled'
+                                : undefined
+                          }
+                          onClick={() => onReconcile(inv.id)}
+                        >
+                          Set Reconciled
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}

@@ -19,6 +19,8 @@ import type { ExternalInvoice } from "@/types/api";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "./ui/alert-dialog";
 import { useToast } from "@/components/ui/use-toast";
 import { ToastAction } from "@/components/ui/toast";
+import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/permissions";
 
 const initialPage = 1;
 
@@ -46,6 +48,10 @@ const ExternalInvoicesTable: React.FC<Props> = ({
     onLastPage,
     totalItems,
 }) => {
+    const { user } = useAuth();
+    const canPay = can(user, 'billing.externalInvoices.pay');
+    const canUnpay = can(user, 'billing.externalInvoices.unpay');
+
     /* ── URL state ─────────────────────────────────────────── */
     const [searchParams, setSearchParams] = useSearchParams();
 
@@ -58,9 +64,9 @@ const ExternalInvoicesTable: React.FC<Props> = ({
         currentPage,
         setCurrentPage,
         setInvoiceAsPaidMutation,
+        unpayInvoiceMutation,
         updateInvoiceMutation,
         deleteInvoiceMutation,
-        sendReminderMutation
     } = useExternalInvoices({
         initialPage,
         pageSize,
@@ -90,20 +96,34 @@ const ExternalInvoicesTable: React.FC<Props> = ({
 
     /* ── mutations ─────────────────────────────────────────── */
     const markPaid = (id: number) => {
+        if (!canPay) return;
         const prev = (data?.data.data ?? []).find((x) => x.id === id)?.status || 'pending';
-        setInvoiceAsPaidMutation.mutate(id, {
+        setInvoiceAsPaidMutation.mutate({ invoiceId: id, silent: true }, {
             onSuccess: () => {
                 refetch();
                 toast({
                     title: `Invoice #${id} marked as paid`,
                     action: (
-                        <ToastAction altText="Undo" onClick={() => updateInvoiceMutation.mutate({ invoiceId: id, invoiceData: { status: prev } }, { onSuccess: () => refetch() })}>
+                        <ToastAction
+                          altText="Undo"
+                          onClick={() => {
+                            if (canUnpay) {
+                              unpayInvoiceMutation.mutate({ invoiceId: id, silent: true }, { onSuccess: () => refetch() });
+                            } else {
+                              updateInvoiceMutation.mutate({ invoiceId: id, invoiceData: { status: prev } }, { onSuccess: () => refetch() });
+                            }
+                          }}
+                        >
                             Undo
                         </ToastAction>
                     ),
                 });
             }
         });
+    };
+
+    const unpay = (id: number) => {
+        unpayInvoiceMutation.mutate({ invoiceId: id }, { onSuccess: () => refetch() });
     };
 
     const handleDelete = (id: number) => {
@@ -185,7 +205,8 @@ const ExternalInvoicesTable: React.FC<Props> = ({
                     onSortingChange={onSortingChange}
                     rowSelection={rowSelection}
                     onRowSelectionChange={onRowSelectionChange}
-                    onSetPaid={markPaid}
+                    onSetPaid={canPay ? markPaid : undefined}
+                    onUnpay={canUnpay ? unpay : undefined}
                     onViewInvoice={setSelected}
                     onDeleteInvoice={handleDelete}
                     search={search}
@@ -199,7 +220,7 @@ const ExternalInvoicesTable: React.FC<Props> = ({
                     <ExternalInvoiceCard
                         key={inv.id}
                         invoice={inv}
-                        onSetPaid={() => markPaid(inv.id)}
+                        onSetPaid={canPay ? () => markPaid(inv.id) : undefined}
                     />
                 ))}
             </div>

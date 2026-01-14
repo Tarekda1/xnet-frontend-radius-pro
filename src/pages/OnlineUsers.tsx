@@ -6,16 +6,16 @@ import { RefreshCw, Users, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import PageHeader from "@/components/PageHeader";
 import { websocketService } from "@/services/websocket";
-import { useToast } from "@/components/ui/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { notify } from "@/lib/notify";
+import { MESSAGES } from "@/constants/messages";
 
 export default function OnlineUsersPage() {
   const [search, setSearch] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [onlineCount, setOnlineCount] = useState(0);
-  const { toast } = useToast();
 
   const handleSearch = useCallback((term: string) => {
     setSearch(term);
@@ -26,12 +26,9 @@ export default function OnlineUsersPage() {
     // Simulate refresh delay
     setTimeout(() => {
       setIsRefreshing(false);
-      toast({
-        title: "Users refreshed",
-        description: "The online users list has been updated.",
-      });
+      notify.success(MESSAGES.onlineUsers.refreshedTitle, MESSAGES.onlineUsers.refreshedDescription);
     }, 1000);
-  }, [toast]);
+  }, []);
 
   useEffect(() => {
     // Simulate initial loading
@@ -42,10 +39,7 @@ export default function OnlineUsersPage() {
     // Subscribe to WebSocket notifications
     const unsubscribe = websocketService.onNotification((data) => {
       if (data.type === 'USER_STATUS_CHANGE') {
-        toast({
-          title: "User status updated",
-          description: `${data.username} is now ${data.status}`,
-        });
+        notify.success(MESSAGES.onlineUsers.statusUpdatedTitle, `${data.username} is now ${data.status}`);
         handleRefresh();
       }
     });
@@ -58,7 +52,7 @@ export default function OnlineUsersPage() {
       unsubscribe();
       websocketService.disconnect();
     };
-  }, [toast, handleRefresh]);
+  }, [handleRefresh]);
 
   if (isLoading) {
     return (

@@ -10,6 +10,9 @@ interface LoginResponse {
       username: string;
       email: string;
       role: string;
+      permissions?: string[];
+      resellerId?: number | null;
+      mustChangePassword?: boolean;
       isActive: number;
       createdAt: string;
       updatedAt: string;

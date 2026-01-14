@@ -18,8 +18,12 @@ export type CollectedInvoicesList = {
     collectedBy: string | null;
     collectedAt: string | null;
     paymentMethod: string | null;
+    cashReconciled?: boolean | 0 | 1 | '0' | '1' | null;
+    reconciledBy?: string | null;
+    reconciledAt?: string | null;
     username?: string;
     fullName?: string | null;
+    status?: string;
   }>;
   total: number;
   page: number;

@@ -1,27 +1,28 @@
 // Sidebar.tsx
-import React, { useEffect } from 'react';
-import { NavLink } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
 import {
   FaBars,
   FaTimes,
   FaTachometerAlt,
   FaCogs,
   FaUsers,
-  FaChartLine,
   FaCreditCard,
-  FaLifeRing,
-  FaDashcube,
   FaHome,
   FaUserClock,
   FaServer,
   FaUserShield,
   FaBell,
+  FaChevronDown,
+  FaChevronRight,
 } from 'react-icons/fa';
 import { useSidebar } from './Sidebar.context';
 import { useIsMobile } from '../../../hooks/use-mobile';
 import { Button } from '../button';
-import { FileText, Upload, BarChart3, Receipt } from 'lucide-react';
+import { FileText, Upload, BarChart3, Receipt, Folder, DollarSign } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/context/AuthContext';
+import { can, canAny } from '@/lib/permissions';
 
 const Sidebar: React.FC = () => {
   const {
@@ -33,6 +34,7 @@ const Sidebar: React.FC = () => {
     setIsCollapsed,
   } = useSidebar();
   const isMobile = useIsMobile();
+  const location = useLocation();
 
   // Handle screen size changes
   useEffect(() => {
@@ -97,73 +99,233 @@ const Sidebar: React.FC = () => {
   );
 
   const SidebarContent = () => {
-    const navItems = [
+    const { user } = useAuth();
+
+    const isUsersRoute = useMemo(() => {
+      const p = location.pathname || '';
+      return p.startsWith('/users') || p.startsWith('/online-users') || p.startsWith('/profiles');
+    }, [location.pathname]);
+
+    const isRadiusSettingsRoute = useMemo(() => {
+      const p = location.pathname || '';
+      return p.startsWith('/nas') || p.startsWith('/settings');
+    }, [location.pathname]);
+
+    const isAdminRoute = useMemo(() => {
+      const p = location.pathname || '';
+      return p.startsWith('/analytics') || p.startsWith('/alerts') || p.startsWith('/expenses') || p.startsWith('/auth-users');
+    }, [location.pathname]);
+
+    const [isUsersGroupOpen, setIsUsersGroupOpen] = useState<boolean>(isUsersRoute);
+    const [isRadiusSettingsGroupOpen, setIsRadiusSettingsGroupOpen] = useState<boolean>(isRadiusSettingsRoute);
+    const [isAdminGroupOpen, setIsAdminGroupOpen] = useState<boolean>(isAdminRoute);
+
+    // Auto-expand the relevant group when navigating into it.
+    useEffect(() => {
+      if (isUsersRoute) setIsUsersGroupOpen(true);
+    }, [isUsersRoute]);
+    useEffect(() => {
+      if (isRadiusSettingsRoute) setIsRadiusSettingsGroupOpen(true);
+    }, [isRadiusSettingsRoute]);
+    useEffect(() => {
+      if (isAdminRoute) setIsAdminGroupOpen(true);
+    }, [isAdminRoute]);
+
+    const mainItems = [
       { to: '/', label: 'Home', icon: FaHome },
       { to: '/dashboard', label: 'Dashboard', icon: FaTachometerAlt },
-      { to: '/analytics', label: 'Analytics', icon: BarChart3 },
-      { to: '/alerts', label: 'Alerts', icon: FaBell },
-      { to: '/expenses', label: 'Expenses', icon: Receipt },
-      { to: '/auth-users', label: 'Auth Users', icon: FaUserShield },
-      { to: '/users/list', label: 'Users', icon: FaUsers },
-      { to: '/online-users', label: 'Online Users', icon: FaUserClock },
-      {
-        label: 'Upload Invoice',
-        icon: Upload,
-        to: '/invoice-upload',
-      },
-      {
-        label: "External Invoices",
-        to: "/external-invoices",
-        icon: FileText,
-        isAdmin: true,
-      },
-      { to: '/profiles/list', label: 'Profiles', icon: FaCreditCard },
-      { to: '/nas', label: 'NAS', icon: FaServer },
-      { to: '/settings', label: 'Settings', icon: FaCogs },
     ];
 
-    return (
-      <nav className="flex-grow py-4 space-y-1">
-        {navItems.map(({ to, label, icon: Icon }) => (
-          <NavLink
-            key={to}
-            to={to}
-            className={({ isActive }) =>
-              cn(
-                "flex items-center px-4 py-3 space-x-3 transition-all duration-200",
-                "hover:bg-gray-700/50 rounded-lg mx-2",
-                "group relative",
-                isActive 
-                  ? "bg-blue-500/10 text-blue-400" 
-                  : "text-gray-300 hover:text-white"
-              )
-            }
-            onClick={() => isMobile && setMobileMenuOpen(false)}
+    const adminItems = [
+      { to: '/analytics', label: 'Analytics', icon: BarChart3, perm: 'admin.analytics.view' },
+      { to: '/alerts', label: 'Alerts', icon: FaBell, perm: 'admin.alerts.view' },
+      { to: '/expenses', label: 'Expenses', icon: Receipt, perm: 'admin.expenses.view' },
+      { to: '/auth-users', label: 'Auth Users', icon: FaUserShield, perm: 'admin.authUsers.manage' },
+      { to: '/access', label: 'Roles & Access', icon: FaUserShield, perm: 'admin.access.manage' },
+      { to: '/admin/resellers', label: 'Resellers', icon: FaUsers, perm: 'admin.resellers.manage' },
+    ] as const;
+
+    const usersItems = [
+      { to: '/users/list', label: 'Users', icon: FaUsers, perms: ['users.view', 'reseller.users.view'] },
+      { to: '/online-users', label: 'Online Users', icon: FaUserClock, perms: ['users.online.view', 'reseller.users.view'] },
+      { to: '/profiles/list', label: 'Profile Plans', icon: FaCreditCard, perms: ['radius.profiles.view'] },
+    ] as const;
+
+    const radiusSettingsItems = [
+      { to: '/settings', label: 'Settings', icon: FaCogs, perm: 'radius.settings.view' },
+      { to: '/nas', label: 'NAS', icon: FaServer, perm: 'radius.nas.view' },
+    ] as const;
+
+    const billingItems = [
+      { label: 'Upload Invoice', icon: Upload, to: '/invoice-upload', perm: 'billing.invoiceUpload.create' },
+      { label: 'External Invoices', to: '/external-invoices', icon: FileText, perm: 'billing.externalInvoices.view' },
+      { label: 'Collections', to: '/collections', icon: DollarSign, perm: 'billing.collections.view' },
+    ] as const;
+
+    // Resellers use the same pages (dashboard/users/online-users) with scoped data.
+
+    const SectionLabel = ({ children }: { children: React.ReactNode }) => (
+      <div className={cn("px-4 pt-3 pb-1 text-xs font-semibold tracking-wide text-gray-400", !isMobile && isCollapsed && "hidden")}>
+        {children}
+      </div>
+    );
+
+    const NavItem = ({ to, label, icon: Icon }: { to: string; label: string; icon: any }) => (
+      <NavLink
+        key={to}
+        to={to}
+        className={({ isActive }) =>
+          cn(
+            "flex items-center px-4 py-3 space-x-3 transition-all duration-200",
+            "hover:bg-gray-700/50 rounded-lg mx-2",
+            "group relative",
+            isActive ? "bg-blue-500/10 text-blue-400" : "text-gray-300 hover:text-white"
+          )
+        }
+        onClick={() => isMobile && setMobileMenuOpen(false)}
+      >
+        <Icon
+          size={20}
+          className={cn(
+            "flex-shrink-0 transition-transform duration-200",
+            "group-hover:scale-110"
+          )}
+        />
+        <span
+          className={cn(
+            "whitespace-nowrap transition-all duration-300",
+            !isMobile && isCollapsed ? 'w-0 overflow-hidden opacity-0' : 'w-auto opacity-100'
+          )}
+        >
+          {label}
+        </span>
+        {!isMobile && isCollapsed && (
+          <div className="absolute left-full ml-2 px-2 py-1 bg-gray-800 rounded-md text-sm whitespace-nowrap opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+            {label}
+          </div>
+        )}
+      </NavLink>
+    );
+
+    const NavGroup = (props: {
+      label: string;
+      icon: any;
+      isOpen: boolean;
+      onToggle: () => void;
+      items: Array<{ to: string; label: string; icon: any }>;
+    }) => {
+      const Icon = props.icon;
+      const Chevron = props.isOpen ? FaChevronDown : FaChevronRight;
+
+      return (
+        <div className="mx-2">
+          <button
+            type="button"
+            className={cn(
+              "w-full flex items-center px-4 py-3 space-x-3 transition-all duration-200",
+              "hover:bg-gray-700/50 rounded-lg",
+              "text-gray-300 hover:text-white",
+              "group relative"
+            )}
+            onClick={(e) => {
+              e.stopPropagation();
+              props.onToggle();
+            }}
           >
-            <Icon 
-              size={20} 
-              className={cn(
-                "flex-shrink-0 transition-transform duration-200",
-                "group-hover:scale-110"
-              )} 
-            />
+            <Icon size={20} className={cn("flex-shrink-0 transition-transform duration-200", "group-hover:scale-110")} />
             <span
               className={cn(
-                "whitespace-nowrap transition-all duration-300",
-                !isMobile && isCollapsed
-                  ? 'w-0 overflow-hidden opacity-0'
-                  : 'w-auto opacity-100'
+                "whitespace-nowrap transition-all duration-300 flex-1 text-left",
+                !isMobile && isCollapsed ? 'w-0 overflow-hidden opacity-0' : 'w-auto opacity-100'
               )}
             >
-              {label}
+              {props.label}
             </span>
+            <Chevron
+              size={14}
+              className={cn(
+                "flex-shrink-0 opacity-80",
+                !isMobile && isCollapsed ? 'hidden' : 'block'
+              )}
+            />
+
             {!isMobile && isCollapsed && (
               <div className="absolute left-full ml-2 px-2 py-1 bg-gray-800 rounded-md text-sm whitespace-nowrap opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
-                {label}
+                {props.label}
               </div>
             )}
-          </NavLink>
+          </button>
+
+          {props.isOpen && (
+            <div className={cn("mt-1 space-y-1", !isMobile && isCollapsed ? 'hidden' : 'block')}>
+              {props.items.map(({ to, label, icon }) => (
+                <div key={to} className="ml-3">
+                  <NavItem to={to} label={label} icon={icon} />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    const hasItemAccess = (item: { perms: readonly string[] }) => canAny(user, item.perms as unknown as string[]);
+
+    return (
+      <nav className="flex-1 min-h-0 overflow-y-auto py-4 space-y-1">
+        {mainItems.map(({ to, label, icon: Icon }) => (
+          <NavItem key={to} to={to} label={label} icon={Icon} />
         ))}
+
+        {canAny(user, adminItems.map((i) => i.perm) as unknown as string[]) ? (
+          <NavGroup
+            label="Admin"
+            icon={FaUserShield}
+            isOpen={isAdminGroupOpen}
+            onToggle={() => setIsAdminGroupOpen((v) => !v)}
+            items={adminItems.filter((i) => can(user, i.perm)).map(({ to, label, icon }) => ({ to, label, icon }))}
+          />
+        ) : null}
+
+        {canAny(user, usersItems.flatMap((i) => i.perms) as unknown as string[]) ? (
+          <NavGroup
+            label="Users"
+            icon={FaUsers}
+            isOpen={isUsersGroupOpen}
+            onToggle={() => setIsUsersGroupOpen((v) => !v)}
+            items={usersItems.filter((i) => hasItemAccess(i)).map(({ to, label, icon }) => ({ to, label, icon }))}
+          />
+        ) : null}
+
+        {canAny(user, radiusSettingsItems.map((i) => i.perm) as unknown as string[]) ? (
+          <NavGroup
+            label="Radius Settings"
+            icon={FaCogs}
+            isOpen={isRadiusSettingsGroupOpen}
+            onToggle={() => setIsRadiusSettingsGroupOpen((v) => !v)}
+            items={radiusSettingsItems.filter((i) => can(user, i.perm)).map(({ to, label, icon }) => ({ to, label, icon }))}
+          />
+        ) : null}
+
+        {canAny(user, billingItems.map((i) => i.perm) as unknown as string[]) ? (
+          <>
+            <div className="my-2 border-t border-gray-700/50 mx-3" />
+
+            <SectionLabel>
+              <span className="inline-flex items-center gap-2">
+                <Folder className="h-3.5 w-3.5" /> Billing
+              </span>
+            </SectionLabel>
+
+            {billingItems
+              .filter((i) => can(user, i.perm))
+              .map(({ to, label, icon: Icon }) => (
+                <NavItem key={to} to={to} label={label} icon={Icon} />
+              ))}
+          </>
+        ) : null}
+
+        {/* Reseller section removed (scoped in-place) */}
       </nav>
     );
   };

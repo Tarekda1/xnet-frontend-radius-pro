@@ -1,5 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/api/client';
+import { notify } from '@/lib/notify';
+import { MESSAGES } from '@/constants/messages';
 
 export interface Profile {
   id?: number;
@@ -51,6 +53,10 @@ export const useProfiles = () => {
     mutationFn: createProfile,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profiles'] });
+      notify.success("Created", MESSAGES.profiles.created);
+    },
+    onError: (error: unknown) => {
+      notify.error("Create failed", error instanceof Error ? error.message : MESSAGES.common.createFailed);
     },
   });
 
@@ -58,6 +64,10 @@ export const useProfiles = () => {
     mutationFn: updateProfile,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profiles'] });
+      notify.success("Saved", MESSAGES.profiles.updated);
+    },
+    onError: (error: unknown) => {
+      notify.error("Save failed", error instanceof Error ? error.message : MESSAGES.common.updateFailed);
     },
   });
 
@@ -65,6 +75,10 @@ export const useProfiles = () => {
     mutationFn: deleteProfile,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profiles'] });
+      notify.success("Deleted", MESSAGES.profiles.deleted);
+    },
+    onError: (error: unknown) => {
+      notify.error("Delete failed", error instanceof Error ? error.message : MESSAGES.common.deleteFailed);
     },
   });
 

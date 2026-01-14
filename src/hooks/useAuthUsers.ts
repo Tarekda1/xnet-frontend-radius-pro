@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AuthUsersApiResponse, AuthUser } from '../types/api';
 import { apiClient } from '@/api/client';
+import { notify } from '@/lib/notify';
+import { MESSAGES } from '@/constants/messages';
 
 interface AuthUserMutationData {
   username: string;
@@ -39,6 +41,10 @@ const useAuthUsers = () => {
     mutationFn: createAuthUser,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['authUsers'] });
+      notify.success("Created", MESSAGES.authUsers.created);
+    },
+    onError: (error) => {
+      notify.error("Create failed", error.message);
     },
   });
 
@@ -46,6 +52,10 @@ const useAuthUsers = () => {
     mutationFn: updateAuthUser,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['authUsers'] });
+      notify.success("Saved", MESSAGES.authUsers.updated);
+    },
+    onError: (error) => {
+      notify.error("Save failed", error.message);
     },
   });
 
@@ -53,6 +63,10 @@ const useAuthUsers = () => {
     mutationFn: async (username: string) => await apiClient.delete(`/auth/users/${username}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['authUsers'] });
+      notify.success("Deleted", MESSAGES.authUsers.deleted);
+    },
+    onError: (error: unknown) => {
+      notify.error("Delete failed", error instanceof Error ? error.message : MESSAGES.common.deleteFailed);
     },
   });
 

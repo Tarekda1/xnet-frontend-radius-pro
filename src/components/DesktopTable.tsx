@@ -79,7 +79,8 @@ type Props = {
   rowSelection: RowSelectionState;
   onRowSelectionChange: OnChangeFn<RowSelectionState>;
   /* actions */
-  onSetPaid: (id: number) => void;
+  onSetPaid?: (id: number) => void;
+  onUnpay?: (id: number) => void;
   onViewInvoice: (inv: ExternalInvoice) => void;
   onDeleteInvoice: (id: number) => void;
   /* other */
@@ -104,12 +105,14 @@ const DesktopTable: React.FC<Props> = ({
   rowSelection,
   onRowSelectionChange,
   onSetPaid,
+  onUnpay,
   onViewInvoice,
   onDeleteInvoice,
 }) => {
   /* ── column definitions ─────────────────────── */
   const columns = React.useMemo<ColumnDef<ExternalInvoice>[]>(
-    () => [
+    () => {
+      const cols: ColumnDef<ExternalInvoice>[] = [
       {
         accessorKey: "id",
         header: ({ column }) => (
@@ -273,30 +276,45 @@ const DesktopTable: React.FC<Props> = ({
           </Button>
         ),
       },
-      {
-        id: "setPaid",
-        header: "Set as Paid",
-        cell: ({ row }) => (
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={row.original.status === "paid"}
-            onClick={() => onSetPaid(row.original.id)}
-            className={
-              row.original.status === "paid"
-                ? ""
-                : "text-green-600 hover:text-green-700 hover:bg-green-50"
-            }
-          >
-            <Check className="h-4 w-4 mr-1" /> Set
-          </Button>
-        ),
-      },
-      {
+      ];
+
+      if (onSetPaid) {
+        cols.push({
+          id: "setPaid",
+          header: "Set as Paid",
+          cell: ({ row }) => (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={row.original.status === "paid"}
+              onClick={() => onSetPaid(row.original.id)}
+              className={
+                row.original.status === "paid"
+                  ? ""
+                  : "text-green-600 hover:text-green-700 hover:bg-green-50"
+              }
+            >
+              <Check className="h-4 w-4 mr-1" /> Set
+            </Button>
+          ),
+        });
+      }
+
+      cols.push({
         id: 'actions',
         header: 'Actions',
         cell: ({ row }) => (
           <div className="flex space-x-2">
+            {onUnpay && row.original.status === 'paid' ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onUnpay(row.original.id)}
+                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+              >
+                Unpay
+              </Button>
+            ) : null}
             {/* Existing buttons */}
             <Button
               variant="destructive"
@@ -307,9 +325,11 @@ const DesktopTable: React.FC<Props> = ({
             </Button>
           </div>
         ),
-      },
-    ],
-    [onSetPaid, onViewInvoice]
+      });
+
+      return cols;
+    },
+    [onSetPaid, onUnpay, onViewInvoice, onDeleteInvoice]
   );
 
   /* ── table instance ───────────────────────── */

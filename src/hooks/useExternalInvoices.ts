@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../api/client';
-import { toast } from 'react-toastify';
 import { ExternalInvoice } from '@/types/api';
+import { notify } from '@/lib/notify';
+import { MESSAGES } from '@/constants/messages';
 // Removed unused local table states (sorting/rowSelection) from this hook
 
 // interface ExternalInvoice {
@@ -67,6 +68,11 @@ const fetchExternalInvoices = async (
 
 const setInvoiceAsPaid = async (invoiceId: number): Promise<ApiResponse<ExternalInvoice>> => {
     const response = await apiClient.post(`/invoices/external/pay/${invoiceId}`);
+    return response.data;
+};
+
+const unpayInvoice = async (invoiceId: number): Promise<ApiResponse<ExternalInvoice>> => {
+    const response = await apiClient.post(`/invoices/external/unpay/${invoiceId}`);
     return response.data;
 };
 
@@ -145,11 +151,11 @@ export const useExternalInvoices = ({ initialPage, pageSize, search, from, to, s
     const updateInvoiceMutation = useMutation<ApiResponse<ExternalInvoice>, Error, UpdateInvoiceVariables>({
         mutationFn: ({ invoiceId, invoiceData }) => updateInvoice(invoiceId, invoiceData),
         onSuccess: () => {
-            toast.success("Invoice updated successfully");
+            notify.success("Saved", MESSAGES.invoices.external.updated);
             refetch();
         },
         onError: (error) => {
-            toast.error(`Failed to update invoice: ${error instanceof Error ? error.message : 'An unknown error occurred.'}`);
+            notify.error("Save failed", error instanceof Error ? error.message : MESSAGES.common.updateFailed);
         }
 
     });
@@ -167,35 +173,46 @@ export const useExternalInvoices = ({ initialPage, pageSize, search, from, to, s
         onSuccess: (result) => {
             queryClient.invalidateQueries({ queryKey: ['externalInvoices'] });
             if (result.deletedIds.length > 0) {
-                toast.success(`Deleted ${result.deletedIds.length} invoice(s).`);
+                notify.success("Deleted", `Deleted ${result.deletedIds.length} invoice(s).`);
             }
             if (result.failed.length > 0) {
-                toast.error(`Failed to delete ${result.failed.length} invoice(s).`);
+                notify.error("Delete failed", `Failed to delete ${result.failed.length} invoice(s).`);
             }
         },
         onError: (error: Error) => {
-            toast.error(`Failed to delete invoices: ${error.message}`);
+            notify.error("Delete failed", error.message);
         }
     });
 
     const setInvoiceAsPaidMutation = useMutation({
-        mutationFn: setInvoiceAsPaid,
-        onSuccess: () => {
+        mutationFn: (vars: { invoiceId: number; silent?: boolean }) => setInvoiceAsPaid(vars.invoiceId),
+        onSuccess: (_data, vars) => {
             queryClient.invalidateQueries({ queryKey: ['externalInvoices'] });
-            toast.success('Invoice marked as paid successfully');
+            if (!vars?.silent) notify.success("Success", MESSAGES.invoices.external.paid);
         },
         onError: (error: Error) => {
-            toast.error(`Failed to mark invoice as paid: ${error.message}`);
+            notify.error("Action failed", error.message);
+        },
+    });
+
+    const unpayInvoiceMutation = useMutation({
+        mutationFn: (vars: { invoiceId: number; silent?: boolean }) => unpayInvoice(vars.invoiceId),
+        onSuccess: (_data, vars) => {
+            queryClient.invalidateQueries({ queryKey: ['externalInvoices'] });
+            if (!vars?.silent) notify.success("Success", MESSAGES.invoices.external.unpaid);
+        },
+        onError: (error: Error) => {
+            notify.error("Action failed", error.message);
         },
     });
 
     const sendReminderMutation = useMutation({
         mutationFn: sendReminder,
         onSuccess: () => {
-            toast.success('Reminder sent.');
+            notify.success("Sent", MESSAGES.invoices.external.reminderSent);
         },
         onError: (error: Error) => {
-            toast.error(`Failed to send reminder: ${error.message}`);
+            notify.error("Send failed", error.message);
         },
     });
 
@@ -207,6 +224,7 @@ export const useExternalInvoices = ({ initialPage, pageSize, search, from, to, s
         setCurrentPage,
         currentPage,
         setInvoiceAsPaidMutation,
+        unpayInvoiceMutation,
         updateInvoiceMutation,
         deleteInvoiceMutation,
         bulkDeleteInvoicesMutation,

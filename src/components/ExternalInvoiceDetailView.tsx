@@ -6,7 +6,6 @@ import {
   Dialog,
   DialogContent,
   DialogHeader,
-  DialogFooter,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -21,6 +20,8 @@ import { useToast } from "@/components/ui/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/permissions";
 
 type Props = {
   invoice: ExternalInvoice;
@@ -33,6 +34,10 @@ const ExternalInvoiceDetailView: React.FC<Props> = ({
   onClose,
   onSave,
 }) => {
+  const { user } = useAuth();
+  const canPay = can(user, "billing.externalInvoices.pay");
+  const canUnpay = can(user, "billing.externalInvoices.unpay");
+
   const [isEditing, setIsEditing] = useState(false);
   const [editedInvoice, setEditedInvoice] = useState<ExternalInvoice>({
     ...invoice,
@@ -46,7 +51,7 @@ const ExternalInvoiceDetailView: React.FC<Props> = ({
   }, [invoice]);
 
   // lightweight access to mutations via hook (pageSize 1 to avoid heavy work)
-  const { updateInvoiceMutation, setInvoiceAsPaidMutation, sendReminderMutation, refetch } = useExternalInvoices({ initialPage: 1, pageSize: 1, search: "", });
+  const { updateInvoiceMutation, setInvoiceAsPaidMutation, unpayInvoiceMutation, sendReminderMutation, refetch } = useExternalInvoices({ initialPage: 1, pageSize: 1, search: "", });
   const { toast } = useToast();
 
   /* ── handlers ─────────────────────────────── */
@@ -129,9 +134,10 @@ const ExternalInvoiceDetailView: React.FC<Props> = ({
   };
 
   const markPaidLocal = () => {
+    if (!canPay) return;
     const prev = { status: editedInvoice.status, paidAt: (editedInvoice as any).paidAt } as any;
     setEditedInvoice((prevInv: any) => ({ ...prevInv, status: "paid", paidAt: new Date().toISOString() }));
-    setInvoiceAsPaidMutation.mutate(editedInvoice.id, {
+    setInvoiceAsPaidMutation.mutate({ invoiceId: editedInvoice.id, silent: true }, {
       onSuccess: () => {
         refetch();
         toast({
@@ -148,9 +154,10 @@ const ExternalInvoiceDetailView: React.FC<Props> = ({
   };
 
   const markUnpaidLocal = () => {
+    if (!canUnpay) return;
     const prev = { status: editedInvoice.status, paidAt: (editedInvoice as any).paidAt } as any;
     setEditedInvoice((prevInv: any) => ({ ...prevInv, status: "unpaid", paidAt: null }));
-    updateInvoiceMutation.mutate({ invoiceId: editedInvoice.id, invoiceData: { status: 'unpaid', paidAt: null } }, {
+    unpayInvoiceMutation.mutate({ invoiceId: editedInvoice.id, silent: true }, {
       onSuccess: () => {
         refetch();
         toast({
@@ -177,13 +184,17 @@ const ExternalInvoiceDetailView: React.FC<Props> = ({
           </DialogHeader>
           <div className="flex items-center gap-2">
             {editedInvoice.status !== "paid" ? (
-              <Button variant="outline" size="sm" onClick={markPaidLocal}>
-                Mark Paid
-              </Button>
+              canPay ? (
+                <Button variant="outline" size="sm" onClick={markPaidLocal}>
+                  Mark Paid
+                </Button>
+              ) : null
             ) : (
-              <Button variant="outline" size="sm" onClick={markUnpaidLocal}>
-                Mark Unpaid
-              </Button>
+              canUnpay ? (
+                <Button variant="outline" size="sm" onClick={markUnpaidLocal}>
+                  Mark Unpaid
+                </Button>
+              ) : null
             )}
             <Button size="sm" variant="ghost" onClick={() => sendReminderMutation.mutate(editedInvoice.id)}>
               Send Reminder

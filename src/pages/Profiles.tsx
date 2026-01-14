@@ -8,7 +8,6 @@ import { Badge } from "@/components/ui/badge";
 import { Search, Plus, Download, Upload, Clock, Users, Pencil, Network, AlertCircle } from 'lucide-react';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { useToast } from "@/components/ui/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -248,7 +247,6 @@ const ProfilesComponent: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProfile, setEditingProfile] = useState<Profile | undefined>(undefined);
-  const { toast } = useToast();
 
   if (isLoading) {
     return (
@@ -321,27 +319,9 @@ const ProfilesComponent: React.FC = () => {
   ) || [];
 
   const handleSaveProfile = async (profile: Profile) => {
-    try {
-      if (profile.id) {
-        await updateProfile(profile);
-        toast({
-          title: "Profile Updated",
-          description: `Profile "${profile.profileName}" has been updated successfully.`,
-        });
-      } else {
-        await createProfile(profile);
-        toast({
-          title: "Profile Created",
-          description: `Profile "${profile.profileName}" has been created successfully.`,
-        });
-      }
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: `Failed to save profile: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        variant: "destructive",
-      });
-    }
+    // Toasts are handled by the hook.
+    if (profile.id) updateProfile(profile);
+    else createProfile(profile);
   };
 
   const openEditModal = (profile: Profile) => {

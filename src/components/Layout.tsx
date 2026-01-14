@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import Sidebar from './ui/Sidebar/Sidebar';
 import Navbar from './ui/Navbar';
 import Breadcrumb from '../components/ui/Breadcrumbs';
-import { ToastContainer } from 'react-toastify';
 import { Outlet } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 
@@ -11,12 +10,6 @@ interface DashboardLayoutProps {
 }
 
 const Layout: React.FC<DashboardLayoutProps> = ({ }) => {
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-
-  const toggleSidebar = () => {
-    setIsSidebarCollapsed((prev) => !prev);
-  };
-
   return (
     <div className="min-h-screen bg-gray-100">
       {/* Navbar */}
@@ -39,9 +32,6 @@ const Layout: React.FC<DashboardLayoutProps> = ({ }) => {
           <Outlet/>
         </main>
       </div>
-
-      {/* Toast Notifications */}
-      <ToastContainer />
     </div>
   );
 };
