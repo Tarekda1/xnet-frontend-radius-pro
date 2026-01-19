@@ -10,6 +10,7 @@ import { useAuth } from "@/context/AuthContext";
 import { can } from "@/lib/permissions";
 import { notify } from "@/lib/notify";
 import { createReseller, createResellerLogin, fetchResellerLedger, fetchResellers, fundReseller, type ResellerDto, type ResellerLoginDto } from "@/api/resellers";
+import TableRowActions from "@/components/TableRowActions";
 
 export default function ResellersPage() {
   const { user } = useAuth();
@@ -164,13 +165,13 @@ export default function ResellersPage() {
                     <TableCell>{r.name}</TableCell>
                     <TableCell>{r.isActive ? "active" : "inactive"}</TableCell>
                     <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button variant="outline" size="sm" onClick={() => openCreateLogin(r)}>
-                          Create login
-                        </Button>
-                        <Button variant="outline" size="sm" onClick={() => onFund(r)} disabled={!canFund}>
-                          Fund
-                        </Button>
+                      <div className="flex justify-end">
+                        <TableRowActions
+                          actions={[
+                            { label: "Create login", onClick: () => openCreateLogin(r) },
+                            { label: "Fund", onClick: () => onFund(r), disabled: !canFund },
+                          ]}
+                        />
                       </div>
                     </TableCell>
                   </TableRow>

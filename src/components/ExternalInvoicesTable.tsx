@@ -9,8 +9,6 @@ import {
 
 import { useExternalInvoices } from "@/hooks/useExternalInvoices";
 
-import Loader from "@/components/ui/loader";
-import Alert from "@/components/ui/Alert";
 // import { Button } from "@/components/ui/button"; // not used here
 import ExternalInvoiceCard from "@/components/ExternalInvoiceCard";
 import ExternalInvoiceDetailView from "@/components/ExternalInvoiceDetailView";
@@ -21,6 +19,11 @@ import { useToast } from "@/components/ui/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import { useAuth } from "@/context/AuthContext";
 import { can } from "@/lib/permissions";
+import EmptyState from "@/components/EmptyState";
+import { FileText } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import TablePager from "@/components/TablePager";
+import QueryState from "@/components/QueryState";
 
 const initialPage = 1;
 
@@ -175,19 +178,39 @@ const ExternalInvoicesTable: React.FC<Props> = ({
         setSearchParams(next, { replace: true } as any);
     }, [currentPage, sorting]);
 
-    /* ── guards ────────────────────────────────────────────── */
-    if (isLoading) return <Loader />;
-    if (error) return <Alert type="error" message={String(error)} />;
-
     const rows = data?.data.data ?? [];
     const activeStatus = searchParams.get('status');
     const filteredRows = activeStatus && activeStatus !== 'all'
         ? rows.filter((r) => r.status === activeStatus)
         : rows;
     const pages = data?.data.totalPages ?? 1;
+    const computedTotalItems = totalItems ?? data?.data.total ?? 0;
 
     return (
-        <>
+        <QueryState
+            isLoading={isLoading}
+            error={error}
+            isEmpty={filteredRows.length === 0}
+            onRetry={() => refetch()}
+            loading={
+                <div className="space-y-3">
+                    <Skeleton className="h-10 w-full" />
+                    <Skeleton className="h-12 w-full" />
+                    <Skeleton className="h-12 w-full" />
+                    <Skeleton className="h-12 w-full" />
+                </div>
+            }
+            empty={
+                <div className="p-4">
+                    <EmptyState
+                        title="No invoices found"
+                        description="Try changing filters or search terms."
+                        icon={FileText}
+                    />
+                </div>
+            }
+            errorTitle="Failed to load invoices"
+        >
             {/* desktop table */}
             <div className="hidden md:block rounded-md border">
                 <DesktopTable
@@ -195,12 +218,13 @@ const ExternalInvoicesTable: React.FC<Props> = ({
                     currentPage={currentPage}
                     totalPages={pages}
                     pageSize={pageSize}
+                    hidePager={true}
                     onNextPage={() => currentPage < pages && setCurrentPage((p) => p + 1)}
                     onPrevPage={() => currentPage > 1 && setCurrentPage((p) => p - 1)}
                     onPageSizeChange={onPageSizeChange || (() => {})}
                     onFirstPage={onFirstPage || (() => setCurrentPage(1))}
                     onLastPage={onLastPage || (() => setCurrentPage(pages))}
-                    totalItems={totalItems || data?.data.total || 0}
+                    totalItems={computedTotalItems}
                     sorting={sorting}
                     onSortingChange={onSortingChange}
                     rowSelection={rowSelection}
@@ -225,6 +249,21 @@ const ExternalInvoicesTable: React.FC<Props> = ({
                 ))}
             </div>
 
+            <TablePager
+                currentPage={currentPage}
+                totalPages={pages}
+                totalItems={computedTotalItems}
+                pageSize={pageSize}
+                pageSizeOptions={[10, 20, 50, 100, 200, 500]}
+                onPageChange={(p) => setCurrentPage(p)}
+                onPageSizeChange={(n) => {
+                    onPageSizeChange?.(n);
+                    setCurrentPage(1);
+                }}
+                isDisabled={isLoading}
+                noun="invoices"
+            />
+
             {selectedInvoice && (
                 <ExternalInvoiceDetailView
                     invoice={selectedInvoice}
@@ -247,7 +286,7 @@ const ExternalInvoicesTable: React.FC<Props> = ({
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
-        </>
+        </QueryState>
     );
 };
 

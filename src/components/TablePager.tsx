@@ -1,0 +1,109 @@
+import React from "react";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
+
+type Props = {
+  /** 1-based */
+  currentPage: number;
+  totalPages: number;
+  totalItems: number;
+  pageSize: number;
+  pageSizeOptions?: number[];
+  onPageChange: (page: number) => void;
+  onPageSizeChange?: (size: number) => void;
+  isDisabled?: boolean;
+  noun?: string; // "results" | "items" | "users"
+};
+
+export default function TablePager({
+  currentPage,
+  totalPages,
+  totalItems,
+  pageSize,
+  pageSizeOptions = [10, 20, 50, 100, 200, 500],
+  onPageChange,
+  onPageSizeChange,
+  isDisabled,
+  noun = "results",
+}: Props) {
+  const safeTotalPages = Math.max(1, Number.isFinite(totalPages) ? totalPages : 1);
+  const safePage = Math.min(Math.max(1, currentPage || 1), safeTotalPages);
+
+  const from = totalItems === 0 ? 0 : (safePage - 1) * pageSize + 1;
+  const to = totalItems === 0 ? 0 : Math.min(safePage * pageSize, totalItems);
+
+  return (
+    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 py-4">
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        {onPageSizeChange ? (
+          <div className="flex items-center gap-1">
+            <Label htmlFor="pageSize" className="text-sm">
+              Show:
+            </Label>
+            <Select value={pageSize.toString()} onValueChange={(value) => onPageSizeChange(Number(value))}>
+              <SelectTrigger className="h-8 w-[80px]">
+                <SelectValue defaultValue={pageSize} />
+              </SelectTrigger>
+              <SelectContent side="top">
+                {pageSizeOptions.map((size) => (
+                  <SelectItem key={size} value={size.toString()}>
+                    {size}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
+
+        <span className="text-sm text-muted-foreground">
+          Showing {from} to {to} of {totalItems} {noun}
+        </span>
+      </div>
+
+      <div className="flex items-center space-x-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onPageChange(1)}
+          disabled={safePage === 1 || isDisabled}
+          className="hidden sm:flex"
+        >
+          <ChevronsLeft className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onPageChange(safePage - 1)}
+          disabled={safePage === 1 || isDisabled}
+        >
+          <ChevronLeft className="h-4 w-4 sm:mr-2" />
+          <span className="hidden sm:inline">Previous</span>
+        </Button>
+        <div className="flex items-center gap-1 text-sm font-medium">
+          Page {safePage} of {safeTotalPages}
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onPageChange(safePage + 1)}
+          disabled={safePage === safeTotalPages || isDisabled}
+        >
+          <span className="hidden sm:inline">Next</span>
+          <ChevronRight className="h-4 w-4 sm:ml-2" />
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onPageChange(safeTotalPages)}
+          disabled={safePage === safeTotalPages || isDisabled}
+          className="hidden sm:flex"
+        >
+          <ChevronsRight className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+

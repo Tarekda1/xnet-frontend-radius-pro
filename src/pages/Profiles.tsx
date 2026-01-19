@@ -5,13 +5,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Search, Plus, Download, Upload, Clock, Users, Pencil, Network, AlertCircle } from 'lucide-react';
+import { Search, Plus, Download, Upload, Clock, Users, Pencil, Network } from 'lucide-react';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Skeleton } from "@/components/ui/skeleton";
+import SearchBar from "@/components/SearchBar";
+import QueryState from "@/components/QueryState";
 
 const ProfileCard: React.FC<{ profile: Profile; onEdit: () => void }> = ({ profile, onEdit }) => {
   const formatQuota = (quota: string) => {
@@ -248,72 +250,6 @@ const ProfilesComponent: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProfile, setEditingProfile] = useState<Profile | undefined>(undefined);
 
-  if (isLoading) {
-    return (
-      <div className="w-full py-6 space-y-6">
-        <header className="flex flex-col md:flex-row justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <Skeleton className="h-10 w-10 rounded-lg" />
-            <div className="space-y-2">
-              <Skeleton className="h-8 w-48" />
-              <Skeleton className="h-4 w-64" />
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Skeleton className="h-10 w-[200px]" />
-            <Skeleton className="h-10 w-32" />
-          </div>
-        </header>
-
-        <Card>
-          <CardHeader>
-            <Skeleton className="h-6 w-48" />
-            <Skeleton className="h-4 w-64" />
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {[1, 2, 3].map((i) => (
-                <Card key={i} className="overflow-hidden">
-                  <Skeleton className="h-32 w-full" />
-                  <div className="p-4 space-y-4">
-                    <Skeleton className="h-4 w-3/4" />
-                    <Skeleton className="h-4 w-1/2" />
-                    <Skeleton className="h-4 w-2/3" />
-                  </div>
-                </Card>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="w-full py-6 space-y-6">
-        <div className="flex items-center justify-center h-[50vh]">
-          <Card className="w-full max-w-md">
-            <CardContent className="pt-6">
-              <div className="flex flex-col items-center gap-4 text-center">
-                <div className="p-3 rounded-full bg-red-100">
-                  <AlertCircle className="h-6 w-6 text-red-600" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold">Error Loading Profiles</h3>
-                  <p className="text-sm text-muted-foreground mt-1">{error.message}</p>
-                </div>
-                <Button variant="outline" onClick={() => window.location.reload()}>
-                  Try Again
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    );
-  }
-
   const filteredProfiles = data?.data.filter(profile =>
     profile.profileName.toLowerCase().includes(searchTerm.toLowerCase())
   ) || [];
@@ -351,49 +287,79 @@ const ProfilesComponent: React.FC = () => {
         )}
       />
 
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div>
-              <CardTitle>Available Profiles</CardTitle>
-              <CardDescription>
-                {filteredProfiles.length} profile{filteredProfiles.length !== 1 ? 's' : ''} found
-              </CardDescription>
-            </div>
-            <div className="relative w-full sm:w-64">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-              <Input
-                placeholder="Search profiles..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredProfiles.map(profile => (
-              <ProfileCard
-                key={profile.id}
-                profile={profile}
-                onEdit={() => openEditModal(profile)}
-              />
-            ))}
-          </div>
-          {filteredProfiles.length === 0 && (
-            <div className="text-center py-12">
-              <div className="p-3 rounded-full bg-muted inline-block mb-4">
-                <Search className="h-6 w-6 text-muted-foreground" />
+      <QueryState
+        isLoading={isLoading}
+        error={error}
+        isEmpty={!data?.data?.length}
+        onRetry={() => window.location.reload()}
+        loading={
+          <Card>
+            <CardHeader>
+              <Skeleton className="h-6 w-48" />
+              <Skeleton className="h-4 w-64" />
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {[1, 2, 3].map((i) => (
+                  <Card key={i} className="overflow-hidden">
+                    <Skeleton className="h-32 w-full" />
+                    <div className="p-4 space-y-4">
+                      <Skeleton className="h-4 w-3/4" />
+                      <Skeleton className="h-4 w-1/2" />
+                      <Skeleton className="h-4 w-2/3" />
+                    </div>
+                  </Card>
+                ))}
               </div>
-              <h3 className="text-lg font-semibold">No profiles found</h3>
-              <p className="text-sm text-muted-foreground mt-1">
-                {searchTerm ? 'Try adjusting your search' : 'Create your first profile'}
-              </p>
+            </CardContent>
+          </Card>
+        }
+        errorTitle="Error loading profiles"
+        emptyTitle="No profiles yet"
+        emptyDescription="Create your first profile plan."
+      >
+        <Card>
+          <CardHeader>
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div>
+                <CardTitle>Available Profiles</CardTitle>
+                <CardDescription>
+                  {filteredProfiles.length} profile{filteredProfiles.length !== 1 ? 's' : ''} found
+                </CardDescription>
+              </div>
+              <div className="w-full sm:w-64">
+                <SearchBar
+                  currentSearchTerm={searchTerm}
+                  onSearch={(term) => setSearchTerm(term)}
+                  placeholder="Search profiles..."
+                />
+              </div>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredProfiles.map(profile => (
+                <ProfileCard
+                  key={profile.id}
+                  profile={profile}
+                  onEdit={() => openEditModal(profile)}
+                />
+              ))}
+            </div>
+            {filteredProfiles.length === 0 ? (
+              <div className="text-center py-12">
+                <div className="p-3 rounded-full bg-muted inline-block mb-4">
+                  <Search className="h-6 w-6 text-muted-foreground" />
+                </div>
+                <h3 className="text-lg font-semibold">No profiles found</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {searchTerm ? 'Try adjusting your search' : 'Create your first profile'}
+                </p>
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+      </QueryState>
 
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <ProfileFormModal

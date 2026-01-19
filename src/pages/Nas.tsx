@@ -19,7 +19,6 @@ import {
 } from "@tanstack/react-table";
 import useNas from '../hooks/useNas';
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Nas } from '../types/api'; // Make sure to define this type
 import { ArrowUpDown, Edit, MoreHorizontal, Plus, RefreshCw, Server } from 'lucide-react';
 import PageHeader from "@/components/PageHeader";
@@ -31,6 +30,11 @@ import {
     DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import TablePager from "@/components/TablePager";
+import TableToolbar from "@/components/TableToolbar";
+import TableRowActions from "@/components/TableRowActions";
+import SearchBar from "@/components/SearchBar";
+import QueryState from "@/components/QueryState";
 
 const columns: ColumnDef<Nas>[] = [
     {
@@ -183,9 +187,6 @@ const NasComponent: React.FC = () => {
         console.log("Add NAS clicked");
     };
 
-    if (isLoading) return <div className="flex justify-center items-center h-screen">Loading...</div>;
-    if (error) return <div className="text-red-500 text-center">Error: {error.message}</div>;
-
     return (
         <div className="w-full py-5 space-y-4">
             <PageHeader
@@ -194,17 +195,17 @@ const NasComponent: React.FC = () => {
                 icon={Server}
                 rightContent={(
                     <div className="hidden md:block">
-                        <Input
+                        <SearchBar
+                            currentSearchTerm={globalFilter ?? ""}
+                            onSearch={(term) => setGlobalFilter(term)}
                             placeholder="Search NAS..."
-                            value={globalFilter ?? ''}
-                            onChange={(event) => setGlobalFilter(String(event.target.value))}
-                            className="max-w-sm bg-white/20 border-white/30 text-white placeholder:text-white/80"
+                            className="max-w-sm"
                         />
                     </div>
                 )}
                 actions={(
                     <div className="flex space-x-2">
-                        <Button onClick={handleRefresh} className="bg-white/20 border-white/30 text-white hover:bg-white/30">
+                        <Button onClick={handleRefresh} variant="outline">
                             <RefreshCw className="h-4 w-4 mr-2" />
                             Refresh
                         </Button>
@@ -215,101 +216,98 @@ const NasComponent: React.FC = () => {
                     </div>
                 )}
             />
-            <div className="flex items-center justify-between py-2 md:hidden">
-                <Input
-                    placeholder="Search NAS..."
-                    value={globalFilter ?? ''}
-                    onChange={(event) => setGlobalFilter(String(event.target.value))}
-                    className="max-w-sm"
-                />
-            </div>
-            <div className="rounded-md border shadow-sm overflow-hidden hidden md:block">
-                <Table>
-                    <TableHeader>
-                        {table.getHeaderGroups().map((headerGroup) => (
-                            <TableRow key={headerGroup.id} className="bg-gray-100">
-                                {headerGroup.headers.map((header) => (
-                                    <TableHead key={header.id} className="font-bold text-gray-700">
-                                        {header.isPlaceholder
-                                            ? null
-                                            : flexRender(
-                                                header.column.columnDef.header,
-                                                header.getContext()
-                                            )}
-                                    </TableHead>
-                                ))}
-                            </TableRow>
-                        ))}
-                    </TableHeader>
-                    <TableBody>
-                        {table.getRowModel().rows?.length ? (
-                            table.getRowModel().rows.map((row, index) => (
-                                <TableRow
-                                    key={row.id}
-                                    data-state={row.getIsSelected() && "selected"}
-                                    className={`
-                                        ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
-                                        hover:bg-blue-50 transition-colors duration-200 h-2
-                                    `}
-                                >
-                                    {row.getVisibleCells().map((cell) => (
-                                        <TableCell key={cell.id}>
-                                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                                        </TableCell>
+
+            <QueryState
+                isLoading={isLoading}
+                error={error}
+                isEmpty={(data?.data?.nasEntries ?? []).length === 0}
+                onRetry={() => refetch()}
+                loading={<div className="flex justify-center items-center h-[40vh]">Loading…</div>}
+                errorTitle="Failed to load NAS"
+                emptyTitle="No NAS entries"
+                emptyDescription="Create your first NAS or adjust your search."
+            >
+                <div className="flex items-center justify-between py-2 md:hidden">
+                    <SearchBar
+                        currentSearchTerm={globalFilter ?? ""}
+                        onSearch={(term) => setGlobalFilter(term)}
+                        placeholder="Search NAS..."
+                        className="max-w-sm"
+                    />
+                </div>
+                <div className="rounded-md border shadow-sm overflow-hidden hidden md:block">
+                    <TableToolbar
+                        label={`NAS: ${table.getFilteredRowModel().rows.length.toLocaleString()} • Page ${table.getState().pagination.pageIndex + 1} / ${table.getPageCount()}`}
+                    />
+                    <Table>
+                        <TableHeader>
+                            {table.getHeaderGroups().map((headerGroup) => (
+                                <TableRow key={headerGroup.id} className="bg-gray-100">
+                                    {headerGroup.headers.map((header) => (
+                                        <TableHead key={header.id} className="font-bold text-gray-700">
+                                            {header.isPlaceholder
+                                                ? null
+                                                : flexRender(
+                                                    header.column.columnDef.header,
+                                                    header.getContext()
+                                                )}
+                                        </TableHead>
                                     ))}
-                                    <TableCell className="text-right">
-                                        <DropdownMenu>
-                                            <DropdownMenuTrigger asChild>
-                                                <Button variant="ghost" className="h-8 w-8 p-0">
-                                                    <span className="sr-only">Open menu</span>
-                                                    <MoreHorizontal className="h-4 w-4" />
-                                                </Button>
-                                            </DropdownMenuTrigger>
-                                            <DropdownMenuContent align="end">
-                                                <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                                <DropdownMenuItem onClick={() => console.log("Edit NAS", row.original)}>
-                                                    <Edit className="mr-2 h-4 w-4" />
-                                                    Edit
-                                                </DropdownMenuItem>
-                                                {/* Add more actions as needed */}
-                                            </DropdownMenuContent>
-                                        </DropdownMenu>
+                                </TableRow>
+                            ))}
+                        </TableHeader>
+                        <TableBody>
+                            {table.getRowModel().rows?.length ? (
+                                table.getRowModel().rows.map((row, index) => (
+                                    <TableRow
+                                        key={row.id}
+                                        data-state={row.getIsSelected() && "selected"}
+                                        className={`
+                                            ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
+                                            hover:bg-blue-50 transition-colors duration-200 h-2
+                                        `}
+                                    >
+                                        {row.getVisibleCells().map((cell) => (
+                                            <TableCell key={cell.id}>
+                                                {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                            </TableCell>
+                                        ))}
+                                        <TableCell className="text-right">
+                                            <TableRowActions
+                                                actions={[
+                                                    { label: "Edit", icon: Edit, onClick: () => console.log("Edit NAS", row.original) },
+                                                ]}
+                                            />
+                                        </TableCell>
+                                    </TableRow>
+                                ))
+                            ) : (
+                                <TableRow>
+                                    <TableCell colSpan={columns.length} className="h-24 text-center">
+                                        No results.
                                     </TableCell>
                                 </TableRow>
-                            ))
-                        ) : (
-                            <TableRow>
-                                <TableCell colSpan={columns.length} className="h-24 text-center">
-                                    No results.
-                                </TableCell>
-                            </TableRow>
-                        )}
-                    </TableBody>
-                </Table>
-            </div>
-            <div className='md:hidden'>
-                {table.getRowModel().rows.map((row) => (
-                    <NasCard key={row.id} nas={row.original} />
-                ))}
-            </div>
-            <div className="flex items-center justify-end space-x-2 py-4">
-                <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => table.previousPage()}
-                    disabled={!table.getCanPreviousPage()}
-                >
-                    Previous
-                </Button>
-                <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => table.nextPage()}
-                    disabled={!table.getCanNextPage()}
-                >
-                    Next
-                </Button>
-            </div>
+                            )}
+                        </TableBody>
+                    </Table>
+                </div>
+                <div className='md:hidden'>
+                    {table.getRowModel().rows.map((row) => (
+                        <NasCard key={row.id} nas={row.original} />
+                    ))}
+                </div>
+                <TablePager
+                    currentPage={table.getState().pagination.pageIndex + 1}
+                    totalPages={table.getPageCount()}
+                    totalItems={table.getFilteredRowModel().rows.length}
+                    pageSize={table.getState().pagination.pageSize}
+                    pageSizeOptions={[10, 20, 50, 100, 200]}
+                    onPageChange={(p) => table.setPageIndex(p - 1)}
+                    onPageSizeChange={(n) => table.setPageSize(n)}
+                    isDisabled={isLoading}
+                    noun="items"
+                />
+            </QueryState>
         </div>
     );
 };

@@ -139,7 +139,7 @@ const Analytics: React.FC = () => {
         icon={Activity}
         rightContent={(
           <Select value={timeRange} onValueChange={setTimeRange}>
-            <SelectTrigger className="w-[180px] bg-white/20 border-white/30 text-white">
+            <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="Select time range" />
             </SelectTrigger>
             <SelectContent>
@@ -152,11 +152,11 @@ const Analytics: React.FC = () => {
         )}
         actions={(
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handleRefresh} disabled={chartLoading || metricsLoading} className="bg-white/20 border-white/30 text-white hover:bg-white/30">
+            <Button variant="outline" size="sm" onClick={handleRefresh} disabled={chartLoading || metricsLoading}>
               <RefreshCw className={`mr-2 h-4 w-4 ${(chartLoading || metricsLoading) ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
-            <Button variant="outline" size="sm" className="bg-white/20 border-white/30 text-white hover:bg-white/30">
+            <Button variant="outline" size="sm">
               <Download className="mr-2 h-4 w-4" />
               Export
             </Button>

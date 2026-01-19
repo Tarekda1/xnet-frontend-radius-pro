@@ -24,6 +24,7 @@ import {
   HardDrive
 } from 'lucide-react';
 import { useOnlineMetrics } from '@/hooks/useOnlineMetrics';
+import PageHeader from "@/components/PageHeader";
 
 const FeatureCard = ({ 
   title, 
@@ -228,13 +229,11 @@ const Home: React.FC = () => {
 
   return (
     <div className="container space-y-8 p-y-8 animate-in fade-in-50">
-      {/* Header Section */}
-      <div className="space-y-2">
-        <h1 className="text-3xl font-bold tracking-tight">Welcome to RADIUS Pro</h1>
-        <p className="text-muted-foreground">
-          Your complete RADIUS server management solution. Monitor, manage, and optimize your network access.
-        </p>
-      </div>
+      <PageHeader
+        title="Welcome to RADIUS Pro"
+        subtitle="Monitor, manage, and optimize your network access."
+        icon={Shield}
+      />
 
       {/* Quick Stats Grid */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

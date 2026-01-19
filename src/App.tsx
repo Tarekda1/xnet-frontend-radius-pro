@@ -3,9 +3,6 @@ import { BrowserRouter as Router, Route, Routes, Navigate, useLocation } from 'r
 import { QueryClientProvider } from '@tanstack/react-query';
 import queryClient from './api/queryClient';
 import Layout from './components/Layout';
-import Dashboard from './pages/Dashboard';
-import Setting from './pages/Setting';
-import About from './pages/About';
 import { SidebarProvider } from './components/ui/Sidebar/Sidebar.context';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
@@ -14,8 +11,10 @@ import { Helmet } from 'react-helmet';
 import { Loader } from 'lucide-react';
 import { websocketService } from './services/websocket';
 import { Toaster } from './components/ui/toaster';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 const Home = React.lazy(() => import('./pages/Home'));
+const Dashboard = React.lazy(() => import('./pages/Dashboard'));
 const UsersComponent = React.lazy(() => import('./pages/Users'));
 const ProfilesComponent = React.lazy(() => import('./pages/Profiles'));
 const OnlineUsersComponent = React.lazy(() => import('./pages/OnlineUsers'));
@@ -32,6 +31,10 @@ const ExpensesComponent = React.lazy(() => import('./pages/Expenses'));
 const AccessComponent = React.lazy(() => import('./pages/Access'));
 const ResellersComponent = React.lazy(() => import('./pages/Resellers'));
 const ChangePasswordComponent = React.lazy(() => import('./pages/ChangePassword'));
+const NotFoundComponent = React.lazy(() => import('./pages/NotFound'));
+const ForbiddenComponent = React.lazy(() => import('./pages/Forbidden'));
+const Setting = React.lazy(() => import('./pages/Setting'));
+const About = React.lazy(() => import('./pages/About'));
 
 const ProtectedRoute: React.FC<{ element: React.ReactElement }> = ({ element }) => {
   const { isAuthenticated, user } = useAuth();
@@ -63,6 +66,7 @@ const AppRoutes: React.FC = () => {
               <Route path="/" element={<ProtectedRoute element={<Layout />} />}>
                 <Route index element={<ProtectedRoute element={<Home />} />} />
                 <Route path="dashboard" element={<ProtectedRoute element={<Dashboard />} />} />
+                <Route path="forbidden" element={<ProtectedRoute element={<ForbiddenComponent />} />} />
                 <Route path="auth-users" element={<ProtectedRoute element={<AuthUsers />} />} />
                 <Route path="settings" element={<ProtectedRoute element={<Setting />} />} />
                 <Route path="about" element={<ProtectedRoute element={<About />} />} />
@@ -79,6 +83,7 @@ const AppRoutes: React.FC = () => {
                 <Route path="/collections" element={<ProtectedRoute element={<CollectionsComponent />} />} />
                 <Route path="expenses" element={<ProtectedRoute element={<ExpensesComponent />} />} />
                 <Route path="/admin/resellers" element={<ProtectedRoute element={<ResellersComponent />} />} />
+                <Route path="*" element={<ProtectedRoute element={<NotFoundComponent />} />} />
               </Route>
             </Routes>
           </AuthProvider>
@@ -120,7 +125,9 @@ const App: React.FC = () => {
         <meta name="description" content="Xnet Radius Server" />
       </Helmet>
       <QueryClientProvider client={queryClient}>
-        <AppRoutes />
+        <ErrorBoundary>
+          <AppRoutes />
+        </ErrorBoundary>
       </QueryClientProvider>
       <ToastContainer />
       <Toaster />

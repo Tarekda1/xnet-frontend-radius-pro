@@ -1,6 +1,8 @@
 import { apiClient } from '@/api/client';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { notify } from '@/lib/notify';
+import { MESSAGES } from '@/constants/messages';
 
 export interface OnlineUser {
   session_username: string;
@@ -54,6 +56,12 @@ const resetDailyQuota = async ({ username }: { username: string }): Promise<Rese
   return response.data;
 };
 
+const resetMacAddress = async ({ username }: { username: string }): Promise<ResetDailyQuotaResponse> => {
+  // endpoint used in Users module
+  const response = await apiClient.post<ResetDailyQuotaResponse>(`/radius/users/resetAddress/${username}`);
+  return response.data;
+};
+
 const disconnectSession = async ({
   username,
   ip,
@@ -90,19 +98,33 @@ export const useOnlineUsers = (search = "", initialPage: number = 1, initialLimi
     onSuccess: () => {
       // Optionally, you can invalidate queries that need updating, e.g., the online users list
       queryClient.invalidateQueries({ queryKey: ['onlineUsers'] });
+      notify.success("Success", MESSAGES.users.quotaReset);
     },
+    onError: (error) => notify.error("Action failed", error.message),
+  });
+
+  const resetMacAddressMutation = useMutation<ResetDailyQuotaResponse, Error, { username: string }>({
+    mutationFn: resetMacAddress,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['onlineUsers'] });
+      notify.success("Success", MESSAGES.users.macReset);
+    },
+    onError: (error) => notify.error("Action failed", error.message),
   });
 
   const disconnectUserSessionMutation = useMutation<DisconnectSessionResponse, Error, { username: string; ip: string; code: string; port?: number }>({
     mutationFn: disconnectSession,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['onlineUsers'] });
+      notify.success("Success", MESSAGES.onlineUsers.disconnected);
     },
+    onError: (error) => notify.error("Action failed", error.message),
   });
 
   return {
     ...userQuery,
     resetDailyUserQuotaMutation,
+    resetMacAddressMutation,
     disconnectUserSessionMutation,
     page,
     setPage,

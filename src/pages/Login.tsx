@@ -7,6 +7,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Loader2, Lock, User } from 'lucide-react';
 import Alert from '@/components/ui/Alert';
+import PageHeader from "@/components/PageHeader";
 
 const Login: React.FC = () => {
   const [username, setUsername] = useState('');
@@ -39,7 +40,15 @@ const Login: React.FC = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-50 p-4">
-      <Card className="w-full max-w-md shadow-lg border-0">
+      <div className="w-full max-w-md space-y-4">
+        <PageHeader
+          title="Sign in"
+          subtitle="Enter your credentials to access your account"
+          icon={Lock}
+          className="bg-white"
+        />
+
+      <Card className="w-full shadow-lg border-0">
         <CardHeader className="space-y-1">
           <div className="flex items-center justify-center mb-4">
             <div className="p-3 rounded-full bg-blue-100">
@@ -114,6 +123,7 @@ const Login: React.FC = () => {
           </div>
         </CardFooter>
       </Card>
+      </div>
     </div>
   );
 };

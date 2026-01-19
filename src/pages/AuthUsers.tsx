@@ -19,16 +19,8 @@ import {
 } from "@tanstack/react-table";
 import useAuthUsers from '../hooks/useAuthUsers';
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { AuthUser } from '../types/api';
-import { ArrowUpDown, Edit, MoreHorizontal, Plus, RefreshCw, Trash2, Users, Search, AlertCircle } from 'lucide-react';
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuLabel,
-    DropdownMenuTrigger
-} from "@/components/ui/dropdown-menu";
+import { ArrowUpDown, Edit, Plus, RefreshCw, Trash2, Users, Search } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import AddAuthUserModal from '@/components/AddAuthUserModal';
 import { AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -38,6 +30,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import PageHeader from "@/components/PageHeader";
 import { MESSAGES } from "@/constants/messages";
 import { notify } from "@/lib/notify";
+import TablePager from "@/components/TablePager";
+import TableToolbar from "@/components/TableToolbar";
+import TableRowActions from "@/components/TableRowActions";
+import SearchBar from "@/components/SearchBar";
+import QueryState from "@/components/QueryState";
 
 const UserCard: React.FC<{ user: AuthUser; onEdit: () => void; onDelete: () => void }> = ({ user, onEdit, onDelete }) => {
     return (
@@ -232,71 +229,6 @@ const AuthUsersComponent: React.FC = () => {
         refetch();
     };
 
-    if (isLoading) {
-        return (
-            <div className="w-full py-6 space-y-6">
-                <header className="flex flex-col md:flex-row justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                        <Skeleton className="h-10 w-10 rounded-lg" />
-                        <div className="space-y-2">
-                            <Skeleton className="h-8 w-48" />
-                            <Skeleton className="h-4 w-64" />
-                        </div>
-                    </div>
-                    <div className="flex gap-2">
-                        <Skeleton className="h-10 w-[200px]" />
-                        <Skeleton className="h-10 w-32" />
-                    </div>
-                </header>
-
-                <Card>
-                    <CardHeader>
-                        <Skeleton className="h-6 w-48" />
-                        <Skeleton className="h-4 w-64" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="space-y-4">
-                            {[1, 2, 3].map((i) => (
-                                <Card key={i} className="overflow-hidden">
-                                    <div className="p-4 space-y-4">
-                                        <Skeleton className="h-4 w-3/4" />
-                                        <Skeleton className="h-4 w-1/2" />
-                                        <Skeleton className="h-4 w-2/3" />
-                                    </div>
-                                </Card>
-                            ))}
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
-        );
-    }
-
-    if (error) {
-        return (
-            <div className="w-full py-6 space-y-6">
-                <div className="flex items-center justify-center h-[50vh]">
-                    <Card className="w-full max-w-md">
-                        <CardContent className="pt-6">
-                            <div className="flex flex-col items-center gap-4 text-center">
-                                <div className="p-3 rounded-full bg-red-100">
-                                    <AlertCircle className="h-6 w-6 text-red-600" />
-                                </div>
-                                <div>
-                                    <h3 className="text-lg font-semibold">Error Loading Users</h3>
-                                    <p className="text-sm text-muted-foreground mt-1">{error.message}</p>
-                                </div>
-                                <Button variant="outline" onClick={() => window.location.reload()}>
-                                    Try Again
-                                </Button>
-                            </div>
-                        </CardContent>
-                    </Card>
-                </div>
-            </div>
-        );
-    }
-
     return (
         <div className="w-full py-6 space-y-6">
             <PageHeader
@@ -317,6 +249,36 @@ const AuthUsersComponent: React.FC = () => {
                 )}
             />
 
+            <QueryState
+                isLoading={isLoading}
+                error={error}
+                isEmpty={!data?.data?.users?.length}
+                onRetry={() => refetch()}
+                loading={
+                    <Card>
+                        <CardHeader>
+                            <Skeleton className="h-6 w-48" />
+                            <Skeleton className="h-4 w-64" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="space-y-4">
+                                {[1, 2, 3].map((i) => (
+                                    <Card key={i} className="overflow-hidden">
+                                        <div className="p-4 space-y-4">
+                                            <Skeleton className="h-4 w-3/4" />
+                                            <Skeleton className="h-4 w-1/2" />
+                                            <Skeleton className="h-4 w-2/3" />
+                                        </div>
+                                    </Card>
+                                ))}
+                            </div>
+                        </CardContent>
+                    </Card>
+                }
+                errorTitle="Error loading users"
+                emptyTitle="No users found"
+                emptyDescription="Try adjusting your search or create a new user."
+            >
             <Card>
                 <CardHeader>
                     <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -326,13 +288,11 @@ const AuthUsersComponent: React.FC = () => {
                                 {data?.data?.total} total users
                             </CardDescription>
                         </div>
-                        <div className="relative w-full sm:w-64">
-                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-                            <Input
+                        <div className="w-full sm:w-64">
+                            <SearchBar
+                                currentSearchTerm={globalFilter ?? ""}
+                                onSearch={(term) => setGlobalFilter(term)}
                                 placeholder="Search users..."
-                                value={globalFilter ?? ''}
-                                onChange={(event) => setGlobalFilter(String(event.target.value))}
-                                className="pl-9"
                             />
                         </div>
                     </div>
@@ -340,6 +300,9 @@ const AuthUsersComponent: React.FC = () => {
                 <CardContent>
                     <div className="w-full overflow-x-auto rounded-md border shadow-sm">
                         <div className="min-w-[768px] hidden md:block">
+                            <TableToolbar
+                                label={`Users: ${table.getFilteredRowModel().rows.length.toLocaleString()} • Page ${table.getState().pagination.pageIndex + 1} / ${table.getPageCount()}`}
+                            />
                             <Table>
                                 <TableHeader>
                                     {table.getHeaderGroups().map((headerGroup) => (
@@ -371,33 +334,19 @@ const AuthUsersComponent: React.FC = () => {
                                                     </TableCell>
                                                 ))}
                                                 <TableCell className="text-right">
-                                                    <DropdownMenu>
-                                                        <DropdownMenuTrigger asChild>
-                                                            <Button variant="ghost" className="h-8 w-8 p-0">
-                                                                <span className="sr-only">Open menu</span>
-                                                                <MoreHorizontal className="h-4 w-4" />
-                                                            </Button>
-                                                        </DropdownMenuTrigger>
-                                                        <DropdownMenuContent align="end">
-                                                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                                            <DropdownMenuItem onClick={() => handleEditUser(row.original)}>
-                                                                <Edit className="w-4 h-4 mr-2" />
-                                                                Edit
-                                                            </DropdownMenuItem>
-                                                            <DropdownMenuItem>
-                                                                <RefreshCw className="w-4 h-4 mr-2" />
-                                                                Reset Password
-                                                            </DropdownMenuItem>
-                                                            <DropdownMenuItem 
-                                                                disabled={row.original.role.toLowerCase() === 'admin'} 
-                                                                onClick={() => handleDeleteUser(row.original)}
-                                                                className="text-red-600"
-                                                            >
-                                                                <Trash2 className="w-4 h-4 mr-2" />
-                                                                Delete
-                                                            </DropdownMenuItem>
-                                                        </DropdownMenuContent>
-                                                    </DropdownMenu>
+                                                    <TableRowActions
+                                                        actions={[
+                                                            { label: "Edit", icon: Edit, onClick: () => handleEditUser(row.original) },
+                                                            { label: "Reset Password", icon: RefreshCw, onClick: () => console.log("Reset Password", row.original) },
+                                                            {
+                                                                label: "Delete",
+                                                                icon: Trash2,
+                                                                onClick: () => handleDeleteUser(row.original),
+                                                                disabled: row.original.role.toLowerCase() === "admin",
+                                                                tone: "destructive",
+                                                            },
+                                                        ]}
+                                                    />
                                                 </TableCell>
                                             </TableRow>
                                         ))
@@ -429,31 +378,21 @@ const AuthUsersComponent: React.FC = () => {
                         </div>
                     </div>
                 </CardContent>
-                <CardFooter className="flex items-center justify-between">
-                    <div className="text-sm text-muted-foreground">
-                        Page {table.getState().pagination.pageIndex + 1} of{" "}
-                        {table.getPageCount()}
-                    </div>
-                    <div className="flex items-center space-x-2">
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => table.previousPage()}
-                            disabled={!table.getCanPreviousPage()}
-                        >
-                            Previous
-                        </Button>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => table.nextPage()}
-                            disabled={!table.getCanNextPage()}
-                        >
-                            Next
-                        </Button>
-                    </div>
+                <CardFooter>
+                    <TablePager
+                        currentPage={table.getState().pagination.pageIndex + 1}
+                        totalPages={table.getPageCount()}
+                        totalItems={table.getFilteredRowModel().rows.length}
+                        pageSize={table.getState().pagination.pageSize}
+                        pageSizeOptions={[10, 20, 50, 100, 200]}
+                        onPageChange={(p) => table.setPageIndex(p - 1)}
+                        onPageSizeChange={(n) => table.setPageSize(n)}
+                        isDisabled={isLoading}
+                        noun="users"
+                    />
                 </CardFooter>
             </Card>
+            </QueryState>
 
             <AddAuthUserModal
                 isOpen={isAddUserModalOpen}

@@ -1,17 +1,19 @@
 import React, { useState } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, RefreshCw, Edit, Trash2, ArrowUpDown, ChevronDown, ChevronUp, Mail, Phone, MapPin, ChevronsLeft, ChevronsRight, ChevronLeft, ChevronRight } from 'lucide-react';
+import { RefreshCw, Edit, Trash2, ArrowUpDown, ChevronDown, ChevronUp, Mail, Phone, MapPin } from 'lucide-react';
 import { User } from '../types/api';
 import { UseMutationResult } from '@tanstack/react-query';
 import UserCard from './UserCard';
-import { ColumnDef, ColumnMeta, flexRender, getCoreRowModel, getPaginationRowModel, getSortedRowModel, SortingState, useReactTable } from '@tanstack/react-table';
+import { ColumnDef, flexRender, getCoreRowModel, getPaginationRowModel, getSortedRowModel, SortingState, useReactTable } from '@tanstack/react-table';
 import { Badge } from './ui/badge';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
+import EmptyState from "@/components/EmptyState";
+import StatusPill from "@/components/StatusPill";
+import TableToolbar from "@/components/TableToolbar";
+import TablePager from "@/components/TablePager";
+import TableRowActions from "@/components/TableRowActions";
 
 interface UsersTableProps {
     users: User[];
@@ -26,11 +28,6 @@ interface UsersTableProps {
     pageSize?: number;
     onPageSizeChange?: (size: number) => void;
 }
-
-type CustomColumnMeta = ColumnMeta<User, unknown> & {
-    className?: string;
-    width?: string;
-};
 
 const getProfileBadge = (profileName: string) => {
     const colorMap: { [key: string]: string } = {
@@ -110,19 +107,13 @@ const UserRow: React.FC<{
                     <TooltipProvider>
                         <Tooltip>
                             <TooltipTrigger asChild>
-                                <div className="flex items-center gap-2">
-                                    <div className={cn(
-                                        "w-2 h-2 rounded-full transition-all duration-200",
-                                        user.isOnline 
-                                            ? "bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]" 
-                                            : "bg-gray-300"
-                                    )} />
-                                    <span className={cn(
-                                        "font-medium",
-                                        user.isOnline ? "text-blue-600" : "text-gray-600"
-                                    )}>
-                                        {user.isOnline ? 'Online' : 'Offline'}
-                                    </span>
+                                <div>
+                                    <StatusPill
+                                        label={user.isOnline ? "Online" : "Offline"}
+                                        tone={user.isOnline ? "info" : "default"}
+                                        dot
+                                        pulseDot={Boolean(user.isOnline)}
+                                    />
                                 </div>
                             </TooltipTrigger>
                             <TooltipContent>
@@ -183,41 +174,14 @@ const UserRow: React.FC<{
                 </TableCell>
 
                 <TableCell align="right" className="text-right">
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" className="h-8 w-8 p-0 hover:bg-accent/50">
-                                <span className="sr-only">Open menu</span>
-                                <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-[160px]">
-                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                            <DropdownMenuItem 
-                                onClick={() => onAction('reset-mac', user)}
-                                className="hover:bg-accent/50 cursor-pointer"
-                            >
-                                <RefreshCw className="mr-2 h-4 w-4" /> Reset MAC
-                            </DropdownMenuItem>
-                            <DropdownMenuItem 
-                                onClick={() => onAction('reset-quota', user)}
-                                className="hover:bg-accent/50 cursor-pointer"
-                            >
-                                <RefreshCw className="mr-2 h-4 w-4" /> Reset Quota
-                            </DropdownMenuItem>
-                            <DropdownMenuItem 
-                                onClick={() => onAction('edit', user)}
-                                className="hover:bg-accent/50 cursor-pointer"
-                            >
-                                <Edit className="mr-2 h-4 w-4" /> Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuItem 
-                                onClick={() => onAction('delete', user)} 
-                                className="text-red-600 hover:bg-red-50 hover:text-red-700 cursor-pointer"
-                            >
-                                <Trash2 className="mr-2 h-4 w-4" /> Delete
-                            </DropdownMenuItem>
-                        </DropdownMenuContent>
-                    </DropdownMenu>
+                    <TableRowActions
+                        actions={[
+                            { label: "Reset MAC", icon: RefreshCw, onClick: () => onAction("reset-mac", user) },
+                            { label: "Reset Quota", icon: RefreshCw, onClick: () => onAction("reset-quota", user) },
+                            { label: "Edit", icon: Edit, onClick: () => onAction("edit", user) },
+                            { label: "Delete", icon: Trash2, onClick: () => onAction("delete", user), tone: "destructive" },
+                        ]}
+                    />
                 </TableCell>
             </TableRow>
 
@@ -296,7 +260,6 @@ const UsersTable: React.FC<UsersTableProps> = ({
     onPageChange,
     onAction,
     isLoading,
-    deleteUserMutation,
     resetMacAddressMutation,
     pageSize = 100,
     onPageSizeChange,
@@ -399,10 +362,20 @@ const UsersTable: React.FC<UsersTableProps> = ({
     return (
         <div>
             <div className="rounded-md border shadow-sm overflow-hidden">
+                <TableToolbar label={users.length ? `${users.length} users` : "No users"} />
+
                 <div className="min-w-[768px] hidden md:block">
-                    <div className="overflow-x-auto">
+                    <div className="overflow-x-auto max-h-[70vh]">
+                        {users.length === 0 ? (
+                            <div className="p-4">
+                                <EmptyState
+                                    title="No users found"
+                                    description="Try changing filters or search terms."
+                                />
+                            </div>
+                        ) : (
                         <Table>
-                            <TableHeader>
+                            <TableHeader className="sticky top-0 z-10">
                                 <TableRow className="bg-slate-100 hover:bg-slate-100">
                                     {table.getHeaderGroups().map((headerGroup) => (
                                         headerGroup.headers.map((header) => (
@@ -430,11 +403,18 @@ const UsersTable: React.FC<UsersTableProps> = ({
                                 ))}
                             </TableBody>
                         </Table>
+                        )}
                     </div>
                 </div>
             </div>
 
             <div className="mt-4 space-y-4 md:hidden">
+                {users.length === 0 ? (
+                    <EmptyState
+                        title="No users found"
+                        description="Try changing filters or search terms."
+                    />
+                ) : null}
                 {users.map((user) => (
                     <UserCard
                         key={user.id}
@@ -448,75 +428,17 @@ const UsersTable: React.FC<UsersTableProps> = ({
                 ))}
             </div>
 
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 py-4">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <div className="flex items-center gap-1">
-                        <Label htmlFor="pageSize" className="text-sm">Show:</Label>
-                        <Select
-                            value={pageSize.toString()}
-                            onValueChange={(value) => onPageSizeChange?.(Number(value))}
-                        >
-                            <SelectTrigger className="h-8 w-[80px]">
-                                <SelectValue defaultValue={pageSize} />
-                            </SelectTrigger>
-                            <SelectContent side="top">
-                                {pageSizes.map((size) => (
-                                    <SelectItem key={size} value={size.toString()}>
-                                        {size}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <span className="text-sm text-muted-foreground">
-                        Showing {(currentPage - 1) * pageSize + 1} to{' '}
-                        {Math.min(currentPage * pageSize, totalUsers)} of{' '}
-                        {totalUsers} results
-                    </span>
-                </div>
-
-                <div className="flex items-center space-x-2">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => onPageChange(1)}
-                        disabled={currentPage === 1 || isLoading}
-                        className="hidden sm:flex"
-                    >
-                        <ChevronsLeft className="h-4 w-4" />
-                    </Button>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => onPageChange(currentPage - 1)}
-                        disabled={currentPage === 1 || isLoading}
-                    >
-                        <ChevronLeft className="h-4 w-4 sm:mr-2" />
-                        <span className="hidden sm:inline">Previous</span>
-                    </Button>
-                    <div className="flex items-center gap-1 text-sm font-medium">
-                        Page {currentPage} of {totalPages}
-                    </div>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => onPageChange(currentPage + 1)}
-                        disabled={currentPage === totalPages || isLoading}
-                    >
-                        <span className="hidden sm:inline">Next</span>
-                        <ChevronRight className="h-4 w-4 sm:ml-2" />
-                    </Button>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => onPageChange(totalPages)}
-                        disabled={currentPage === totalPages || isLoading}
-                        className="hidden sm:flex"
-                    >
-                        <ChevronsRight className="h-4 w-4" />
-                    </Button>
-                </div>
-            </div>
+            <TablePager
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={totalUsers}
+                pageSize={pageSize}
+                pageSizeOptions={pageSizes}
+                onPageChange={onPageChange}
+                onPageSizeChange={onPageSizeChange}
+                isDisabled={isLoading}
+                noun="results"
+            />
         </div>
     );
 };

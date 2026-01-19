@@ -7,6 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import SearchBar from "@/components/SearchBar";
+import FiltersBar from "@/components/FiltersBar";
+import QueryState from "@/components/QueryState";
 import { 
   Dialog, 
   DialogContent, 
@@ -14,7 +17,6 @@ import {
   DialogFooter, 
   DialogHeader, 
   DialogTitle, 
-  DialogTrigger 
 } from "@/components/ui/dialog";
 import { 
   Select, 
@@ -36,7 +38,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { 
   Bell, 
-  BellOff, 
   Plus, 
   Edit, 
   Trash2, 
@@ -46,13 +47,10 @@ import {
   Settings,
   Clock,
   Mail,
-  MessageSquare,
   Webhook,
   Smartphone,
   Loader2,
   RefreshCw,
-  Filter,
-  Search
 } from 'lucide-react';
 import { 
   useAlertRules, 
@@ -66,13 +64,10 @@ import {
   useUpdateAlertSettings,
   getSeverityColor,
   getSeverityBgColor,
-  formatAlertMessage,
   isInQuietHours
 } from '@/hooks/useAlerts';
 import { 
   AlertRule, 
-  Alert, 
-  AlertSettings,
   ALERT_METRICS, 
   ALERT_CONDITIONS, 
   ALERT_SEVERITIES 
@@ -86,9 +81,9 @@ const Alerts: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   
   // Data hooks
-  const { data: alertRules, isLoading: rulesLoading } = useAlertRules();
-  const { data: alerts, isLoading: alertsLoading } = useAlerts();
-  const { data: settings, isLoading: settingsLoading } = useAlertSettings();
+  const { data: alertRules, isLoading: rulesLoading, error: rulesError, refetch: refetchRules } = useAlertRules();
+  const { data: alerts, isLoading: alertsLoading, error: alertsError, refetch: refetchAlerts } = useAlerts();
+  const { data: settings, isLoading: settingsLoading, refetch: refetchSettings } = useAlertSettings();
   
   // Mutation hooks
   const createRule = useCreateAlertRule();
@@ -225,7 +220,15 @@ const Alerts: React.FC = () => {
         icon={AlertTriangle}
         actions={(
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                refetchRules?.();
+                refetchAlerts?.();
+                refetchSettings?.();
+              }}
+            >
               <RefreshCw className="mr-2 h-4 w-4" />
               Refresh
             </Button>
@@ -323,11 +326,18 @@ const Alerts: React.FC = () => {
 
         {/* Alert Rules Tab */}
         <TabsContent value="rules" className="space-y-4">
-          {rulesLoading ? (
-            <LoadingSpinner />
-          ) : (
+          <QueryState
+            isLoading={rulesLoading}
+            error={rulesError as any}
+            isEmpty={!rulesLoading && !rulesError && (!alertRules || !Array.isArray(alertRules) || alertRules.length === 0)}
+            onRetry={() => refetchRules?.()}
+            loading={<LoadingSpinner />}
+            errorTitle="Failed to load alert rules"
+            emptyTitle="No alert rules yet"
+            emptyDescription="Create your first rule to start monitoring metrics."
+          >
             <div className="grid gap-4">
-              {alertRules && Array.isArray(alertRules) ? alertRules.map((rule) => (
+              {(alertRules && Array.isArray(alertRules) ? alertRules : []).map((rule) => (
                 <Card key={rule.id} className="hover:shadow-lg transition-shadow">
                   <CardHeader>
                     <div className="flex items-center justify-between">
@@ -414,57 +424,60 @@ const Alerts: React.FC = () => {
                     )}
                   </CardContent>
                 </Card>
-              )) : (
-                <div className="text-center py-8">
-                  <p className="text-muted-foreground">No alert rules found</p>
-                </div>
-              )}
+              ))}
             </div>
-          )}
+          </QueryState>
         </TabsContent>
 
         {/* Active Alerts Tab */}
         <TabsContent value="alerts" className="space-y-4">
           {/* Filters */}
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search alerts..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-8 w-64"
-                />
-              </div>
-              <Select value={severityFilter} onValueChange={setSeverityFilter}>
-                <SelectTrigger className="w-32">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Severities</SelectItem>
-                  <SelectItem value="critical">Critical</SelectItem>
-                  <SelectItem value="high">High</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="low">Low</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-32">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="resolved">Resolved</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+          <FiltersBar
+            left={
+              <>
+                <div className="w-full md:w-72">
+                  <SearchBar
+                    currentSearchTerm={searchTerm}
+                    onSearch={(term) => setSearchTerm(term)}
+                    placeholder="Search alerts..."
+                  />
+                </div>
+                <Select value={severityFilter} onValueChange={setSeverityFilter}>
+                  <SelectTrigger className="w-full md:w-40">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Severities</SelectItem>
+                    <SelectItem value="critical">Critical</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="low">Low</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="w-full md:w-40">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="resolved">Resolved</SelectItem>
+                  </SelectContent>
+                </Select>
+              </>
+            }
+          />
 
-          {alertsLoading ? (
-            <LoadingSpinner />
-          ) : (
+          <QueryState
+            isLoading={alertsLoading}
+            error={alertsError as any}
+            isEmpty={!alertsLoading && !alertsError && filteredAlerts.length === 0}
+            onRetry={() => refetchAlerts?.()}
+            loading={<LoadingSpinner />}
+            errorTitle="Failed to load alerts"
+            emptyTitle="No alerts found"
+            emptyDescription="Try adjusting your filters, or check back later."
+          >
             <div className="space-y-4">
               {filteredAlerts.map((alert) => (
                 <Card key={alert.id} className="hover:shadow-lg transition-shadow">
@@ -555,16 +568,8 @@ const Alerts: React.FC = () => {
                   </CardContent>
                 </Card>
               ))}
-              
-              {filteredAlerts.length === 0 && (
-                <Card>
-                  <CardContent className="flex items-center justify-center h-32">
-                    <p className="text-muted-foreground">No alerts found</p>
-                  </CardContent>
-                </Card>
-              )}
             </div>
-          )}
+          </QueryState>
         </TabsContent>
 
         {/* Alert History Tab */}

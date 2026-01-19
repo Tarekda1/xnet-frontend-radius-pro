@@ -1,6 +1,5 @@
 // OnlineUsersTable.tsx
 import React, {
-    useState,
     useCallback,
     useMemo,
     useEffect,
@@ -29,35 +28,23 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Button } from "@/components/ui/button";
 import {
     Tooltip,
     TooltipProvider,
     TooltipTrigger,
     TooltipContent,
 } from "@/components/ui/tooltip";
-import {
-    DropdownMenu,
-    DropdownMenuTrigger,
-    DropdownMenuContent,
-    DropdownMenuLabel,
-    DropdownMenuItem,
-} from "@/components/ui/dropdown-menu";
-import { Label } from "@/components/ui/label";
-import {
-    Select,
-    SelectTrigger,
-    SelectContent,
-    SelectItem,
-    SelectValue,
-} from "@/components/ui/select";
 import Loader from "@/components/ui/loader";
 import { Skeleton } from "@/components/ui/skeleton";
-import SearchBar from "@/components/SearchBar";
+import EmptyState from "@/components/EmptyState";
+import StatusPill from "@/components/StatusPill";
+import TableToolbar from "@/components/TableToolbar";
+import TablePager from "@/components/TablePager";
+import TableRowActions from "@/components/TableRowActions";
+import QueryState from "@/components/QueryState";
 
 import {
     Clock,
-    ChevronDown,
     Power,
     RefreshCw,
     RotateCw,
@@ -65,7 +52,6 @@ import {
     User,
     Wifi,
     HardDrive,
-    Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -89,12 +75,6 @@ const formatUptime = (s: number) => {
         .filter(Boolean)
         .join(" ");
 };
-const statusColor = (s: string) =>
-({
-    active: "bg-blue-500 after:bg-blue-500 [--status-color:59,130,246]",
-    idle: "bg-yellow-500 after:bg-yellow-500 [--status-color:234,179,8]",
-    disconnected: "bg-red-500 after:bg-red-500 [--status-color:239,68,68]",
-}[s.toLowerCase()] || "bg-gray-500 after:bg-gray-500 [--status-color:107,114,128]");
 const formatStatus = (s: string) =>
 ({ active: "Online", idle: "Idle", disconnected: "Disconnected" }[
     s.toLowerCase()
@@ -181,29 +161,20 @@ const UsageBar: React.FC<{ used: string; total: string; type: 'daily' | 'monthly
 };
 
 const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
-    const isActive = status.toLowerCase() === 'active';
-    const isIdle = status.toLowerCase() === 'idle';
-    const isDisconnected = status.toLowerCase() === 'disconnected';
+    const s = status.toLowerCase();
+    const tone =
+        s === "active" ? "info" :
+        s === "idle" ? "warning" :
+        s === "disconnected" ? "danger" :
+        "default";
 
     return (
-        <Badge 
-            variant="outline" 
-            className={cn(
-                "relative pl-6 pr-3 py-1.5 border-2",
-                isActive && "border-blue-200 bg-blue-50/50 text-blue-700",
-                isIdle && "border-yellow-200 bg-yellow-50/50 text-yellow-700",
-                isDisconnected && "border-red-200 bg-red-50/50 text-red-700"
-            )}
-        >
-            <span
-                className={cn(
-                    "absolute left-2 top-1/2 -translate-y-1/2 inline-block w-2 h-2 rounded-full",
-                    statusColor(status),
-                    isActive && "animate-pulse"
-                )}
-            />
-            {formatStatus(status)}
-        </Badge>
+        <StatusPill
+            label={formatStatus(status)}
+            tone={tone as any}
+            dot
+            pulseDot={s === "active"}
+        />
     );
 };
 
@@ -252,36 +223,16 @@ const MobileCard: React.FC<{
             />
         </CardContent>
         <CardFooter className="pt-2">
-            <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                    <Button size="sm" variant="outline" className="w-full">
-                        Actions <ChevronDown className="h-4 w-4 ml-1" />
-                    </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-[200px]">
-                    <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                    <DropdownMenuItem
-                        onClick={() => onAction("disconnect", user.session_username)}
-                    >
-                        <Power className="h-4 w-4 mr-2" /> Disconnect
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                        onClick={() => onAction("reset-mac", user.session_username)}
-                    >
-                        <RefreshCw className="h-4 w-4 mr-2" /> Reset MAC
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                        onClick={() => onAction("reset-quota", user.session_username)}
-                    >
-                        <RotateCw className="h-4 w-4 mr-2" /> Reset Quota
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                        onClick={() => onAction("change-profile", user.session_username)}
-                    >
-                        <Settings className="h-4 w-4 mr-2" /> Change Profile
-                    </DropdownMenuItem>
-                </DropdownMenuContent>
-            </DropdownMenu>
+            <div className="flex w-full justify-end">
+                <TableRowActions
+                    actions={[
+                        { label: "Disconnect", icon: Power, onClick: () => onAction("disconnect", user.session_username), tone: "destructive" as const },
+                        { label: "Reset MAC", icon: RefreshCw, onClick: () => onAction("reset-mac", user.session_username) },
+                        { label: "Reset Quota", icon: RotateCw, onClick: () => onAction("reset-quota", user.session_username) },
+                        { label: "Change Profile", icon: Settings, onClick: () => onAction("change-profile", user.session_username) },
+                    ]}
+                />
+            </div>
         </CardFooter>
     </Card>
 ));
@@ -367,36 +318,14 @@ const TableRows = function TableRows({
                         />
                     </TableCell>
                     <TableCell className="text-center">
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <Button size="sm" variant="outline">
-                                    Actions <ChevronDown className="h-4 w-4 ml-1" />
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-[200px]">
-                                <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                <DropdownMenuItem
-                                    onClick={() => onAction("disconnect", u.session_username)}
-                                >
-                                    <Power className="h-4 w-4 mr-2" /> Disconnect
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                    onClick={() => onAction("reset-mac", u.session_username)}
-                                >
-                                    <RefreshCw className="h-4 w-4 mr-2" /> Reset MAC
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                    onClick={() => onAction("reset-quota", u.session_username)}
-                                >
-                                    <RotateCw className="h-4 w-4 mr-2" /> Reset Quota
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                    onClick={() => onAction("change-profile", u.session_username)}
-                                >
-                                    <Settings className="h-4 w-4 mr-2" /> Change Profile
-                                </DropdownMenuItem>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
+                        <TableRowActions
+                            actions={[
+                                { label: "Disconnect", icon: Power, onClick: () => onAction("disconnect", u.session_username), tone: "destructive" as const },
+                                { label: "Reset MAC", icon: RefreshCw, onClick: () => onAction("reset-mac", u.session_username) },
+                                { label: "Reset Quota", icon: RotateCw, onClick: () => onAction("reset-quota", u.session_username) },
+                                { label: "Change Profile", icon: Settings, onClick: () => onAction("change-profile", u.session_username) },
+                            ]}
+                        />
                     </TableCell>
                 </TableRow>
             ))}
@@ -409,8 +338,9 @@ const DesktopTable: React.FC<{
     onAction: (a: string, u: string) => void;
 }> = React.memo(({ users, onAction }) => (
     <Card className="overflow-hidden border border-border/50">
+        <div className="overflow-auto max-h-[70vh]">
         <Table>
-            <TableHeader>
+            <TableHeader className="sticky top-0 z-10 bg-white">
                 <TableRow className="hover:bg-transparent">
                     <TableHead className="w-[250px]">User</TableHead>
                     <TableHead className="w-[150px]">MAC Address</TableHead>
@@ -427,6 +357,7 @@ const DesktopTable: React.FC<{
                 <TableRows users={users} onAction={onAction} />
             </TableBody>
         </Table>
+        </div>
     </Card>
 ));
 
@@ -435,16 +366,13 @@ interface Props {
     search: string;
     onCountChange?: (count: number) => void;
     isRefreshing?: boolean;
-    onSearch?: (term: string) => void;
-    onRefresh?: () => void;
+    // onSearch/onRefresh are handled by the parent page
 }
 
 const OnlineUsersTable: React.FC<Props> = ({ 
     search, 
     onCountChange, 
     isRefreshing,
-    onSearch,
-    onRefresh 
 }) => {
     /* local pagination to keep table self-contained */
     //const [page, setPage] = useState(1);
@@ -459,6 +387,7 @@ const OnlineUsersTable: React.FC<Props> = ({
         page,
         setPage,
         resetDailyUserQuotaMutation,
+        resetMacAddressMutation,
         disconnectUserSessionMutation,
     } = useOnlineUsers(search, 1, 100);
     //search,
@@ -472,11 +401,22 @@ const OnlineUsersTable: React.FC<Props> = ({
                 return;
             }
 
+            if (action === "reset-mac") {
+                resetMacAddressMutation.mutate(
+                    { username },
+                    { onSuccess: () => refetch(), onError: (e) => alert(e.message) }
+                );
+                return;
+            }
+
             if (action === "disconnect") {
-                // Choose NAS IP/secret. For now, use env-configured values via Vite.
-                const ip = import.meta.env.VITE_DEFAULT_NAS_IP as string;
-                const code = import.meta.env.VITE_DEFAULT_NAS_SECRET as string;
-                const port = Number(import.meta.env.VITE_DEFAULT_NAS_COA_PORT || 1700);
+                // Choose NAS IP/secret.
+                // - In dev: provided by Vite via import.meta.env.VITE_*
+                // - In prod Docker: provided at runtime via /env.js (window.__ENV__)
+                const runtimeEnv = (window as any).__ENV__ || {};
+                const ip = String(runtimeEnv.DEFAULT_NAS_IP ?? import.meta.env.VITE_DEFAULT_NAS_IP ?? "").trim();
+                const code = String(runtimeEnv.DEFAULT_NAS_SECRET ?? import.meta.env.VITE_DEFAULT_NAS_SECRET ?? "").trim();
+                const port = Number(runtimeEnv.DEFAULT_NAS_COA_PORT ?? import.meta.env.VITE_DEFAULT_NAS_COA_PORT ?? 1700);
 
                 if (!ip || !code) {
                     alert("NAS IP/secret not configured");
@@ -489,8 +429,14 @@ const OnlineUsersTable: React.FC<Props> = ({
                 );
                 return;
             }
+
+            if (action === "change-profile") {
+                // TODO: implement change profile flow (modal + API) if needed.
+                alert("Change profile: not implemented yet.");
+                return;
+            }
         },
-        [resetDailyUserQuotaMutation, disconnectUserSessionMutation, refetch]
+        [resetDailyUserQuotaMutation, resetMacAddressMutation, disconnectUserSessionMutation, refetch]
     );
 
     useEffect(() => {
@@ -506,14 +452,7 @@ const OnlineUsersTable: React.FC<Props> = ({
         onCountChange?.(data?.totalUsers || 0);
     }, [data?.totalUsers, onCountChange]);
 
-    const handleSearch = useCallback((term: string) => {
-        onSearch?.(term);
-    }, [onSearch]);
-
-    const handleRefresh = useCallback(() => {
-        onRefresh?.();
-        refetch();
-    }, [onRefresh, refetch]);
+    // Search/refresh are controlled by the page component.
 
     if (isRefreshing) {
         return (
@@ -525,68 +464,53 @@ const OnlineUsersTable: React.FC<Props> = ({
         );
     }
 
-    if (isLoading)
-        return (
-            <div className="flex justify-center py-20">
-                <Loader />
-            </div>
-        );
-    if (error)
-        return <p className="text-center text-red-500">{error.message}</p>;
+    const rows = data?.data ?? [];
 
     return (
-        <>
+        <QueryState
+            isLoading={isLoading}
+            error={error}
+            isEmpty={rows.length === 0}
+            onRetry={() => refetch()}
+            loading={
+                <div className="flex justify-center py-20">
+                    <Loader />
+                </div>
+            }
+            empty={
+                <EmptyState
+                    title="No online users"
+                    description="Try adjusting your search."
+                />
+            }
+            errorTitle="Failed to load online users"
+        >
+            <TableToolbar label={`${data?.totalUsers ?? 0} sessions`} className="mb-2 rounded-md border" />
 
             {/* Desktop */}
             <div className="hidden md:block">
-                <DesktopTable users={data!.data} onAction={onAction} />
+                <DesktopTable users={rows} onAction={onAction} />
             </div>
 
             {/* Mobile */}
             <div className="md:hidden space-y-4">
-                {data!.data.map((u) => (
+                {rows.map((u) => (
                     <MobileCard key={u.session_username} user={u} onAction={onAction} />
                 ))}
             </div>
 
-            {/* footer */}
-            <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pb-4">
-                <p className="text-sm">
-                    Showing {data!.data.length} of {data!.totalUsers} users
-                </p>
-                <div className="flex items-center gap-2">
-                    <Label htmlFor="size">Show:</Label>
-                    <Select value={String(limit)} onValueChange={(v) => setLimit(+v)}>
-                        <SelectTrigger id="size" className="h-8 w-28 px-2">
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {pageSizes.map((n) => (
-                                <SelectItem key={n} value={String(n)}>
-                                    {n} rows
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                </div>
-                <div className="flex gap-2 pb-4">
-                    <Button
-                        variant="outline"
-                        disabled={page === 1}
-                        onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    >
-                        Previous
-                    </Button>
-                    <Button
-                        variant="outline"
-                        disabled={page === data!.totalPages}
-                        onClick={() => setPage((p) => p + 1)}
-                    >
-                        Next
-                    </Button>
-                </div>
-            </div>
-        </>
+            <TablePager
+                currentPage={page}
+                totalPages={data?.totalPages ?? 1}
+                totalItems={data?.totalUsers ?? 0}
+                pageSize={limit}
+                pageSizeOptions={pageSizes}
+                onPageChange={setPage}
+                onPageSizeChange={setLimit}
+                isDisabled={Boolean(isLoading)}
+                noun="users"
+            />
+        </QueryState>
     );
 };
 

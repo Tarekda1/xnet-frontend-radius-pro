@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/button';
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import PageHeader from "@/components/PageHeader";
+import { Settings as SettingsIcon } from "lucide-react";
 
 interface ServerSettings {
   serverHost: string;
@@ -54,9 +55,12 @@ const Setting: React.FC = () => {
 
   return (
     <div className="w-full py-5">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
-        <p className="text-gray-600 mt-2">Manage your RADIUS server configurations and preferences</p>
+      <div className="mb-6 px-6">
+        <PageHeader
+          title="Settings"
+          subtitle="Manage your RADIUS server configurations and preferences"
+          icon={SettingsIcon}
+        />
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-8">

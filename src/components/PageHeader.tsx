@@ -1,50 +1,82 @@
-import React from 'react';
+import React from "react";
+import { cn } from "@/lib/utils";
 
 type PageHeaderProps = {
-    title: string;
-    subtitle?: string;
-    icon?: React.ElementType;
-    actions?: React.ReactNode;
-    rightContent?: React.ReactNode;
-    className?: string;
+  title: string;
+  subtitle?: string;
+  icon?: React.ElementType;
+  actions?: React.ReactNode;
+  rightContent?: React.ReactNode;
+  className?: string;
+  /** Default: "card" */
+  variant?: "card" | "gradient";
 };
 
-const PageHeader: React.FC<PageHeaderProps> = ({ title, subtitle, icon: Icon, actions, rightContent, className }) => {
-    return (
-        <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 p-5 text-white shadow-2xl ${className || ''}`}>
-            <div className="absolute inset-0 bg-black/10" />
-            <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl" />
-            <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/5 rounded-full blur-2xl" />
-            <div className="relative z-10">
-                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-                    <div className="flex items-center gap-4">
-                        {Icon && (
-                            <div className="p-3 rounded-xl bg-white/20 backdrop-blur-sm border border-white/30">
-                                <Icon className="h-7 w-7 text-white" />
-                            </div>
-                        )}
-                        <div>
-                            <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-blue-100 bg-clip-text text-transparent">
-                                {title}
-                            </h1>
-                            {subtitle && (
-                                <p className="text-blue-100 mt-2 text-lg">{subtitle}</p>
-                            )}
-                        </div>
-                    </div>
+const PageHeader: React.FC<PageHeaderProps> = ({
+  title,
+  subtitle,
+  icon: Icon,
+  actions,
+  rightContent,
+  className,
+  variant = "card",
+}) => {
+  const isGradient = variant === "gradient";
 
-                <div className="flex flex-col lg:flex-row gap-3 items-start lg:items-center w-full">
-                    <div className="w-full lg:w-auto">
-                        {rightContent}
-                    </div>
-                    <div className="w-full lg:w-auto">
-                        {actions}
-                    </div>
-                </div>
-                </div>
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border p-5",
+        isGradient
+          ? "relative overflow-hidden border-transparent bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 text-white shadow-xl"
+          : "bg-background",
+        className
+      )}
+    >
+      {isGradient ? (
+        <>
+          <div className="absolute inset-0 bg-black/10" />
+          <div className="absolute top-0 right-0 h-56 w-56 rounded-full bg-white/10 blur-3xl" />
+          <div className="absolute bottom-0 left-0 h-44 w-44 rounded-full bg-white/5 blur-2xl" />
+        </>
+      ) : null}
+
+      <div className={cn("relative", isGradient && "z-10")}>
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div className="flex items-start gap-3 min-w-0">
+            {Icon ? (
+              <div
+                className={cn(
+                  "mt-0.5 flex h-10 w-10 items-center justify-center rounded-xl border",
+                  isGradient ? "border-white/25 bg-white/15" : "border-border bg-muted"
+                )}
+              >
+                <Icon className={cn("h-5 w-5", isGradient ? "text-white" : "text-foreground")} />
+              </div>
+            ) : null}
+
+            <div className="min-w-0">
+              <h1 className={cn("text-2xl font-semibold leading-tight", isGradient && "text-white")}>{title}</h1>
+              {subtitle ? (
+                <p className={cn("mt-1 text-sm", isGradient ? "text-white/80" : "text-muted-foreground")}>{subtitle}</p>
+              ) : null}
             </div>
+          </div>
+
+          {(rightContent || actions) ? (
+            <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:items-center md:justify-end">
+              {rightContent ? <div className="w-full md:w-auto">{rightContent}</div> : null}
+              {actions ? (
+                <div className="flex w-full flex-wrap gap-2 md:w-auto md:justify-end [&_button]:h-9 [&_button]:px-3 [&_button]:text-sm">
+                  {actions}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
-    );
+      </div>
+    </div>
+  );
 };
 
 export default PageHeader;

@@ -59,12 +59,14 @@ export const MESSAGES = {
     exportEmptyDescription: "There are no users to export.",
     deleted: "User deleted successfully.",
     macReset: "MAC address reset successfully.",
+    quotaReset: "Daily quota reset successfully.",
   },
 
   onlineUsers: {
     refreshedTitle: "Users refreshed",
     refreshedDescription: "The online users list has been updated.",
     statusUpdatedTitle: "User status updated",
+    disconnected: "User session disconnected.",
   },
 
   authUsers: {

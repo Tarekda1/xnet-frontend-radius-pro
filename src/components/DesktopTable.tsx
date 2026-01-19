@@ -18,34 +18,31 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { utils, writeFile } from "xlsx";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Switch } from "@/components/ui/switch";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import {
   CalendarIcon,
   Check,
   CheckCircle,
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
   Clock,
   DollarSign,
   Eye,
+  SlidersHorizontal,
   Trash2,
   XCircle,
 } from "lucide-react";
 import type { ExternalInvoice } from "@/types/api";
 import { HeaderButton } from "./ui/HeaderButton";
+import TableToolbar from "@/components/TableToolbar";
+import TablePager from "@/components/TablePager";
+import TableRowActions from "@/components/TableRowActions";
 
 /* ── colour map for provider pills ───────────────────────── */
 const providerStyles = {
@@ -73,6 +70,8 @@ type Props = {
   onFirstPage: () => void;
   onLastPage: () => void;
   totalItems: number;
+  /** If true, parent renders the pager (useful for mobile+desktop unified pager). */
+  hidePager?: boolean;
   /* selection / sorting */
   sorting: SortingState;
   onSortingChange: OnChangeFn<SortingState>;
@@ -100,6 +99,7 @@ const DesktopTable: React.FC<Props> = ({
   onFirstPage,
   onLastPage,
   totalItems,
+  hidePager = false,
   sorting,
   onSortingChange,
   rowSelection,
@@ -233,29 +233,41 @@ const DesktopTable: React.FC<Props> = ({
           <HeaderButton column={column}>Status</HeaderButton>
         ),
         cell: ({ row }) => {
-          switch (row.original.status) {
-            case "paid":
-              return (
+          const status = row.original.status;
+          const canPayHere = Boolean(onSetPaid) && status !== "paid";
+
+          return (
+            <div className="flex items-center gap-2">
+              {status === "paid" ? (
                 <Badge variant="success">
                   <CheckCircle className="h-3 w-3 mr-1 text-white" />
                   <span className="text-white">Paid</span>
                 </Badge>
-              );
-            case "pending":
-              return (
+              ) : status === "pending" ? (
                 <Badge variant="outline" className="bg-yellow-500 hover:bg-yellow-600 border-yellow-500">
                   <Clock className="h-3 w-3 mr-1 text-white" />
                   <span className="text-white">Pending</span>
                 </Badge>
-              );
-            default:
-              return (
+              ) : (
                 <Badge variant="destructive">
                   <XCircle className="h-3 w-3 mr-1 text-white" />
                   <span className="text-white">Unpaid</span>
                 </Badge>
-              );
-          }
+              )}
+
+              {canPayHere ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2"
+                  onClick={() => onSetPaid?.(row.original.id)}
+                >
+                  <Check className="h-4 w-4 mr-1" />
+                  Pay
+                </Button>
+              ) : null}
+            </div>
+          );
         },
         sortingFn: (rowA, rowB) => {
           const statusOrder = { paid: 2, pending: 1, unpaid: 0 };
@@ -264,65 +276,40 @@ const DesktopTable: React.FC<Props> = ({
           return a - b;  // Sort by status priority
         },
       },
-      {
-        id: "details",
-        cell: ({ row }) => (
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => onViewInvoice(row.original)}
-          >
-            <Eye className="h-4 w-4" />
-          </Button>
-        ),
-      },
       ];
 
-      if (onSetPaid) {
-        cols.push({
-          id: "setPaid",
-          header: "Set as Paid",
-          cell: ({ row }) => (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={row.original.status === "paid"}
-              onClick={() => onSetPaid(row.original.id)}
-              className={
-                row.original.status === "paid"
-                  ? ""
-                  : "text-green-600 hover:text-green-700 hover:bg-green-50"
-              }
-            >
-              <Check className="h-4 w-4 mr-1" /> Set
-            </Button>
-          ),
-        });
-      }
-
       cols.push({
-        id: 'actions',
-        header: 'Actions',
+        id: "actions",
+        header: () => <div className="text-right pr-2">Actions</div>,
         cell: ({ row }) => (
-          <div className="flex space-x-2">
-            {onUnpay && row.original.status === 'paid' ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onUnpay(row.original.id)}
-                className="text-red-600 hover:text-red-700 hover:bg-red-50"
-              >
-                Unpay
-              </Button>
-            ) : null}
-            {/* Existing buttons */}
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => onDeleteInvoice(row.original.id)}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
+          <div className="flex justify-end pr-2">
+            <TableRowActions
+              actions={[
+                { label: "View details", icon: Eye, onClick: () => onViewInvoice(row.original) },
+                ...(onSetPaid
+                  ? [
+                      {
+                        label: "Set as Paid",
+                        icon: Check,
+                        onClick: () => onSetPaid(row.original.id),
+                        disabled: row.original.status === "paid",
+                      },
+                    ]
+                  : []),
+                ...(onUnpay
+                  ? [
+                      {
+                        label: "Unpay",
+                        icon: XCircle,
+                        onClick: () => onUnpay(row.original.id),
+                        disabled: row.original.status !== "paid",
+                        tone: "destructive" as const,
+                      },
+                    ]
+                  : []),
+                { label: "Delete", icon: Trash2, onClick: () => onDeleteInvoice(row.original.id), tone: "destructive" as const },
+              ]}
+            />
           </div>
         ),
       });
@@ -350,15 +337,11 @@ const DesktopTable: React.FC<Props> = ({
   /* ── persist column visibility + density ───── */
   React.useEffect(() => {
     const storedCols = localStorage.getItem('extInv.columns');
-    const storedDensity = localStorage.getItem('extInv.density');
     if (storedCols) {
       try {
         const vis = JSON.parse(storedCols) as Record<string, boolean>;
         table.setColumnVisibility(vis);
       } catch {}
-    }
-    if (storedDensity === 'compact') {
-      document.documentElement.classList.add('table-compact');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -370,63 +353,63 @@ const DesktopTable: React.FC<Props> = ({
   return (
     <>
       <div className="min-w-[768px]">
-        {/* Table toolbar: column visibility + density */}
-        <div className="flex items-center justify-between py-2 px-2 border-b">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Columns:</span>
-            {table.getAllLeafColumns().map((col) => (
-              <label key={col.id} className="flex items-center gap-1 text-sm">
-                <Checkbox
-                  checked={col.getIsVisible()}
-                  onCheckedChange={(v) => col.toggleVisibility(!!v)}
-                />
-                {col.columnDef.header && typeof col.columnDef.header === 'function'
-                  ? String(col.id)
-                  : String(col.columnDef.header)}
-              </label>
-            ))}
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                const visibleCols = table.getAllLeafColumns().filter(c => c.getIsVisible());
-                const dataToExport = table.getCoreRowModel().rows.map(r => {
-                  const obj: Record<string, any> = {};
-                  visibleCols.forEach(col => {
-                    const key = col.id;
-                    // @ts-ignore - access original for simple export
-                    obj[key] = (r.original as any)[key];
+        <TableToolbar
+          label={`Invoices: ${totalItems.toLocaleString()} • Page ${currentPage} / ${totalPages}`}
+          className="border-b"
+          right={
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  const xlsx = await import("xlsx");
+                  const visibleCols = table.getAllLeafColumns().filter((c) => c.getIsVisible());
+                  const dataToExport = table.getCoreRowModel().rows.map((r) => {
+                    const obj: Record<string, unknown> = {};
+                    visibleCols.forEach((col) => {
+                      const key = col.id;
+                      obj[key] = (r.original as unknown as Record<string, unknown>)[key];
+                    });
+                    return obj;
                   });
-                  return obj;
-                });
-                const ws = utils.json_to_sheet(dataToExport);
-                const wb = utils.book_new();
-                utils.book_append_sheet(wb, ws, "External Invoices");
-                writeFile(wb, "external_invoices_view.xlsx");
-              }}
-            >
-              Export view
-            </Button>
-            <span className="text-sm text-muted-foreground">Compact</span>
-            <Switch
-              onCheckedChange={(v) => {
-                const root = document.documentElement;
-                if (v) {
-                  root.classList.add('table-compact');
-                  localStorage.setItem('extInv.density', 'compact');
-                } else {
-                  root.classList.remove('table-compact');
-                  localStorage.setItem('extInv.density', 'comfortable');
-                }
-              }}
-              defaultChecked={typeof window !== 'undefined' && localStorage.getItem('extInv.density') === 'compact'}
-            />
-          </div>
-        </div>
+                  const ws = xlsx.utils.json_to_sheet(dataToExport);
+                  const wb = xlsx.utils.book_new();
+                  xlsx.utils.book_append_sheet(wb, ws, "External Invoices");
+                  xlsx.writeFile(wb, "external_invoices_view.xlsx");
+                }}
+              >
+                Export view
+              </Button>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-2">
+                    <SlidersHorizontal className="h-4 w-4" />
+                    Columns
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="max-h-[60vh] overflow-auto">
+                  <DropdownMenuLabel>Columns</DropdownMenuLabel>
+                  <div className="px-2 py-2 space-y-2">
+                    {table.getAllLeafColumns().map((col) => (
+                      <label key={col.id} className="flex items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={col.getIsVisible()}
+                          onCheckedChange={(v) => col.toggleVisibility(!!v)}
+                        />
+                        <span className="font-mono text-xs text-muted-foreground">{col.id}</span>
+                      </label>
+                    ))}
+                  </div>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
+          }
+        />
+
+        <div className="overflow-auto max-h-[70vh]">
         <Table>
-          <TableHeader>
+          <TableHeader className="sticky top-0 z-10 bg-white">
             {table.getHeaderGroups().map((hg) => (
               <TableRow key={hg.id}>
                 {hg.headers.map((header) => (
@@ -466,83 +449,26 @@ const DesktopTable: React.FC<Props> = ({
             )}
           </TableBody>
         </Table>
-      </div>
-
-      {/* Enhanced pagination footer */}
-      <div className="flex items-center justify-between py-4 px-2 border-t">
-        {/* Items per page selector */}
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Show</span>
-          <Select
-            value={pageSize.toString()}
-            onValueChange={(value) => onPageSizeChange(Number(value))}
-          >
-            <SelectTrigger className="h-8 w-[80px]">
-              <SelectValue placeholder={pageSize} />
-            </SelectTrigger>
-            <SelectContent side="top">
-              {PAGE_SIZE_OPTIONS.map((size) => (
-                <SelectItem key={size} value={size.toString()}>
-                  {size}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <span className="text-sm text-muted-foreground">per page</span>
-        </div>
-
-        {/* Items range and total */}
-        <div className="flex-1 text-center text-sm text-muted-foreground">
-          Showing <span className="font-medium">{(currentPage - 1) * pageSize + 1}</span> to{" "}
-          <span className="font-medium">{Math.min(currentPage * pageSize, totalItems)}</span> of{" "}
-          <span className="font-medium">{totalItems}</span> items
-        </div>
-
-        {/* Navigation buttons */}
-        <div className="flex gap-1">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onFirstPage}
-            disabled={currentPage === 1}
-            className="h-8 w-8 p-0"
-          >
-            <ChevronsLeft className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onPrevPage}
-            disabled={currentPage === 1}
-            className="h-8 w-8 p-0"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <div className="flex items-center gap-1 px-2">
-            <div className="text-sm font-medium">
-              Page {currentPage} of {totalPages}
-            </div>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onNextPage}
-            disabled={currentPage === totalPages}
-            className="h-8 w-8 p-0"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onLastPage}
-            disabled={currentPage === totalPages}
-            className="h-8 w-8 p-0"
-          >
-            <ChevronsRight className="h-4 w-4" />
-          </Button>
         </div>
       </div>
+
+      {!hidePager ? (
+        <TablePager
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalItems={totalItems}
+          pageSize={pageSize}
+          pageSizeOptions={PAGE_SIZE_OPTIONS}
+          onPageChange={(p) => {
+            if (p <= 1) return onFirstPage();
+            if (p >= totalPages) return onLastPage();
+            if (p < currentPage) return onPrevPage();
+            if (p > currentPage) return onNextPage();
+          }}
+          onPageSizeChange={onPageSizeChange}
+          noun="items"
+        />
+      ) : null}
     </>
   );
 };

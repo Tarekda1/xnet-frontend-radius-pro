@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "lint": "eslint .",
     "preview": "vite preview",
     "docker:dev:build": "docker compose --profile dev build",
     "docker:dev:up": "docker compose --profile dev up",
@@ -22,7 +22,11 @@
     "docker:ps": "docker compose ps",
     "docker:restart": "docker compose restart",
     "docker:rebuild": "npm run docker:clean && npm run docker:dev",
-    "test": "jest"
+    "test": "jest",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:install": "playwright install --with-deps"
   },
   "dependencies": {
     "@hookform/resolvers": "^4.1.2",
@@ -77,6 +81,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^8.56.0",
+    "@playwright/test": "^1.57.0",
     "@testing-library/jest-dom": "^5.14.1",
     "@testing-library/react": "^13.4.0",
     "@testing-library/user-event": "^13.2.1",

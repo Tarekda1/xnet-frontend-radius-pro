@@ -1,12 +1,15 @@
 import React from 'react';
+import PageHeader from "@/components/PageHeader";
+import { Info } from "lucide-react";
 
 const About: React.FC = () => {
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">About RADIUS Pro</h1>
-        <p className="text-gray-600 mt-2">Your comprehensive RADIUS server management solution</p>
-      </div>
+    <div className="w-full space-y-6 p-6">
+      <PageHeader
+        title="About RADIUS Pro"
+        subtitle="Your comprehensive RADIUS server management solution"
+        icon={Info}
+      />
 
       <div className="grid md:grid-cols-2 gap-8">
         <div className="bg-white rounded-lg shadow-md p-6">

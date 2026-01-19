@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import PageHeader from "@/components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,12 @@ import { useExpenseMonthlyTotals, useExpenses } from "@/hooks/useExpenses";
 import { DollarSign, Pencil, Plus, Receipt, Trash2 } from "lucide-react";
 import { notify } from "@/lib/notify";
 import { MESSAGES } from "@/constants/messages";
+import TablePager from "@/components/TablePager";
+import TableToolbar from "@/components/TableToolbar";
+import TableRowActions from "@/components/TableRowActions";
+import SearchBar from "@/components/SearchBar";
+import FiltersBar from "@/components/FiltersBar";
+import QueryState from "@/components/QueryState";
 
 function toYmd(d?: Date) {
   if (!d) return undefined;
@@ -53,12 +59,12 @@ export default function ExpensesPage() {
   const [search, setSearch] = useState("");
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [page, setPage] = useState(1);
-  const limit = 50;
+  const [limit, setLimit] = useState(50);
 
   const dateFrom = useMemo(() => toYmd(dateRange?.from), [dateRange?.from]);
   const dateTo = useMemo(() => toYmd(dateRange?.to), [dateRange?.to]);
 
-  const { data, isLoading, error, createMutation, updateMutation, deleteMutation } = useExpenses({
+  const { data, isLoading, error, refetch, createMutation, updateMutation, deleteMutation } = useExpenses({
     page,
     limit,
     search: search.trim() || undefined,
@@ -141,6 +147,7 @@ export default function ExpensesPage() {
   };
 
   const rows = data?.data?.data || [];
+  const totalItems = data?.data?.total || 0;
   const totalPages = data?.data?.totalPages || 1;
 
   const monthlyTotals = monthlyTotalsQuery.data?.data || [];
@@ -157,7 +164,7 @@ export default function ExpensesPage() {
         subtitle="Track and manage operational expenses."
         icon={Receipt}
         actions={
-          <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700">
+          <Button onClick={openCreate}>
             <Plus className="h-4 w-4 mr-2" />
             Add Expense
           </Button>
@@ -197,33 +204,52 @@ export default function ExpensesPage() {
       </div>
 
       <Card>
-        <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <CardTitle className="flex items-center gap-2">
-            <DollarSign className="h-5 w-5 text-green-600" />
-            Expenses List
-          </CardTitle>
-          <div className="flex flex-col gap-2 md:flex-row md:items-center">
-            <Input
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setPage(1);
-              }}
-              placeholder="Search title / notes..."
-              className="w-full md:w-[260px]"
-            />
-            <DateRangePicker date={dateRange} setDate={setDateRange as any} />
-          </div>
+        <CardHeader>
+          <FiltersBar
+            left={
+              <CardTitle className="flex items-center gap-2">
+                <DollarSign className="h-5 w-5 text-green-600" />
+                Expenses List
+              </CardTitle>
+            }
+            right={
+              <>
+                <div className="w-full md:w-[320px]">
+                  <SearchBar
+                    currentSearchTerm={search}
+                    onSearch={(term) => {
+                      setSearch(term);
+                      setPage(1);
+                    }}
+                    placeholder="Search title / notes..."
+                  />
+                </div>
+                <DateRangePicker
+                  dateRange={dateRange}
+                  onDateRangeChange={(r) => {
+                    setDateRange(r);
+                    setPage(1);
+                  }}
+                />
+              </>
+            }
+          />
         </CardHeader>
         <CardContent>
-          {isLoading ? (
-            <div className="py-10 text-center text-muted-foreground">Loading...</div>
-          ) : error ? (
-            <div className="py-10 text-center text-red-600">
-              Failed to load expenses: {(error as any)?.message || "Unknown error"}
-            </div>
-          ) : (
+          <QueryState
+            isLoading={isLoading}
+            error={error}
+            isEmpty={!isLoading && !error && rows.length === 0}
+            onRetry={() => refetch()}
+            loading={<div className="py-10 text-center text-muted-foreground">Loading…</div>}
+            errorTitle="Failed to load expenses"
+            emptyTitle="No expenses found"
+            emptyDescription="Try adjusting filters or add a new expense."
+          >
             <>
+              <TableToolbar
+                label={`Expenses: ${totalItems.toLocaleString()} • Page ${page} / ${totalPages}`}
+              />
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -236,15 +262,8 @@ export default function ExpensesPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {rows.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={6} className="text-center text-muted-foreground py-10">
-                        No expenses found.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    rows.map((e: any) => (
-                      <TableRow key={e.id}>
+                  {rows.map((e: any) => (
+                    <TableRow key={e.id}>
                         <TableCell className="font-mono text-sm">{e.expenseDate}</TableCell>
                         <TableCell className="font-medium">{e.title}</TableCell>
                         <TableCell>{e.category || "-"}</TableCell>
@@ -261,23 +280,21 @@ export default function ExpensesPage() {
                           )}
                         </TableCell>
                         <TableCell className="text-right space-x-2">
-                          <Button variant="outline" size="sm" onClick={() => openEdit(e)}>
-                            <Pencil className="h-4 w-4 mr-2" />
-                            Edit
-                          </Button>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => onDelete(e.id)}
-                            disabled={deleteMutation.isPending}
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Delete
-                          </Button>
+                          <TableRowActions
+                            actions={[
+                              { label: "Edit", icon: Pencil, onClick: () => openEdit(e) },
+                              {
+                                label: "Delete",
+                                icon: Trash2,
+                                onClick: () => onDelete(e.id),
+                                disabled: deleteMutation.isPending,
+                                tone: "destructive",
+                              },
+                            ]}
+                          />
                         </TableCell>
-                      </TableRow>
-                    ))
-                  )}
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
 
@@ -304,25 +321,22 @@ export default function ExpensesPage() {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between mt-4">
-                <div className="text-sm text-muted-foreground">
-                  Page {page} of {totalPages}
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-                    Prev
-                  </Button>
-                  <Button
-                    variant="outline"
-                    disabled={page >= totalPages}
-                    onClick={() => setPage((p) => p + 1)}
-                  >
-                    Next
-                  </Button>
-                </div>
-              </div>
+              <TablePager
+                currentPage={page}
+                totalPages={totalPages}
+                totalItems={totalItems}
+                pageSize={limit}
+                pageSizeOptions={[10, 20, 50, 100, 200]}
+                onPageChange={setPage}
+                onPageSizeChange={(n) => {
+                  setLimit(n);
+                  setPage(1);
+                }}
+                isDisabled={isLoading}
+                noun="expenses"
+              />
             </>
-          )}
+          </QueryState>
         </CardContent>
       </Card>
 

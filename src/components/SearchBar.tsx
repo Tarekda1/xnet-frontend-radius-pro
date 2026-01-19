@@ -1,16 +1,7 @@
-import React, { useState, useCallback } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, X, SlidersHorizontal } from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -18,8 +9,12 @@ interface Props {
   currentSearchTerm: string;
   className?: string;
   placeholder?: string;
-  showAdvancedSearch?: boolean;
-  onAdvancedSearch?: () => void;
+  /** Default: true. Debounce search while typing. */
+  autoSearch?: boolean;
+  /** Debounce delay (ms) when autoSearch is enabled. Default: 350 */
+  debounceMs?: number;
+  /** Default: false. Show a Search button on the right. */
+  showButton?: boolean;
 }
 
 const SearchBar: React.FC<Props> = React.memo(({ 
@@ -27,32 +22,39 @@ const SearchBar: React.FC<Props> = React.memo(({
   currentSearchTerm,
   className,
   placeholder = "Search users...",
-  showAdvancedSearch = false,
-  onAdvancedSearch
+  autoSearch = true,
+  debounceMs = 350,
+  showButton = false,
 }) => {
-  const [value, setValue] = useState(currentSearchTerm);
+  const [value, setValue] = useState(currentSearchTerm || "");
   const [isFocused, setIsFocused] = useState(false);
+  const debounceRef = useRef<number | null>(null);
 
-  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setValue(e.target.value);
-  }, []);
+  useEffect(() => {
+    setValue(currentSearchTerm || "");
+  }, [currentSearchTerm]);
 
-  const handleSearch = useCallback(() => {
-    const trimmedValue = value.trim();
-    onSearch(trimmedValue);
-  }, [value, onSearch]);
+  const trimmed = useMemo(() => value.trim(), [value]);
 
-  const clear = useCallback(() => {
+  useEffect(() => {
+    if (!autoSearch) return;
+
+    if (debounceRef.current) window.clearTimeout(debounceRef.current);
+    debounceRef.current = window.setTimeout(() => {
+      onSearch(trimmed);
+    }, debounceMs);
+
+    return () => {
+      if (debounceRef.current) window.clearTimeout(debounceRef.current);
+    };
+  }, [autoSearch, debounceMs, onSearch, trimmed]);
+
+  const runSearch = () => onSearch(trimmed);
+
+  const clear = () => {
     setValue("");
     onSearch("");
-  }, [onSearch]);
-
-  const searchHints = [
-    { label: "Find by username", example: "username:john" },
-    { label: "Find by status", example: "status:active" },
-    { label: "Find by profile", example: "profile:premium" },
-    { label: "Find online users", example: "status:online" },
-  ];
+  };
 
   return (
     <div className={cn(
@@ -66,13 +68,14 @@ const SearchBar: React.FC<Props> = React.memo(({
           <Input
             placeholder={placeholder}
             value={value}
-            onChange={handleInputChange}
+            onChange={(e) => setValue(e.target.value)}
             onFocus={() => setIsFocused(true)}
             onBlur={() => setIsFocused(false)}
             className="pl-10 pr-8"
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
-                handleSearch();
+                e.preventDefault();
+                runSearch();
               }
             }}
           />
@@ -80,6 +83,7 @@ const SearchBar: React.FC<Props> = React.memo(({
             <button
               onClick={clear}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+              type="button"
             >
               <X className="h-4 w-4" />
             </button>
@@ -87,15 +91,17 @@ const SearchBar: React.FC<Props> = React.memo(({
         </div>
       </div>
 
-      <Button
-        variant="default"
-        onClick={handleSearch}
-        disabled={!value?.trim()}
-        className="shrink-0"
-      >
-        <Search className="h-4 w-4 mr-2" />
-        Search
-      </Button>
+      {showButton ? (
+        <Button
+          variant="outline"
+          onClick={runSearch}
+          disabled={!trimmed}
+          className="shrink-0"
+        >
+          <Search className="h-4 w-4 mr-2" />
+          Search
+        </Button>
+      ) : null}
     </div>
   );
 });

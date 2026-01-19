@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { notify } from "@/lib/notify";
 import { changePassword } from "@/api/auth";
 import { useAuth } from "@/context/AuthContext";
+import PageHeader from "@/components/PageHeader";
+import { KeyRound } from "lucide-react";
 
 export default function ChangePasswordPage() {
   const navigate = useNavigate();
@@ -45,7 +47,15 @@ export default function ChangePasswordPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-50 p-4">
-      <Card className="w-full max-w-md shadow-lg border-0">
+      <div className="w-full max-w-md space-y-4">
+        <PageHeader
+          title="Change password"
+          subtitle={user?.mustChangePassword ? "First login requires a password change." : "Update your password."}
+          icon={KeyRound}
+          className="bg-white"
+        />
+
+      <Card className="w-full shadow-lg border-0">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold text-center">Change your password</CardTitle>
           <CardDescription className="text-center">
@@ -89,6 +99,7 @@ export default function ChangePasswordPage() {
           </Button>
         </CardFooter>
       </Card>
+      </div>
     </div>
   );
 }

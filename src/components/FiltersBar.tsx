@@ -1,0 +1,31 @@
+import React from "react";
+import { cn } from "@/lib/utils";
+
+type Props = {
+  left: React.ReactNode;
+  right?: React.ReactNode;
+  className?: string;
+};
+
+/**
+ * Standard responsive layout for page/table filters:
+ * - stacks on mobile, aligns left/right on desktop
+ * - normalizes control sizing (buttons/inputs) for a consistent UI
+ */
+export default function FiltersBar({ left, right, className }: Props) {
+  return (
+    <div
+      className={cn(
+        "flex flex-col gap-3 md:flex-row md:items-center md:justify-between",
+        // Normalize common control sizing inside filter bars
+        "[&_button]:h-9 [&_button]:px-3 [&_button]:text-sm",
+        "[&_input]:h-9 [&_input]:text-sm",
+        className
+      )}
+    >
+      <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:items-center">{left}</div>
+      {right ? <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:items-center">{right}</div> : null}
+    </div>
+  );
+}
+

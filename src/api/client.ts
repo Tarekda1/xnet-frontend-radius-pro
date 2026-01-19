@@ -1,6 +1,24 @@
 import axios from 'axios';
 
-const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+declare global {
+  interface Window {
+    __ENV__?: {
+      API_URL?: string;
+      DEFAULT_NAS_IP?: string;
+      DEFAULT_NAS_SECRET?: string;
+      DEFAULT_NAS_COA_PORT?: string | number;
+    };
+  }
+}
+
+function getRuntimeApiUrl(): string | undefined {
+  const apiUrl = window?.__ENV__?.API_URL;
+  if (typeof apiUrl !== 'string') return undefined;
+  const trimmed = apiUrl.trim();
+  return trimmed.length ? trimmed : undefined;
+}
+
+const baseURL = getRuntimeApiUrl() ?? import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api';
 
 export const apiClient = axios.create({
   baseURL,
@@ -12,7 +30,7 @@ export const apiClient = axios.create({
 apiClient.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('accessToken');
-    console.log('Token:', token);
+    if (import.meta.env.DEV) console.log('Token:', token);
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }

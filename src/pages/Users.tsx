@@ -25,7 +25,6 @@ import {
     TrendingDown,
     Trash2
 } from 'lucide-react';
-import { utils, writeFile } from 'xlsx';
 import SearchBar from '@/components/SearchBar';
 import UsersTable from '@/components/UsersTable';
 import AddUserModal from '../components/AddUserModal';
@@ -47,6 +46,7 @@ import {
 } from 'recharts';
 import { notify } from "@/lib/notify";
 import { MESSAGES } from "@/constants/messages";
+import QueryState from "@/components/QueryState";
 
 const MetricItem = ({ 
     label, 
@@ -517,10 +517,11 @@ const UsersPage: React.FC = () => {
         setCurrentPage(1); // Reset to first page when changing page size
     }, [setCurrentPage]);
 
-    const handleExportUsers = useCallback(() => {
+    const handleExportUsers = useCallback(async () => {
         // Export only active users (exclude suspended/inactive/etc.)
         const exportableUsers = filteredUsers.filter(u => u.accountStatus === 'active');
         if (exportableUsers.length > 0) {
+            const xlsx = await import("xlsx");
             // Prepare data for export with only the required fields
             const exportData = exportableUsers.map(user => ({
                 Name: user.userDetails.fullName || 'N/A',
@@ -528,16 +529,16 @@ const UsersPage: React.FC = () => {
                 Username: user.username || 'N/A'
             }));
 
-            const ws = utils.json_to_sheet(exportData);
-            const wb = utils.book_new();
-            utils.book_append_sheet(wb, ws, "Users");
+            const ws = xlsx.utils.json_to_sheet(exportData);
+            const wb = xlsx.utils.book_new();
+            xlsx.utils.book_append_sheet(wb, ws, "Users");
             
             // Generate filename with current date and filter info
             const date = new Date().toISOString().split('T')[0];
             const filterSuffix = statusFilter ? `_${statusFilter}` : '';
             const filename = `users${filterSuffix}_${date}.xlsx`;
             
-            writeFile(wb, filename);
+            xlsx.writeFile(wb, filename);
             notify.success(MESSAGES.users.exportSuccessTitle, `${exportableUsers.length} users exported to ${filename}`);
         } else {
             notify.error(MESSAGES.users.exportEmptyTitle, MESSAGES.users.exportEmptyDescription);
@@ -581,51 +582,54 @@ const UsersPage: React.FC = () => {
         }
     }, [selectedUsers, filteredUsers, handleExportUsers]);
 
-    if (isLoading) {
-        return (
-            <div className="w-full py-6 space-y-6">
-                <header className="flex flex-col md:flex-row justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                        <Skeleton className="h-10 w-10 rounded-lg" />
-                        <div className="space-y-2">
-                            <Skeleton className="h-8 w-48" />
-                            <Skeleton className="h-4 w-64" />
-                        </div>
-                    </div>
-                    <div className="flex gap-2">
-                        <Skeleton className="h-10 w-24" />
-                        <Skeleton className="h-10 w-24" />
-                    </div>
-                </header>
-
-                <Card className="p-4">
-                    <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
-                        <Skeleton className="h-10 w-full lg:max-w-xl" />
-                        <div className="flex items-center gap-4 lg:border-l lg:border-border lg:pl-6">
-                            <Skeleton className="h-16 w-32" />
-                            <Skeleton className="h-16 w-32" />
-                            <Skeleton className="h-16 w-32" />
-                        </div>
-                    </div>
-                </Card>
-
-                <Card className="border-none shadow-none">
-                    <CardContent className="px-0">
-                        <div className="space-y-2">
-                            <Skeleton className="h-12 w-full" />
-                            <Skeleton className="h-16 w-full" />
-                            <Skeleton className="h-16 w-full" />
-                            <Skeleton className="h-16 w-full" />
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
-        );
-    }
-
-    if (error) return <div className="text-red-500 text-center">Error: {error.message}</div>;
-
     return (
+        <QueryState
+            isLoading={isLoading}
+            error={error}
+            isEmpty={!isLoading && !error && (data?.data?.users?.length ?? 0) === 0}
+            onRetry={() => refetch()}
+            loading={
+                <div className="w-full py-6 space-y-6">
+                    <PageHeader
+                        title="Users Management"
+                        subtitle="Comprehensive user management and monitoring system"
+                        icon={UsersIcon}
+                        rightContent={<Skeleton className="h-10 w-full md:w-[260px]" />}
+                        actions={
+                            <div className="flex gap-2">
+                                <Skeleton className="h-10 w-24" />
+                                <Skeleton className="h-10 w-24" />
+                            </div>
+                        }
+                    />
+
+                    <Card className="p-4">
+                        <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
+                            <Skeleton className="h-10 w-full lg:max-w-xl" />
+                            <div className="flex items-center gap-4 lg:border-l lg:border-border lg:pl-6">
+                                <Skeleton className="h-16 w-32" />
+                                <Skeleton className="h-16 w-32" />
+                                <Skeleton className="h-16 w-32" />
+                            </div>
+                        </div>
+                    </Card>
+
+                    <Card className="border-none shadow-none">
+                        <CardContent className="px-0">
+                            <div className="space-y-2">
+                                <Skeleton className="h-12 w-full" />
+                                <Skeleton className="h-16 w-full" />
+                                <Skeleton className="h-16 w-full" />
+                                <Skeleton className="h-16 w-full" />
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+            }
+            errorTitle="Failed to load users"
+            emptyTitle="No users yet"
+            emptyDescription="Create your first user to get started."
+        >
         <div className="w-full py-6 space-y-6 bg-gradient-to-br from-gray-50/50 via-blue-50/30 to-purple-50/30 min-h-screen">
             <PageHeader 
                 title="Users Management"
@@ -634,9 +638,9 @@ const UsersPage: React.FC = () => {
                 rightContent={(
                     <div className="flex items-center gap-2">
                         <div className="flex items-center gap-3">
-                            <Label className="text-sm font-medium text-blue-100">View:</Label>
+                            <Label className="text-sm font-medium">View:</Label>
                             <Select value={viewMode} onValueChange={(value: 'table' | 'cards' | 'analytics') => setViewMode(value)}>
-                                <SelectTrigger className="w-[140px] bg-white/20 border-white/30 text-white backdrop-blur-sm">
+                                <SelectTrigger className="w-[140px]">
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -647,25 +651,25 @@ const UsersPage: React.FC = () => {
                             </Select>
                         </div>
                         <div className="hidden lg:flex flex-wrap gap-2">
-                            <Badge variant={!statusFilter ? "secondary" : "outline"} className="cursor-pointer hover:bg-white/20 border-white/30 text-white backdrop-blur-sm transition-all duration-300 hover:scale-105" onClick={() => handleQuickFilter('all')}>All Users</Badge>
-                            <Badge variant={statusFilter === 'active' ? "secondary" : "outline"} className="cursor-pointer hover:bg-emerald-500/20 border-emerald-300/50 text-emerald-100 backdrop-blur-sm transition-all duration-300 hover:scale-105" onClick={() => handleQuickFilter('active')}>Active</Badge>
-                            <Badge variant={statusFilter === 'suspended' ? "secondary" : "outline"} className="cursor-pointer hover:bg-red-500/20 border-red-300/50 text-red-100 backdrop-blur-sm transition-all duration-300 hover:scale-105" onClick={() => handleQuickFilter('suspended')}>Suspended</Badge>
-                            <Badge variant={statusFilter === 'online' ? "secondary" : "outline"} className="cursor-pointer hover:bg-blue-500/20 border-blue-300/50 text-blue-100 backdrop-blur-sm transition-all duration-300 hover:scale-105" onClick={() => handleQuickFilter('online')}>Online</Badge>
-                            <Badge variant={statusFilter === 'offline' ? "secondary" : "outline"} className="cursor-pointer hover:bg-gray-500/20 border-gray-300/50 text-gray-100 backdrop-blur-sm transition-all duration-300 hover:scale-105" onClick={() => handleQuickFilter('offline')}>Offline</Badge>
+                            <Badge variant={!statusFilter ? "secondary" : "outline"} className="cursor-pointer" onClick={() => handleQuickFilter('all')}>All Users</Badge>
+                            <Badge variant={statusFilter === 'active' ? "secondary" : "outline"} className="cursor-pointer" onClick={() => handleQuickFilter('active')}>Active</Badge>
+                            <Badge variant={statusFilter === 'suspended' ? "secondary" : "outline"} className="cursor-pointer" onClick={() => handleQuickFilter('suspended')}>Suspended</Badge>
+                            <Badge variant={statusFilter === 'online' ? "secondary" : "outline"} className="cursor-pointer" onClick={() => handleQuickFilter('online')}>Online</Badge>
+                            <Badge variant={statusFilter === 'offline' ? "secondary" : "outline"} className="cursor-pointer" onClick={() => handleQuickFilter('offline')}>Offline</Badge>
                         </div>
                     </div>
                 )}
                 actions={(
                     <div className="flex gap-2">
-                        <Button variant="outline" onClick={handleRefresh} disabled={isRefreshing} className="bg-white/20 border-white/30 text-white hover:bg-white/30 backdrop-blur-sm transition-all duration-300 hover:scale-105">
+                        <Button variant="outline" onClick={handleRefresh} disabled={isRefreshing}>
                             <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
                             {isRefreshing ? 'Refreshing...' : 'Refresh'}
                         </Button>
-                        <Button variant="outline" onClick={handleExportUsers} disabled={filteredUsers.length === 0} className="bg-white/20 border-white/30 text-white hover:bg-white/30 backdrop-blur-sm transition-all duration-300 hover:scale-105">
+                        <Button variant="outline" onClick={handleExportUsers} disabled={filteredUsers.length === 0}>
                             <Download className="h-4 w-4 mr-2" />
                             Export
                         </Button>
-                        <Button onClick={handleAddUser} className="bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white shadow-lg transition-all duration-300 hover:scale-105">
+                        <Button onClick={handleAddUser}>
                             <Plus className="h-4 w-4 mr-2" />
                             New User
                         </Button>
@@ -905,6 +909,7 @@ const UsersPage: React.FC = () => {
                 />
             )}
         </div>
+        </QueryState>
     );
 };
 

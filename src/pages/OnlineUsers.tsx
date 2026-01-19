@@ -57,20 +57,17 @@ export default function OnlineUsersPage() {
   if (isLoading) {
     return (
       <div className="w-full py-6 space-y-6">
-        <header className="flex flex-col md:flex-row justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <Skeleton className="h-10 w-10 rounded-lg" />
-            <div className="space-y-2">
-              <Skeleton className="h-8 w-48" />
-              <Skeleton className="h-4 w-64" />
+        <PageHeader
+          title="Online Users"
+          subtitle="Monitor and manage active user sessions"
+          icon={Users}
+          rightContent={<Skeleton className="h-10 w-full md:w-[300px]" />}
+          actions={
+            <div className="flex gap-2">
+              <Skeleton className="h-10 w-24" />
             </div>
-            <Skeleton className="h-6 w-24 ml-2" />
-          </div>
-          <div className="flex gap-2 w-full md:w-auto">
-            <Skeleton className="h-10 w-[300px]" />
-            <Skeleton className="h-10 w-24" />
-          </div>
-        </header>
+          }
+        />
 
         <Card className="p-4">
           <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
@@ -109,7 +106,6 @@ export default function OnlineUsersPage() {
               variant="outline" 
               onClick={handleRefresh}
               disabled={isRefreshing}
-              className="bg-white/20 border-white/30 text-white hover:bg-white/30 backdrop-blur-sm transition-all duration-300 hover:scale-105"
             >
               <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
               {isRefreshing ? 'Refreshing...' : 'Refresh'}

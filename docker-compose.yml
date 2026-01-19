@@ -15,7 +15,7 @@ services:
         NODE_ENV: development
     volumes:
       - /app/node_modules
-      - ${HOME}/.npm:/root/.npm:cached
+      - npm-cache:/root/.npm
     ports:
       - "${PORT:-5173}:5173"
       - "24679:24678"
@@ -51,17 +51,28 @@ services:
         - type=registry,ref=nginx:alpine-slim
     restart: unless-stopped
     ports:
-      - "${PORT:-5173}:80"
+      - "${PORT:-5173}:8080"
     environment:
       - NODE_ENV=production
-      # NOTE: Vite is already built at image build-time; runtime env won't change the built bundle.
-      - VITE_API_URL=${VITE_API_URL:-https://radius.xnetcloud.tech/api}
+      # Runtime config (served via /env.js)
+      - API_URL=${API_URL:-${VITE_API_URL:-https://api.xnetcloud.tech/api}}
+      # Optional: NAS config for CoA actions (Online Users -> Disconnect)
+      - DEFAULT_NAS_IP=${DEFAULT_NAS_IP:-${VITE_DEFAULT_NAS_IP:-}}
+      - DEFAULT_NAS_SECRET=${DEFAULT_NAS_SECRET:-${VITE_DEFAULT_NAS_SECRET:-}}
+      - DEFAULT_NAS_COA_PORT=${DEFAULT_NAS_COA_PORT:-${VITE_DEFAULT_NAS_COA_PORT:-1700}}
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:80"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/healthz"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     networks:
       - frontend-network
     deploy:
@@ -76,3 +87,6 @@ services:
 networks:
   frontend-network:
     driver: bridge 
+
+volumes:
+  npm-cache:

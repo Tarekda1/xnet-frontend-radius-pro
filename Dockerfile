@@ -22,7 +22,7 @@ COPY . .
 RUN npm run build
 
 # Production stage
-FROM nginx:alpine-slim
+FROM nginxinc/nginx-unprivileged:stable-alpine
 
 # Copy custom nginx config
 COPY nginx.conf /etc/nginx/conf.d/default.conf
@@ -30,11 +30,21 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 # Copy built assets from builder stage
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Add healthcheck
-RUN apk add --no-cache wget
+# Entrypoint to generate /env.js at runtime
+USER root
+RUN apk add --no-cache gettext wget \
+  && chmod -R g=u /usr/share/nginx/html \
+  && chown -R 101:101 /usr/share/nginx/html
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN sed -i 's/\r$//' /entrypoint.sh \
+  && chmod +x /entrypoint.sh \
+  && chown 101:101 /entrypoint.sh
+USER 101
 
 # Expose port
-EXPOSE 80
+EXPOSE 8080
 
-# Start nginx
-CMD ["nginx", "-g", "daemon off;"] 
+# Healthcheck (also used by docker-compose)
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD wget --spider -q http://127.0.0.1:8080/healthz || exit 1
+
+ENTRYPOINT ["sh", "/entrypoint.sh"]

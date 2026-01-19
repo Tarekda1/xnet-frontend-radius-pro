@@ -19,20 +19,25 @@ import {
 import { useInvoices } from '../hooks/useInvoices';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowUpDown, CalendarIcon, Check, CheckCircle, DollarSign, Download, Eye, FileText, PlusCircle, RefreshCw, SearchIcon, UserCircle, X, XCircle } from 'lucide-react';
+import { ArrowUpDown, CalendarIcon, Check, CheckCircle, DollarSign, Download, Eye, FileText, PlusCircle, RefreshCw, UserCircle, X, XCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import Loader from '@/components/ui/loader';
 import { DateRangePicker } from '@/components/ui/DateRangePicker';
 import { DateRange } from 'react-day-picker';
-import Alert from '@/components/ui/Alert';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { utils, writeFile } from 'xlsx';
 import { Checkbox } from '@/components/ui/checkbox';
 import { notify } from '@/lib/notify';
 import { MESSAGES } from '@/constants/messages';
+import TablePager from '@/components/TablePager';
+import TableToolbar from "@/components/TableToolbar";
+import TableRowActions from "@/components/TableRowActions";
+import SearchBar from "@/components/SearchBar";
+import FiltersBar from "@/components/FiltersBar";
+import QueryState from "@/components/QueryState";
+import SavedViews from "@/components/SavedViews";
 
 interface Invoice {
     id: number;
@@ -44,6 +49,11 @@ interface Invoice {
         profile: {
             profileName: string;
         };
+    };
+    userDetails?: {
+        fullName: string;
+        email?: string;
+        phoneNumber?: string;
     };
 }
 
@@ -210,15 +220,20 @@ const InvoiceDetailView: React.FC<{ invoice: Invoice; onClose: () => void }> = (
 const InvoicesComponent: React.FC = () => {
     const [sorting, setSorting] = useState<SortingState>([]);
     const [globalFilter, setGlobalFilter] = useState('');
-    const pageSize = 50;
-    const { data, error, isLoading, refetch, setCurrentPage, currentPage, setSearchQuery, searchQuery, setInvoiceAsPaidMutation, generateInvoicesMutation }
-        = useInvoices(1, pageSize);
+    const [pageSize, setPageSize] = useState(50);
+    const { data, error, isLoading, refetch, setCurrentPage, currentPage, setSearchQuery, searchQuery, setInvoiceAsPaidMutation, generateInvoicesMutation } =
+        useInvoices(1, pageSize);
     const [dateRange, setDateRange] = React.useState<DateRange | undefined>();
     const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
     const [rowSelection, setRowSelection] = React.useState({});
 
     const handleViewInvoice = (invoice: Invoice) => {
         setSelectedInvoice(invoice);
+    };
+
+    const handleSetPaid = (invoiceId: number) => {
+        setInvoiceAsPaidMutation.mutate({ invoiceId });
+        refetch();
     };
 
     useEffect(() => {
@@ -297,7 +312,7 @@ const InvoicesComponent: React.FC = () => {
             cell: ({ row }) => (
                 <div className="flex items-center">
                     <UserCircle className="h-5 w-5 text-blue-500 mr-2" />
-                    <span className="font-medium text-blue-600">{row.original.userDetails.fullName}</span>
+                    <span className="font-medium text-blue-600">{row.original.userDetails?.fullName ?? "-"}</span>
                 </div>
             ),
         },
@@ -368,16 +383,22 @@ const InvoicesComponent: React.FC = () => {
             ),
         },
         {
-            id: 'invoice-details',
+            id: 'actions',
+            header: () => <div className="text-right pr-2">Actions</div>,
             cell: ({ row }) => (
-                <Button
-                    variant="outline"
-                    onClick={() => handleViewInvoice(row.original)}
-                    className="h-8 w-8 p-0 cursor-pointer"
-                >
-                    <span className="sr-only">View details</span>
-                    <Eye className="h-4 w-4" />
-                </Button>
+                <div className="flex justify-end pr-2">
+                    <TableRowActions
+                        actions={[
+                            { label: "View details", icon: Eye, onClick: () => handleViewInvoice(row.original) },
+                            {
+                                label: "Set as Paid",
+                                icon: Check,
+                                onClick: () => handleSetPaid(row.original.id),
+                                disabled: row.original.status === "paid",
+                            },
+                        ]}
+                    />
+                </div>
             ),
         },
     ];
@@ -392,24 +413,58 @@ const InvoicesComponent: React.FC = () => {
         refetch();
     };
 
-    const handleNextPage = () => {
-        if (data?.data?.page! < (data?.data.totalPages ?? 0)) {
-            setCurrentPage(prev => prev + 1);
-        }
-    };
-
-    const handlePreviousPage = () => {
-        if (currentPage > 1) {
-            setCurrentPage(prev => prev - 1);
-        }
-    };
-
-    const handleSetPaid = (invoiceId: number) => {
-        setInvoiceAsPaidMutation.mutate({ invoiceId });
+    const handleRefresh = () => {
         refetch();
     };
 
-    const handleRefresh = () => {
+    const savedViewsKeys = ["q", "from", "to", "ps", "sort"];
+    const buildViewState = () => {
+        const state: Record<string, string> = {
+            q: globalFilter || "",
+            ps: String(pageSize),
+            from: dateRange?.from ? dateRange.from.toISOString().split("T")[0] : "",
+            to: dateRange?.to ? dateRange.to.toISOString().split("T")[0] : "",
+        };
+        if (sorting?.[0]?.id) {
+            state.sort = `${sorting[0].id}:${sorting[0].desc ? "desc" : "asc"}`;
+        } else {
+            state.sort = "";
+        }
+        return state;
+    };
+
+    const applyViewState = (state: Record<string, string>) => {
+        const q = state.q ?? "";
+        setGlobalFilter(q);
+
+        const psNum = parseInt(state.ps ?? "", 10);
+        if (!Number.isNaN(psNum) && psNum > 0) setPageSize(psNum);
+
+        const from = state.from || "";
+        const to = state.to || "";
+        if (from && to) {
+            setDateRange({ from: new Date(from), to: new Date(to) });
+        } else {
+            setDateRange(undefined);
+        }
+
+        const sort = state.sort || "";
+        if (sort.includes(":")) {
+            const [id, dir] = sort.split(":");
+            if (id) setSorting([{ id, desc: dir === "desc" }]);
+        } else {
+            setSorting([]);
+        }
+
+        // Sync query used by the hook
+        const sp = new URLSearchParams();
+        if (q) sp.set("search", q);
+        if (from && to) {
+            sp.set("dateFrom", from);
+            sp.set("dateTo", to);
+        }
+        setSearchQuery(sp.toString());
+        setCurrentPage(1);
         refetch();
     };
 
@@ -512,12 +567,13 @@ const InvoicesComponent: React.FC = () => {
     };
 
 
-    const handleExportInvoices = () => {
+    const handleExportInvoices = async () => {
         if (data?.data.data) {
-            const ws = utils.json_to_sheet(data.data.data);
-            const wb = utils.book_new();
-            utils.book_append_sheet(wb, ws, "Invoices");
-            writeFile(wb, "invoices.xlsx");
+            const xlsx = await import("xlsx");
+            const ws = xlsx.utils.json_to_sheet(data.data.data);
+            const wb = xlsx.utils.book_new();
+            xlsx.utils.book_append_sheet(wb, ws, "Invoices");
+            xlsx.writeFile(wb, "invoices.xlsx");
         }
     };
 
@@ -526,9 +582,6 @@ const InvoicesComponent: React.FC = () => {
             refetch();
         }
     }, [generateInvoicesMutation.isSuccess]);
-
-    if (isLoading) return <div className="flex justify-center items-center h-screen"><Loader />Loading...</div>;
-    if (error) return <div className="text-red-500 text-center">Error: {error.message}</div>;
 
     const totalSum = data?.data?.data.reduce((sum, invoice) => sum + invoice.amount, 0) ?? 0;
 
@@ -539,199 +592,201 @@ const InvoicesComponent: React.FC = () => {
                 subtitle="View and manage generated invoices"
                 icon={FileText}
             />
-            {error && (
-                <Alert
-                    type="error"
-                    message={error}
-                    onClose={() => {/* You can add a function to clear the error if needed */ }}
-                />
-
-            )}
-            {data?.data && data.data.data.length > 0 && (
-                <InvoiceSummaryCard invoices={data.data.data} totalSum={totalSum} />
-            )}
-            <div className="flex flex-col space-y-4 sm:flex-row sm:items-center sm:justify-between sm:space-y-0 sm:space-x-4 py-4">
-                <form onSubmit={handleSearch} className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-2 w-full sm:w-auto">
-                    <div className="relative w-full sm:w-64">
-                        <Input
-                            placeholder="Search invoices..."
-                            value={globalFilter ?? ''}
-                            onChange={(event) => setGlobalFilter(String(event.target.value))}
-                            className="pr-10 w-full"
-                        />
-                        {globalFilter && (
-                            <button
-                                type="button"
-                                onClick={handleClearSearch}
-                                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                            >
-                                <X className="h-4 w-4" />
-                            </button>
-                        )}
+            <QueryState
+                isLoading={isLoading}
+                error={error}
+                isEmpty={!data?.data?.data?.length}
+                onRetry={() => refetch()}
+                loading={
+                    <div className="flex justify-center items-center py-20">
+                        <Loader />
                     </div>
-                    <Button type="submit" variant="outline" className="w-full sm:w-auto">
-                        <SearchIcon className="h-4 w-4 mr-2" /> Search
-                    </Button>
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-2 w-full">
-                        <DateRangePicker
-                            dateRange={dateRange}
-                            onDateRangeChange={handleDateRangeChange}
-                            className="w-full sm:w-auto"
-                        />
-                        <Button
-                            variant="outline"
-                            onClick={() => {
-                                setDateRange(undefined);
-                                // Reset date filter logic here
-                                let searchParams = new URLSearchParams(searchQuery);
-                                searchParams.delete('dateFrom');
-                                searchParams.delete('dateTo');
-                                setSearchQuery(searchParams.toString());
-                                setCurrentPage(1);
-                            }}
-                            className="w-full sm:w-auto"
-                        >
-                            <CalendarIcon className="h-4 w-4 mr-2" />
-                            Clear Dates
-                        </Button>
-                    </div>
-                </form>
-                <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
-                    <Button
-                        onClick={handleBulkSetPaid}
-                        variant="outline"
-                        disabled={Object.keys(rowSelection).length === 0}
-                        className="w-full sm:w-auto"
-                    >
-                        <Check className="h-4 w-4 mr-2" />
-                        Set Selected as Paid
-                    </Button>
-                    <Button variant="outline" onClick={handleRefresh} className="w-full sm:w-auto">
-                        <RefreshCw className="h-4 w-4 mr-2" />
-                        {isLoading ? "Loading" : "Refresh"}
-                    </Button>
-                    <Button variant="outline" onClick={handleGenerateInvoices} disabled={isLoading} className="w-full sm:w-auto">
-                        <PlusCircle className="h-4 w-4 mr-2" />
-                        {isLoading ? "Generating..." : "Generate Invoices"}
-                    </Button>
-                    <Button variant="outline" onClick={handleExportInvoices} disabled={!data?.data.data.length} className="w-full sm:w-auto">
-                        <Download className="h-4 w-4 mr-2" />
-                        Export Invoices
-                    </Button>
-                </div>
-            </div>
-            {selectedInvoice && (
-                <InvoiceDetailView
-                    invoice={selectedInvoice}
-                    onClose={() => setSelectedInvoice(null)}
-                />
-            )}
-            <div className="rounded-md border shadow-sm overflow-hidden">
-                {data?.data && data.data.data.length > 0 ? (
-                    <>
-                        <div className="min-w-[768px] hidden md:block">
-                            <Table className='dark:bg-gray-600'>
-                                <TableHeader>
-                                    {table.getHeaderGroups().map((headerGroup) => (
-                                        <TableRow key={headerGroup.id} className="bg-gray-100">
-                                            {headerGroup.headers.map((header) => (
-                                                <TableHead key={header.id} className="font-bold text-gray-700 py-3">
-                                                    {header.isPlaceholder
-                                                        ? null
-                                                        : flexRender(
-                                                            header.column.columnDef.header,
-                                                            header.getContext()
-                                                        )}
-                                                </TableHead>
-                                            ))}
-                                            <TableHead className="font-bold text-gray-700 py-3">Actions</TableHead>
-                                        </TableRow>
-                                    ))}
-                                </TableHeader>
-                                <TableBody>
-                                    {table.getRowModel().rows?.length ? (
-                                        table.getRowModel().rows.map((row, index) => (
-                                            <TableRow
-                                                key={row.id}
-                                                data-state={row.getIsSelected() && "selected"}
-                                                className={cn(
-                                                    "transition-colors",
-                                                    index % 2 === 0 ? "bg-white" : "bg-gray-50",
-                                                    "hover:bg-gray-100",
-                                                    row.getIsSelected() && "bg-primary/50"
-                                                )}
-                                            >
-                                                {row.getVisibleCells().map((cell) => (
-                                                    <TableCell key={cell.id} className="py-3">
-                                                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                                                    </TableCell>
-                                                ))}
-                                                <TableCell className="py-3">
-                                                    {row.original.status !== 'paid' ? (
-                                                        <Button
-                                                            variant="outline"
-                                                            size="sm"
-                                                            onClick={() => handleSetPaid(row.original.id)}
-                                                            className="text-green-600 hover:text-green-700 hover:bg-green-50"
-                                                        >
-                                                            <Check className="h-4 w-4 mr-2" /> Set as Paid
-                                                        </Button>
-                                                    ) : <Button variant="outline" disabled size="sm" onClick={() => handleSetPaid(row.original.id)}>
-                                                        <Check className="h-4 w-4 mr-2" /> Set as Paid
-                                                    </Button>}
-                                                </TableCell>
-                                            </TableRow>
-                                        ))
-                                    ) : (
-                                        <TableRow>
-                                            <TableCell colSpan={columns.length + 1} className="h-24 text-center">
-                                                No results.
-                                            </TableCell>
-                                        </TableRow>
-                                    )}
-                                </TableBody>
-                            </Table>
-                        </div>
-                        <div className="md:hidden">
-                            {data?.data.data.map((invoice) => (
-                                <InvoiceCard
-                                    key={invoice.id}
-                                    invoice={invoice}
-                                    onSetPaid={() => handleSetPaid(invoice.id)}
-                                />
-                            ))}
-                        </div>
-                    </>
-                ) : (
+                }
+                empty={
                     <NoInvoicesMessage
                         onGenerateInvoice={handleGenerateInvoice}
                         isGenerating={isLoading}
                     />
-                )}
-            </div>
-            <div className="flex items-center justify-between py-4">
-                <div>
-                    <p>Total Invoices: {data?.data.total}</p>
-                    <p>Page {data?.data.page} of {data?.data.totalPages}</p>
+                }
+                errorTitle="Failed to load invoices"
+            >
+                {data?.data && data.data.data.length > 0 ? (
+                    <InvoiceSummaryCard invoices={data.data.data} totalSum={totalSum} />
+                ) : null}
+
+                <div className="py-4">
+                    <FiltersBar
+                        left={
+                            <form
+                                onSubmit={handleSearch}
+                                className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:items-center"
+                            >
+                                <div className="w-full md:w-72">
+                                    <SearchBar
+                                        currentSearchTerm={globalFilter ?? ""}
+                                        onSearch={(term) => setGlobalFilter(term)}
+                                        placeholder="Search invoices..."
+                                        showButton
+                                        autoSearch={false}
+                                    />
+                                </div>
+                                <DateRangePicker
+                                    dateRange={dateRange}
+                                    onDateRangeChange={handleDateRangeChange}
+                                    className="w-full md:w-auto"
+                                />
+                                <Button
+                                    variant="outline"
+                                    onClick={() => {
+                                        setDateRange(undefined);
+                                        let searchParams = new URLSearchParams(searchQuery);
+                                        searchParams.delete('dateFrom');
+                                        searchParams.delete('dateTo');
+                                        setSearchQuery(searchParams.toString());
+                                        setCurrentPage(1);
+                                    }}
+                                    className="w-full md:w-auto"
+                                    type="button"
+                                >
+                                    <CalendarIcon className="h-4 w-4 mr-2" />
+                                    Clear Dates
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    onClick={handleClearSearch}
+                                    className="w-full md:w-auto"
+                                    type="button"
+                                >
+                                    <X className="h-4 w-4 mr-2" />
+                                    Clear
+                                </Button>
+                            </form>
+                        }
+                        right={
+                            <>
+                                <Button
+                                    onClick={handleBulkSetPaid}
+                                    variant="outline"
+                                    disabled={Object.keys(rowSelection).length === 0}
+                                    className="w-full md:w-auto"
+                                >
+                                    <Check className="h-4 w-4 mr-2" />
+                                    Set Selected as Paid
+                                </Button>
+                                <Button variant="outline" onClick={handleRefresh} className="w-full md:w-auto">
+                                    <RefreshCw className="h-4 w-4 mr-2" />
+                                    Refresh
+                                </Button>
+                                <Button variant="outline" onClick={handleGenerateInvoices} disabled={isLoading} className="w-full md:w-auto">
+                                    <PlusCircle className="h-4 w-4 mr-2" />
+                                    Generate Invoices
+                                </Button>
+                                <Button variant="outline" onClick={handleExportInvoices} disabled={!data?.data.data.length} className="w-full md:w-auto">
+                                    <Download className="h-4 w-4 mr-2" />
+                                    Export Invoices
+                                </Button>
+                            </>
+                        }
+                    />
                 </div>
-                <div className="flex items-center space-x-2">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handlePreviousPage}
-                        disabled={currentPage === 1}
-                    >
-                        Previous
-                    </Button>
-                    <Button
-                        variant="outline"
-                        size="sm" onClick={handleNextPage}
-                        disabled={currentPage === (data?.data.totalPages ?? 0)}
-                    >
-                        Next
-                    </Button>
+
+                {selectedInvoice ? (
+                    <InvoiceDetailView
+                        invoice={selectedInvoice}
+                        onClose={() => setSelectedInvoice(null)}
+                    />
+                ) : null}
+
+                <div className="rounded-md border shadow-sm overflow-hidden">
+                    <TableToolbar
+                        label={`Invoices: ${(data?.data?.total ?? 0).toLocaleString()} • Page ${currentPage} / ${(data?.data?.totalPages ?? 1)}`}
+                        right={
+                            <div className="hidden md:flex items-center gap-2">
+                                <SavedViews
+                                    storageKey="invoices.views"
+                                    keys={savedViewsKeys}
+                                    getState={buildViewState}
+                                    applyState={applyViewState}
+                                    onSaved={(name) => notify.success("View saved", `Saved “${name}”.`)}
+                                    onDeleted={(name) => notify.success("View deleted", `Deleted “${name}”.`)}
+                                />
+                            </div>
+                        }
+                    />
+                    <div className="min-w-[768px] hidden md:block">
+                        <Table className='dark:bg-gray-600'>
+                            <TableHeader className="sticky top-0 z-10">
+                                {table.getHeaderGroups().map((headerGroup) => (
+                                    <TableRow key={headerGroup.id} className="bg-gray-100">
+                                        {headerGroup.headers.map((header) => (
+                                            <TableHead key={header.id} className="font-bold text-gray-700 py-3">
+                                                {header.isPlaceholder
+                                                    ? null
+                                                    : flexRender(
+                                                        header.column.columnDef.header,
+                                                        header.getContext()
+                                                    )}
+                                            </TableHead>
+                                        ))}
+                                    </TableRow>
+                                ))}
+                            </TableHeader>
+                            <TableBody>
+                                {table.getRowModel().rows?.length ? (
+                                    table.getRowModel().rows.map((row, index) => (
+                                        <TableRow
+                                            key={row.id}
+                                            data-state={row.getIsSelected() && "selected"}
+                                            className={cn(
+                                                "transition-colors",
+                                                index % 2 === 0 ? "bg-white" : "bg-gray-50",
+                                                "hover:bg-gray-100",
+                                                row.getIsSelected() && "bg-primary/50"
+                                            )}
+                                        >
+                                            {row.getVisibleCells().map((cell) => (
+                                                <TableCell key={cell.id} className="py-3">
+                                                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                                </TableCell>
+                                            ))}
+                                        </TableRow>
+                                    ))
+                                ) : (
+                                    <TableRow>
+                                        <TableCell colSpan={columns.length} className="h-24 text-center">
+                                            No results.
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                            </TableBody>
+                        </Table>
+                    </div>
+                    <div className="md:hidden">
+                        {data?.data.data.map((invoice) => (
+                            <InvoiceCard
+                                key={invoice.id}
+                                invoice={invoice}
+                                onSetPaid={() => handleSetPaid(invoice.id)}
+                            />
+                        ))}
+                    </div>
                 </div>
-            </div>
+
+                <TablePager
+                    currentPage={currentPage}
+                    totalPages={data?.data?.totalPages ?? 1}
+                    totalItems={data?.data?.total ?? 0}
+                    pageSize={pageSize}
+                    pageSizeOptions={[10, 20, 50, 100, 200, 500]}
+                    onPageChange={(p) => setCurrentPage(p)}
+                    onPageSizeChange={(n) => {
+                        setPageSize(n);
+                        setCurrentPage(1);
+                    }}
+                    isDisabled={isLoading}
+                    noun="invoices"
+                />
+            </QueryState>
         </div>
     );
 };

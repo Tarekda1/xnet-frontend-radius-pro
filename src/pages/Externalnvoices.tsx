@@ -11,6 +11,7 @@ import {
   DollarSign, 
   RefreshCw,
   CheckCircle,
+  Calendar,
   AlertCircle,
   Clock as ClockIcon,
   FileCheck
@@ -18,7 +19,6 @@ import {
 import { useExternalInvoices } from "@/hooks/useExternalInvoices";
 import { useSearchParams } from "react-router-dom";
 /* removed DateRange import - not used after quick preset approach */
-import { utils, writeFile } from "xlsx";
 import { RowSelectionState } from "@tanstack/react-table";
 import {
   Tooltip,
@@ -41,6 +41,7 @@ import { useAuth } from "@/context/AuthContext";
 import { can } from "@/lib/permissions";
 import { notify } from "@/lib/notify";
 import { MESSAGES } from "@/constants/messages";
+import SavedViews from "@/components/SavedViews";
 
 const MetricItem = ({ 
   label, 
@@ -101,27 +102,26 @@ export default function ExternalInvoicesPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [isConfirmBulkPaidOpen, setIsConfirmBulkPaidOpen] = useState(false);
   const [isConfirmBulkDeleteOpen, setIsConfirmBulkDeleteOpen] = useState(false);
+  const [isDateFilterOpen, setIsDateFilterOpen] = useState(false);
+  const [draftDateRange, setDraftDateRange] = useState<any>(undefined);
   const [searchParams, setSearchParams] = useSearchParams();
-  const [viewsVersion, setViewsVersion] = useState(0);
-  const savedViews = useMemo(() => Object.keys(JSON.parse(localStorage.getItem('externalInvoices.views') || '{}')), [viewsVersion]);
+  const savedViewsKeys = ["q", "from", "to", "status", "ps", "sort"];
 
-  const saveCurrentView = useCallback((name: string) => {
-    const n = name.trim();
-    if (!n) return;
-    const view = {
-      q: searchParams.get('q') || '',
-      from: searchParams.get('from') || '',
-      to: searchParams.get('to') || '',
-      status: searchParams.get('status') || '',
-      ps: searchParams.get('ps') || '',
-      sort: searchParams.get('sort') || '',
-    } as Record<string, string>;
-    const all = JSON.parse(localStorage.getItem('externalInvoices.views') || '{}');
-    all[n] = view;
-    localStorage.setItem('externalInvoices.views', JSON.stringify(all));
-    setViewsVersion((v) => v + 1);
-    notify.success(MESSAGES.externalInvoices.viewSavedTitle, `Saved “${n}”.`);
+  const dateRange = useMemo(() => {
+    const fromStr = searchParams.get("from");
+    const toStr = searchParams.get("to");
+    if (!fromStr || !toStr) return undefined;
+    const from = new Date(`${fromStr}T00:00:00`);
+    const to = new Date(`${toStr}T00:00:00`);
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return undefined;
+    return { from, to };
   }, [searchParams]);
+
+  // When opening the date dialog, start from current URL range.
+  useEffect(() => {
+    if (!isDateFilterOpen) return;
+    setDraftDateRange(dateRange);
+  }, [isDateFilterOpen, dateRange]);
 
   // Initialize state from URL/localStorage
   useEffect(() => {
@@ -151,15 +151,19 @@ export default function ExternalInvoicesPage() {
 
   // Persist to URL/localStorage when search or pageSize change (and clear date/status when using search)
   useEffect(() => {
-    const next = new URLSearchParams(searchParams);
-    if (searchTerm) next.set('q', searchTerm); else next.delete('q');
-    if (pageSize) next.set('ps', String(pageSize)); else next.delete('ps');
-    if (searchTerm) {
-      next.delete('from');
-      next.delete('to');
-      next.delete('status');
-    }
-    setSearchParams(next, { replace: true } as any);
+    // Use functional update so we never clobber newer URL params (e.g. month/date changes)
+    // with a stale `searchParams` snapshot.
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      if (searchTerm) next.set('q', searchTerm); else next.delete('q');
+      if (pageSize) next.set('ps', String(pageSize)); else next.delete('ps');
+      if (searchTerm) {
+        next.delete('from');
+        next.delete('to');
+        next.delete('status');
+      }
+      return next;
+    }, { replace: true } as any);
     localStorage.setItem('externalInvoices.search', searchTerm);
     localStorage.setItem('externalInvoices.pageSize', String(pageSize));
   }, [searchTerm, pageSize]);
@@ -214,14 +218,19 @@ export default function ExternalInvoicesPage() {
 
   const handleSearch = useCallback((term: string) => {
     setSearchInput(term);
-    // Clear URL-driven filters immediately when typing a free-text search
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev);
-      next.delete('from');
-      next.delete('to');
-      next.delete('status');
-      return next;
-    }, { replace: true } as any);
+    // Clear URL-driven filters only when actually searching (non-empty term).
+    // SearchBar will also call onSearch("") when the input is cleared or when
+    // other controls programmatically clear the search input; we should NOT
+    // wipe status/date filters in that case.
+    if (term.trim()) {
+      setSearchParams(prev => {
+        const next = new URLSearchParams(prev);
+        next.delete('from');
+        next.delete('to');
+        next.delete('status');
+        return next;
+      }, { replace: true } as any);
+    }
   }, [setSearchParams]);
 
   useEffect(() => {
@@ -340,13 +349,14 @@ export default function ExternalInvoicesPage() {
     notify.success(MESSAGES.externalInvoices.markingPaidTitle, `${selectedIds.length} invoice(s) queued.`);
   }, [selectedIds, setInvoiceAsPaidMutation, refetch]);
 
-  const handleExportSelected = useCallback(() => {
+  const handleExportSelected = useCallback(async () => {
     const selectedRows = (allData?.data?.data ?? []).filter((inv: any) => selectedIds.includes(inv.id)) as any[];
     if (!selectedRows.length) return;
-    const ws = utils.json_to_sheet(selectedRows);
-    const wb = utils.book_new();
-    utils.book_append_sheet(wb, ws, "Selected Invoices");
-    writeFile(wb, "external_invoices_selected.xlsx");
+    const xlsx = await import("xlsx");
+    const ws = xlsx.utils.json_to_sheet(selectedRows);
+    const wb = xlsx.utils.book_new();
+    xlsx.utils.book_append_sheet(wb, ws, "Selected Invoices");
+    xlsx.writeFile(wb, "external_invoices_selected.xlsx");
     notify.success(MESSAGES.externalInvoices.exportedTitle, `${selectedRows.length} selected invoice(s) exported.`);
   }, [selectedIds, allData]);
 
@@ -378,7 +388,7 @@ export default function ExternalInvoicesPage() {
   const selectedCount = selectedIds.length;
 
   return (
-    <div className="w-full space-y-6 py-6 sm:py-8 px-2 sm:px-0 animate-in fade-in-50">
+    <div className="w-full space-y-6 py-2 sm:py-2 px-2 sm:px-0 animate-in fade-in-50">
       <PageHeader
         title="External Invoices"
         subtitle="Manage and track all external invoices"
@@ -444,79 +454,55 @@ export default function ExternalInvoicesPage() {
             <div className="hidden md:block w-px h-6 bg-border mx-2" />
             {/* Saved Views: hide on small screens for cleaner mobile header */}
             <div className="hidden md:flex items-center gap-2">
-              <div className="flex items-center gap-1">
-                <Input
-                  placeholder="Save view…"
-                  className="h-8 w-32"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      const name = (e.target as HTMLInputElement).value;
-                      saveCurrentView(name);
-                      (e.target as HTMLInputElement).value = '';
-                    }
-                  }}
-                  onBlur={(e) => {
-                    const name = (e.target as HTMLInputElement).value;
-                    if (name.trim()) {
-                      saveCurrentView(name);
-                      (e.target as HTMLInputElement).value = '';
-                    }
-                  }}
-                />
-                <Button size="sm" variant="secondary" onClick={(e) => {
-                  const input = (e.currentTarget.previousSibling as HTMLInputElement);
-                  if (input && input.value.trim()) {
-                    saveCurrentView(input.value);
-                    input.value = '';
+              <SavedViews
+                storageKey="externalInvoices.views"
+                keys={savedViewsKeys}
+                getState={() => ({
+                  q: searchParams.get("q") || "",
+                  from: searchParams.get("from") || "",
+                  to: searchParams.get("to") || "",
+                  status: searchParams.get("status") || "",
+                  ps: searchParams.get("ps") || "",
+                  sort: searchParams.get("sort") || "",
+                })}
+                applyState={(state) => {
+                  const next = new URLSearchParams(searchParams);
+                  savedViewsKeys.forEach((k) => {
+                    const v = state[k];
+                    if (v) next.set(k, v);
+                    else next.delete(k);
+                  });
+                  setSearchParams(next, { replace: true } as any);
+
+                  // Force update both stats and table after applying a view
+                  setRefreshKey((rk) => rk + 1);
+
+                  // Sync local states immediately for instant UI update
+                  if (typeof state.q === "string") {
+                    setSearchInput(state.q);
+                    setSearchTerm(state.q);
                   }
-                }}>Save</Button>
-              </div>
-              <Select onValueChange={(name) => {
-                const all = JSON.parse(localStorage.getItem('externalInvoices.views') || '{}');
-                const v = all[name];
-                if (!v) return;
-                const next = new URLSearchParams(searchParams);
-                ['q','from','to','status','ps','sort'].forEach(k => {
-                  if (v[k]) next.set(k, v[k]); else next.delete(k);
-                });
-                setSearchParams(next, { replace: true } as any);
-                // Force update both stats and table after applying a view
-                setRefreshKey((rk) => rk + 1);
-                // Sync local states immediately for instant UI update
-                if (typeof v.q === 'string') {
-                  setSearchInput(v.q);
-                  setSearchTerm(v.q);
-                }
-                if (v.ps) {
-                  const psNum = parseInt(v.ps, 10);
-                  if (!Number.isNaN(psNum)) setPageSize(psNum);
-                }
-                setCurrentPage(1);
-                refetch();
-              }}>
-                <SelectTrigger className="h-8 w-36">
-                  <SelectValue placeholder="Views" />
-                </SelectTrigger>
-                <SelectContent align="end">
-                  {savedViews.length === 0 && (
-                    <div className="px-2 py-1 text-sm text-muted-foreground">No views</div>
-                  )}
-                  {savedViews.map(n => (
-                    <SelectItem key={n} value={n}>{n}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                  if (state.ps) {
+                    const psNum = parseInt(state.ps, 10);
+                    if (!Number.isNaN(psNum)) setPageSize(psNum);
+                  }
+                  setCurrentPage(1);
+                  refetch();
+                }}
+                onSaved={(name) => notify.success(MESSAGES.externalInvoices.viewSavedTitle, `Saved “${name}”.`)}
+                onDeleted={(name) => notify.success("View deleted", `Deleted “${name}”.`)}
+              />
             </div>
           </div>
         )}
         actions={(
           <div className="w-full sm:w-auto">
             <div className="flex gap-2 flex-col sm:flex-row w-full">
-              <Button variant="outline" onClick={handleRefresh} className="w-full sm:w-auto bg-white/20 border-white/30 text-white hover:bg-white/30">
+              <Button variant="outline" onClick={handleRefresh} className="w-full sm:w-auto">
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Refresh
               </Button>
-              <Button onClick={() => {}} className="w-full sm:w-auto bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white">
+              <Button onClick={() => {}} className="w-full sm:w-auto">
                 <Plus className="h-4 w-4 mr-2" />
                 New Invoice
               </Button>
@@ -530,12 +516,23 @@ export default function ExternalInvoicesPage() {
         <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
           {/* Search Section */}
           <div className="flex-1 min-w-0 w-full lg:max-w-xl">
-            <SearchBar 
-              currentSearchTerm={searchInput} 
-              onSearch={handleSearch}
-              placeholder="Search invoices by ID, status, or amount..."
-              className="w-full"
-            />
+            <div className="flex items-center gap-2">
+              <SearchBar 
+                currentSearchTerm={searchInput} 
+                onSearch={handleSearch}
+                placeholder="Search invoices by ID, status, or amount..."
+                className="w-full"
+              />
+              <Button
+                variant="outline"
+                size="icon"
+                className={(searchParams.get("from") || searchParams.get("to")) ? "ring-2 ring-primary/30" : ""}
+                onClick={() => setIsDateFilterOpen(true)}
+                title="Date range filter"
+              >
+                <Calendar className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
 
           {/* Metrics Section */}
@@ -627,103 +624,177 @@ export default function ExternalInvoicesPage() {
         </div>
       </Card>
 
-      {/* Date range picker + quick presets */}
+      {/* Active filter chips (kept compact; date controls moved into popup) */}
       <div className="flex flex-wrap gap-2 items-center">
-        <DateRangePicker
-          className="min-w-[260px]"
-          dateRange={undefined}
-          onDateRangeChange={(range) => {
-            if (range?.from && range?.to) {
-              const from = range.from.toISOString().slice(0,10);
-              const to = range.to.toISOString().slice(0,10);
-              const next = new URLSearchParams(searchParams);
-              next.set('from', from);
-              next.set('to', to);
-              setSearchParams(next, { replace: true } as any);
-              setSearchInput("");
-              setSearchTerm("");
-              setCurrentPage(1);
-            }
-          }}
-        />
-        {/* Month selector for quick per-month filtering */}
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Month</span>
-          <Input
-            type="month"
-            className="w-[160px]"
-            value={(() => {
-              const from = searchParams.get('from');
-              const to = searchParams.get('to');
-              if (!from || !to) return '';
-              // If from is first day and to is last day of same month, reflect that month
-              try {
-                const y = parseInt(from.slice(0,4), 10);
-                const m = parseInt(from.slice(5,7), 10);
-                const first = `${y}-${String(m).padStart(2,'0')}-01`;
-                const last = new Date(y, m, 0).toISOString().slice(0,10);
-                if (from === first && to === last) return from.slice(0,7);
-              } catch {}
-              return '';
-            })()}
-            onChange={(e) => {
-              const val = e.target.value; // YYYY-MM
-              const next = new URLSearchParams(searchParams);
-              if (!val) {
-                next.delete('from'); next.delete('to');
-              } else {
-                const [yy, mm] = val.split('-').map(x => parseInt(x, 10));
-                const from = `${yy}-${String(mm).padStart(2,'0')}-01`;
-                const to = new Date(yy, mm, 0).toISOString().slice(0,10);
-                next.set('from', from);
-                next.set('to', to);
-              }
-              setSearchParams(next, { replace: true } as any);
-              setSearchInput("");
-              setSearchTerm("");
-              setCurrentPage(1);
-            }}
-          />
-        </div>
-        <Badge 
-          variant="outline" 
-          className="cursor-pointer hover:bg-accent"
-          onClick={() => handleQuickFilter('last7d')}
-        >
-          Last 7 Days
-        </Badge>
-        <Badge 
-          variant="outline" 
-          className="cursor-pointer hover:bg-accent"
-          onClick={() => handleQuickFilter('last30d')}
-        >
-          Last 30 Days
-        </Badge>
-        {/* Active filter chips */}
         {(searchParams.get('from') || searchParams.get('to')) && (
           <Badge variant="secondary" className="flex items-center gap-2 max-w-full">
             Date: {searchParams.get('from') || '…'} → {searchParams.get('to') || '…'}
-            <Button variant="ghost" size="sm" onClick={() => setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('from'); n.delete('to'); return n; }, { replace: true } as any)}>×</Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setSearchParams(prev => {
+                  const n = new URLSearchParams(prev);
+                  n.delete('from'); n.delete('to');
+                  return n;
+                }, { replace: true } as any);
+                setCurrentPage(1);
+              }}
+            >
+              ×
+            </Button>
           </Badge>
         )}
         {searchParams.get('status') && (
           <Badge variant="secondary" className="flex items-center gap-2">
             Status: {searchParams.get('status')}
-            <Button variant="ghost" size="sm" onClick={() => setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('status'); return n; }, { replace: true } as any)}>×</Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setSearchParams(prev => {
+                  const n = new URLSearchParams(prev);
+                  n.delete('status');
+                  return n;
+                }, { replace: true } as any);
+                setCurrentPage(1);
+              }}
+            >
+              ×
+            </Button>
           </Badge>
         )}
         {searchTerm && (
           <Badge variant="secondary" className="flex items-center gap-2">
             Search: “{searchTerm}”
-            <Button variant="ghost" size="sm" onClick={() => { setSearchInput(''); setSearchTerm(''); }}>×</Button>
+            <Button variant="ghost" size="sm" onClick={() => { setSearchInput(''); setSearchTerm(''); }}>
+              ×
+            </Button>
           </Badge>
         )}
         {(searchParams.get('from') || searchParams.get('to') || searchParams.get('status') || searchTerm) && (
-          <Button variant="outline" size="sm" className="w-full sm:w-auto" onClick={() => setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('from'); n.delete('to'); n.delete('status'); n.delete('q'); return n; }, { replace: true } as any)}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full sm:w-auto"
+            onClick={() => {
+              setSearchParams(prev => {
+                const n = new URLSearchParams(prev);
+                n.delete('from'); n.delete('to'); n.delete('status'); n.delete('q');
+                return n;
+              }, { replace: true } as any);
+              setSearchInput("");
+              setSearchTerm("");
+              setCurrentPage(1);
+            }}
+          >
             Clear all
           </Button>
         )}
       </div>
+
+      {/* Date filter popup (saves vertical space) */}
+      <Dialog open={isDateFilterOpen} onOpenChange={setIsDateFilterOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Date filter</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <DateRangePicker
+              className="w-full"
+              dateRange={draftDateRange}
+              onDateRangeChange={(range) => {
+                // Important: keep a local draft so users can pick "from" then "to"
+                // without the picker snapping back to the URL-controlled value.
+                setDraftDateRange(range);
+              }}
+            />
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline" className="cursor-pointer hover:bg-accent" onClick={() => { handleQuickFilter('today'); setDraftDateRange(undefined); setIsDateFilterOpen(false); }}>
+                Today
+              </Badge>
+              <Badge variant="outline" className="cursor-pointer hover:bg-accent" onClick={() => { handleQuickFilter('last7d'); setDraftDateRange(undefined); setIsDateFilterOpen(false); }}>
+                Last 7 Days
+              </Badge>
+              <Badge variant="outline" className="cursor-pointer hover:bg-accent" onClick={() => { handleQuickFilter('last30d'); setDraftDateRange(undefined); setIsDateFilterOpen(false); }}>
+                Last 30 Days
+              </Badge>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Month</span>
+              <Input
+                type="month"
+                className="w-[160px]"
+                value={(() => {
+                  const from = searchParams.get('from');
+                  const to = searchParams.get('to');
+                  if (!from || !to) return '';
+                  try {
+                    const y = parseInt(from.slice(0,4), 10);
+                    const m = parseInt(from.slice(5,7), 10);
+                    const first = `${y}-${String(m).padStart(2,'0')}-01`;
+                    const last = new Date(y, m, 0).toISOString().slice(0,10);
+                    if (from === first && to === last) return from.slice(0,7);
+                  } catch {}
+                  return '';
+                })()}
+                onChange={(e) => {
+                  const val = e.target.value; // YYYY-MM
+                  const next = new URLSearchParams(searchParams);
+                  if (!val) {
+                    next.delete('from'); next.delete('to');
+                  } else {
+                    const [yy, mm] = val.split('-').map(x => parseInt(x, 10));
+                    const from = `${yy}-${String(mm).padStart(2,'0')}-01`;
+                    const to = new Date(yy, mm, 0).toISOString().slice(0,10);
+                    next.set('from', from);
+                    next.set('to', to);
+                  }
+                  setSearchParams(next, { replace: true } as any);
+                  setSearchInput("");
+                  setSearchTerm("");
+                  setCurrentPage(1);
+                }}
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="flex gap-2">
+            <Button variant="outline" onClick={() => {
+              setSearchParams(prev => {
+                const n = new URLSearchParams(prev);
+                n.delete('from'); n.delete('to');
+                return n;
+              }, { replace: true } as any);
+              setDraftDateRange(undefined);
+              setCurrentPage(1);
+            }}>
+              Clear dates
+            </Button>
+            <Button
+              onClick={() => {
+                if (draftDateRange?.from && draftDateRange?.to) {
+                  const from = draftDateRange.from.toISOString().slice(0,10);
+                  const to = draftDateRange.to.toISOString().slice(0,10);
+                  const next = new URLSearchParams(searchParams);
+                  next.set('from', from);
+                  next.set('to', to);
+                  setSearchParams(next, { replace: true } as any);
+                  setSearchInput("");
+                  setSearchTerm("");
+                  setCurrentPage(1);
+                }
+                setIsDateFilterOpen(false);
+              }}
+            >
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Contextual bulk actions bar */}
       {selectedCount > 0 && (
