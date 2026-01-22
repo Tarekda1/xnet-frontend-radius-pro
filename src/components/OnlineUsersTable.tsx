@@ -3,7 +3,9 @@ import React, {
     useCallback,
     useMemo,
     useEffect,
+    useState,
 } from "react";
+import { Link } from "react-router-dom";
 import {
     OnlineUser,
     useOnlineUsers,
@@ -42,6 +44,7 @@ import TableToolbar from "@/components/TableToolbar";
 import TablePager from "@/components/TablePager";
 import TableRowActions from "@/components/TableRowActions";
 import QueryState from "@/components/QueryState";
+import ActionConfirmDialog from "@/components/ActionConfirmDialog";
 
 import {
     Clock,
@@ -52,8 +55,20 @@ import {
     User,
     Wifi,
     HardDrive,
+    Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { notify } from "@/lib/notify";
+
+function readNasConfig(): { ip: string; code: string; port: number; configured: boolean } {
+    // - In dev: provided by Vite via import.meta.env.VITE_*
+    // - In prod Docker: provided at runtime via /env.js (window.__ENV__)
+    const runtimeEnv = (window as any).__ENV__ || {};
+    const ip = String(runtimeEnv.DEFAULT_NAS_IP ?? import.meta.env.VITE_DEFAULT_NAS_IP ?? "").trim();
+    const code = String(runtimeEnv.DEFAULT_NAS_SECRET ?? import.meta.env.VITE_DEFAULT_NAS_SECRET ?? "").trim();
+    const port = Number(runtimeEnv.DEFAULT_NAS_COA_PORT ?? import.meta.env.VITE_DEFAULT_NAS_COA_PORT ?? 1700);
+    return { ip, code, port, configured: Boolean(ip) && Boolean(code) };
+}
 
 /* ───────── helpers (same logic you used before) */
 const formatBytes = (b: string) => {
@@ -188,7 +203,9 @@ const MobileCard: React.FC<{
             <div className="flex items-center justify-between">
                 <div className="space-y-1">
                     <CardTitle className={cn("text-lg", profileClass(user.profile_profile_name))}>
-                        {user.session_username}
+                        <Link className="hover:underline" to={`/users/${encodeURIComponent(user.session_username)}`}>
+                            {user.session_username}
+                        </Link>
                     </CardTitle>
                     <CardDescription className="flex items-center gap-2">
                         <User className="h-3.5 w-3.5" />
@@ -226,7 +243,8 @@ const MobileCard: React.FC<{
             <div className="flex w-full justify-end">
                 <TableRowActions
                     actions={[
-                        { label: "Disconnect", icon: Power, onClick: () => onAction("disconnect", user.session_username), tone: "destructive" as const },
+                        { label: "View Traffic", icon: Activity, onClick: () => onAction("view-traffic", user.session_username) },
+                        { label: "Disconnect", icon: Power, onClick: () => onAction("disconnect", user.session_username), tone: "destructive" as const, disabled: !readNasConfig().configured, disabledReason: "Configure NAS IP/secret in env to enable disconnect." },
                         { label: "Reset MAC", icon: RefreshCw, onClick: () => onAction("reset-mac", user.session_username) },
                         { label: "Reset Quota", icon: RotateCw, onClick: () => onAction("reset-quota", user.session_username) },
                         { label: "Change Profile", icon: Settings, onClick: () => onAction("change-profile", user.session_username) },
@@ -263,7 +281,11 @@ const TableRows = function TableRows({
                                 <User className="h-4 w-4 text-primary" />
                             </div>
                             <div>
-                                <div className="font-medium">{u.session_username}</div>
+                                <div className="font-medium">
+                                    <Link className="hover:underline" to={`/users/${encodeURIComponent(u.session_username)}`}>
+                                        {u.session_username}
+                                    </Link>
+                                </div>
                                 <div className="text-xs text-muted-foreground">{u.userDetails_full_name || "—"}</div>
                             </div>
                         </div>
@@ -320,7 +342,8 @@ const TableRows = function TableRows({
                     <TableCell className="text-center">
                         <TableRowActions
                             actions={[
-                                { label: "Disconnect", icon: Power, onClick: () => onAction("disconnect", u.session_username), tone: "destructive" as const },
+                                { label: "View Traffic", icon: Activity, onClick: () => onAction("view-traffic", u.session_username) },
+                                    { label: "Disconnect", icon: Power, onClick: () => onAction("disconnect", u.session_username), tone: "destructive" as const, disabled: !readNasConfig().configured, disabledReason: "Configure NAS IP/secret in env to enable disconnect." },
                                 { label: "Reset MAC", icon: RefreshCw, onClick: () => onAction("reset-mac", u.session_username) },
                                 { label: "Reset Quota", icon: RotateCw, onClick: () => onAction("reset-quota", u.session_username) },
                                 { label: "Change Profile", icon: Settings, onClick: () => onAction("change-profile", u.session_username) },
@@ -366,13 +389,18 @@ interface Props {
     search: string;
     onCountChange?: (count: number) => void;
     isRefreshing?: boolean;
-    // onSearch/onRefresh are handled by the parent page
+    refreshToken?: number;
+    onChangeProfile?: (username: string, currentProfileName?: string) => void;
+    onViewTraffic?: (username: string) => void;
 }
 
 const OnlineUsersTable: React.FC<Props> = ({ 
     search, 
     onCountChange, 
     isRefreshing,
+    refreshToken,
+    onChangeProfile,
+    onViewTraffic,
 }) => {
     /* local pagination to keep table self-contained */
     //const [page, setPage] = useState(1);
@@ -391,53 +419,48 @@ const OnlineUsersTable: React.FC<Props> = ({
         disconnectUserSessionMutation,
     } = useOnlineUsers(search, 1, 100);
     //search,
+
+    const [confirm, setConfirm] = useState<null | { action: "reset-quota" | "reset-mac" | "disconnect"; username: string }>(null);
+
     const onAction = useCallback(
         (action: string, username: string) => {
+            const currentProfileName =
+                (data?.data ?? []).find((u) => u.session_username === username)?.profile_profile_name;
+
             if (action === "reset-quota") {
-                resetDailyUserQuotaMutation.mutate(
-                    { username },
-                    { onSuccess: () => refetch(), onError: (e) => alert(e.message) }
-                );
+                setConfirm({ action: "reset-quota", username });
                 return;
             }
 
             if (action === "reset-mac") {
-                resetMacAddressMutation.mutate(
-                    { username },
-                    { onSuccess: () => refetch(), onError: (e) => alert(e.message) }
-                );
+                setConfirm({ action: "reset-mac", username });
                 return;
             }
 
             if (action === "disconnect") {
-                // Choose NAS IP/secret.
-                // - In dev: provided by Vite via import.meta.env.VITE_*
-                // - In prod Docker: provided at runtime via /env.js (window.__ENV__)
-                const runtimeEnv = (window as any).__ENV__ || {};
-                const ip = String(runtimeEnv.DEFAULT_NAS_IP ?? import.meta.env.VITE_DEFAULT_NAS_IP ?? "").trim();
-                const code = String(runtimeEnv.DEFAULT_NAS_SECRET ?? import.meta.env.VITE_DEFAULT_NAS_SECRET ?? "").trim();
-                const port = Number(runtimeEnv.DEFAULT_NAS_COA_PORT ?? import.meta.env.VITE_DEFAULT_NAS_COA_PORT ?? 1700);
-
-                if (!ip || !code) {
-                    alert("NAS IP/secret not configured");
-                    return;
-                }
-
-                disconnectUserSessionMutation.mutate(
-                    { username, ip, code, port },
-                    { onSuccess: () => refetch(), onError: (e) => alert(e.message) }
-                );
+                setConfirm({ action: "disconnect", username });
                 return;
             }
 
             if (action === "change-profile") {
-                // TODO: implement change profile flow (modal + API) if needed.
-                alert("Change profile: not implemented yet.");
+                onChangeProfile?.(username, currentProfileName);
+                return;
+            }
+
+            if (action === "view-traffic") {
+                onViewTraffic?.(username);
                 return;
             }
         },
-        [resetDailyUserQuotaMutation, resetMacAddressMutation, disconnectUserSessionMutation, refetch]
+        [resetDailyUserQuotaMutation, resetMacAddressMutation, disconnectUserSessionMutation, refetch, onChangeProfile, onViewTraffic]
     );
+
+    // Allow parent to trigger a refetch (e.g., top Refresh button)
+    useEffect(() => {
+        if (!refreshToken) return;
+        refetch();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [refreshToken]);
 
     useEffect(() => {
         console.log("page", page);
@@ -467,6 +490,57 @@ const OnlineUsersTable: React.FC<Props> = ({
     const rows = data?.data ?? [];
 
     return (
+        <>
+            <ActionConfirmDialog
+                open={Boolean(confirm)}
+                onOpenChange={(open) => {
+                    if (!open) setConfirm(null);
+                }}
+                title={
+                    confirm?.action === "disconnect"
+                        ? "Disconnect session?"
+                        : confirm?.action === "reset-mac"
+                          ? "Reset MAC address?"
+                          : "Reset daily quota?"
+                }
+                description={
+                    confirm?.action === "disconnect"
+                        ? `This will send a CoA disconnect for ${confirm?.username}.`
+                        : confirm?.action === "reset-mac"
+                          ? `This will clear the stored MAC binding for ${confirm?.username}.`
+                          : `This will reset the daily quota counters for ${confirm?.username}.`
+                }
+                confirmText={confirm?.action === "disconnect" ? "Disconnect" : "Confirm"}
+                confirmTone={confirm?.action === "disconnect" ? "destructive" : "default"}
+                onConfirm={async () => {
+                    if (!confirm) return;
+                    const username = confirm.username;
+
+                    if (confirm.action === "reset-quota") {
+                        await resetDailyUserQuotaMutation.mutateAsync({ username });
+                        await refetch();
+                        return;
+                    }
+
+                    if (confirm.action === "reset-mac") {
+                        await resetMacAddressMutation.mutateAsync({ username });
+                        await refetch();
+                        return;
+                    }
+
+                    if (confirm.action === "disconnect") {
+                        const nas = readNasConfig();
+                        if (!nas.configured) {
+                            notify.error("Missing NAS config", "Set DEFAULT_NAS_IP/DEFAULT_NAS_SECRET (prod) or VITE_DEFAULT_NAS_* (dev).");
+                            return;
+                        }
+
+                        await disconnectUserSessionMutation.mutateAsync({ username, ip: nas.ip, code: nas.code, port: nas.port });
+                        await refetch();
+                    }
+                }}
+            />
+
         <QueryState
             isLoading={isLoading}
             error={error}
@@ -479,11 +553,11 @@ const OnlineUsersTable: React.FC<Props> = ({
             }
             empty={
                 <EmptyState
-                    title="No online users"
+                    title="No live sessions"
                     description="Try adjusting your search."
                 />
             }
-            errorTitle="Failed to load online users"
+            errorTitle="Failed to load live sessions"
         >
             <TableToolbar label={`${data?.totalUsers ?? 0} sessions`} className="mb-2 rounded-md border" />
 
@@ -511,6 +585,7 @@ const OnlineUsersTable: React.FC<Props> = ({
                 noun="users"
             />
         </QueryState>
+        </>
     );
 };
 

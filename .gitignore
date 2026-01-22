@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local environment files (do not commit secrets)
+.env
+.env.*

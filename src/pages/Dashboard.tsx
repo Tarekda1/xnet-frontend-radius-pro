@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useExpenseMonthlyTotals } from '@/hooks/useExpenses';
+import { useAuthMetrics } from "@/hooks/useAuthMetrics";
 import { 
   Users, 
   UserCheck, 
@@ -56,6 +57,7 @@ const Dashboard: React.FC = () => {
   const { data: alerts, isLoading: alertsLoading } = useAlerts();
   const onlineMetrics = useOnlineMetrics();
   const expenseMonthlyTotals = useExpenseMonthlyTotals();
+  const authMetrics = useAuthMetrics(86400);
 
   // Extract data from hooks
   const [resellerBalance, setResellerBalance] = useState<number | null>(null);
@@ -292,11 +294,11 @@ const Dashboard: React.FC = () => {
               </Card>
             ) : null}
 
-            {/* Online Users Card */}
+            {/* Live Sessions Card */}
             {(!isReseller && canSeeOnline) || isReseller ? (
             <Card className="hover:shadow-lg transition-shadow">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Online Users</CardTitle>
+                <CardTitle className="text-sm font-medium">Live Sessions</CardTitle>
                 <Users className="h-4 w-4 text-blue-600" />
               </CardHeader>
               <CardContent>
@@ -374,12 +376,22 @@ const Dashboard: React.FC = () => {
               <CardContent>
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="text-2xl font-bold">1.2M</div>
+                    <div className="text-2xl font-bold">
+                      {authMetrics.isLoading
+                        ? "..."
+                        : new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(
+                            authMetrics.data?.current.attempts ?? 0
+                          )}
+                    </div>
                     <p className="text-xs text-muted-foreground">Past 24 hours</p>
                   </div>
                   <Badge variant="secondary" className="flex gap-1 items-center">
-                    <ArrowUpRight className="h-3 w-3 text-green-600" />
-                    +12%
+                    {(authMetrics.data?.changePct.attempts ?? 0) >= 0 ? (
+                      <ArrowUpRight className="h-3 w-3 text-green-600" />
+                    ) : (
+                      <ArrowDownRight className="h-3 w-3 text-red-600" />
+                    )}
+                    {Math.abs(authMetrics.data?.changePct.attempts ?? 0).toFixed(1)}%
                   </Badge>
                 </div>
               </CardContent>

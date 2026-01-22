@@ -7,6 +7,7 @@ import { SidebarProvider } from './components/ui/Sidebar/Sidebar.context';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { canAny } from './lib/permissions';
 import { Helmet } from 'react-helmet';
 import { Loader } from 'lucide-react';
 import { websocketService } from './services/websocket';
@@ -18,6 +19,8 @@ const Dashboard = React.lazy(() => import('./pages/Dashboard'));
 const UsersComponent = React.lazy(() => import('./pages/Users'));
 const ProfilesComponent = React.lazy(() => import('./pages/Profiles'));
 const OnlineUsersComponent = React.lazy(() => import('./pages/OnlineUsers'));
+const UserSessionsComponent = React.lazy(() => import('./pages/UserSessions'));
+const UserDetailComponent = React.lazy(() => import('./pages/UserDetail'));
 const NasComponent = React.lazy(() => import('./pages/Nas'));
 const Login = React.lazy(() => import('./pages/Login'));
 const AuthUsers = React.lazy(() => import('./pages/AuthUsers'));
@@ -53,6 +56,27 @@ const ProtectedRoute: React.FC<{ element: React.ReactElement }> = ({ element }) 
   return element;
 };
 
+const ProtectedPermissionRoute: React.FC<{ element: React.ReactElement; anyOf: string[] }> = ({ element, anyOf }) => {
+  const { isAuthenticated, user } = useAuth();
+  const location = useLocation();
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace state={{ from: location }} />;
+  }
+
+  const mustChange = Boolean(user?.mustChangePassword);
+  if (mustChange && location.pathname !== "/change-password") {
+    localStorage.setItem("redirectTo", location.pathname);
+    return <Navigate to="/change-password" replace state={{ from: location }} />;
+  }
+
+  if (!canAny(user, anyOf)) {
+    return <Navigate to="/forbidden" replace />;
+  }
+
+  return element;
+};
+
 const AppRoutes: React.FC = () => {
   return (
     <Router>
@@ -72,9 +96,11 @@ const AppRoutes: React.FC = () => {
                 <Route path="about" element={<ProtectedRoute element={<About />} />} />
                 <Route path="invoices" element={<ProtectedRoute element={<InvoicesComponent />} />} />
                 <Route path="nas" element={<ProtectedRoute element={<NasComponent />} />} />
-                <Route path="users/list" element={<ProtectedRoute element={<UsersComponent />} />} />
+                <Route path="users/list" element={<ProtectedPermissionRoute anyOf={['users.view','reseller.users.view']} element={<UsersComponent />} />} />
+                <Route path="users/:username" element={<ProtectedPermissionRoute anyOf={['users.view','reseller.users.view']} element={<UserDetailComponent />} />} />
+                <Route path="users/:username/sessions" element={<ProtectedPermissionRoute anyOf={['users.view','reseller.users.view']} element={<UserSessionsComponent />} />} />
                 <Route path="profiles/list" element={<ProtectedRoute element={<ProfilesComponent />} />} />
-                <Route path="/online-users" element={<ProtectedRoute element={<OnlineUsersComponent />} />} />
+                <Route path="/online-users" element={<ProtectedPermissionRoute anyOf={['users.online.view','reseller.users.view']} element={<OnlineUsersComponent />} />} />
                 <Route path="/invoice-upload" element={<ProtectedRoute element={<InvoiceUpload />} />} />
                 <Route path="/external-invoices" element={<ProtectedRoute element={<ExternalInvoicesComponent />} />} />
                 <Route path="/access" element={<ProtectedRoute element={<AccessComponent />} />} />

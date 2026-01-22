@@ -58,50 +58,55 @@ const SearchBar: React.FC<Props> = React.memo(({
 
   return (
     <div className={cn(
-      "flex gap-2 w-full transition-all duration-200",
+      "w-full transition-all duration-200",
       isFocused && "scale-[1.01]",
       className
     )}>
-      <div className="relative flex-grow">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder={placeholder}
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            onFocus={() => setIsFocused(true)}
-            onBlur={() => setIsFocused(false)}
-            className="pl-10 pr-8"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                runSearch();
-              }
-            }}
-          />
-          {value && (
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder={placeholder}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
+          className={cn("pl-10", showButton ? "pr-28" : "pr-8")}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              runSearch();
+            }
+          }}
+        />
+
+        {/* right-side actions */}
+        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+          {value ? (
             <button
               onClick={clear}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+              className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
               type="button"
+              aria-label="Clear search"
             >
               <X className="h-4 w-4" />
             </button>
-          )}
+          ) : null}
+
+          {showButton ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={runSearch}
+              disabled={!trimmed}
+              className="h-8"
+            >
+              <Search className="h-4 w-4 mr-2" />
+              Search
+            </Button>
+          ) : null}
         </div>
       </div>
-
-      {showButton ? (
-        <Button
-          variant="outline"
-          onClick={runSearch}
-          disabled={!trimmed}
-          className="shrink-0"
-        >
-          <Search className="h-4 w-4 mr-2" />
-          Search
-        </Button>
-      ) : null}
     </div>
   );
 });

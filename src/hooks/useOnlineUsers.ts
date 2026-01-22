@@ -18,6 +18,8 @@ export interface OnlineUser {
   total_bytes_in: string;
   total_bytes_out: string;
   total_daily_usage: string;
+  total_daily_bytes_in?: string;
+  total_daily_bytes_out?: string;
   real_time_data_usage: string;
   remaining_daily_quota: string;
   remaining_monthly_quota: string;
@@ -62,6 +64,21 @@ const resetMacAddress = async ({ username }: { username: string }): Promise<Rese
   return response.data;
 };
 
+const changeUserProfile = async ({
+  username,
+  profileId,
+}: {
+  username: string;
+  profileId: number;
+}): Promise<{ success: boolean; message: string }> => {
+  // Reuse existing update-user endpoint
+  const response = await apiClient.put<{ success: boolean; message: string }>(
+    `/radius/users/${username}`,
+    { username, profileId }
+  );
+  return response.data;
+};
+
 const disconnectSession = async ({
   username,
   ip,
@@ -82,7 +99,12 @@ const disconnectSession = async ({
   return response.data;
 };
 
-export const useOnlineUsers = (search = "", initialPage: number = 1, initialLimit: number = 100) => {
+export const useOnlineUsers = (
+  search = "",
+  initialPage: number = 1,
+  initialLimit: number = 100,
+  options?: { enabled?: boolean; refetchInterval?: number }
+) => {
   const [page, setPage] = useState(initialPage);
   const [limit, setLimit] = useState(initialLimit);
   //const [search, setSearch] = useState('');
@@ -91,6 +113,8 @@ export const useOnlineUsers = (search = "", initialPage: number = 1, initialLimi
   const userQuery = useQuery({
     queryKey: ['onlineUsers', page, limit, search],
     queryFn: () => fetchOnlineUsers(page, limit, search),
+    enabled: options?.enabled ?? true,
+    refetchInterval: options?.refetchInterval,
   });
 
   const resetDailyUserQuotaMutation = useMutation<ResetDailyQuotaResponse, Error, { username: string }>({
@@ -121,11 +145,25 @@ export const useOnlineUsers = (search = "", initialPage: number = 1, initialLimi
     onError: (error) => notify.error("Action failed", error.message),
   });
 
+  const changeUserProfileMutation = useMutation<
+    { success: boolean; message: string },
+    Error,
+    { username: string; profileId: number }
+  >({
+    mutationFn: changeUserProfile,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['onlineUsers'] });
+      notify.success("Saved", MESSAGES.common.updated);
+    },
+    onError: (error) => notify.error("Action failed", error.message),
+  });
+
   return {
     ...userQuery,
     resetDailyUserQuotaMutation,
     resetMacAddressMutation,
     disconnectUserSessionMutation,
+    changeUserProfileMutation,
     page,
     setPage,
     limit,

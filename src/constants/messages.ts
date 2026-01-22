@@ -64,7 +64,7 @@ export const MESSAGES = {
 
   onlineUsers: {
     refreshedTitle: "Users refreshed",
-    refreshedDescription: "The online users list has been updated.",
+    refreshedDescription: "The live sessions list has been updated.",
     statusUpdatedTitle: "User status updated",
     disconnected: "User session disconnected.",
   },

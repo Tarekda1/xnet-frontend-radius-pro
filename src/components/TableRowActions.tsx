@@ -15,6 +15,7 @@ export type TableRowAction = {
   icon?: React.ComponentType<{ className?: string }>;
   onClick?: () => void;
   disabled?: boolean;
+  disabledReason?: string;
   tone?: "default" | "destructive";
 };
 
@@ -55,6 +56,7 @@ export default function TableRowActions({
             <DropdownMenuItem
               key={action.label}
               disabled={action.disabled}
+              title={action.disabled ? (action.disabledReason || action.label) : action.label}
               onClick={(e) => {
                 // Avoid selecting text / focus weirdness; consistent with other menus in app.
                 e.preventDefault();

@@ -24,6 +24,7 @@ import {
   HardDrive
 } from 'lucide-react';
 import { useOnlineMetrics } from '@/hooks/useOnlineMetrics';
+import { useAuthMetrics } from "@/hooks/useAuthMetrics";
 import PageHeader from "@/components/PageHeader";
 
 const FeatureCard = ({ 
@@ -226,6 +227,7 @@ const RecentActivityCard = () => {
 
 const Home: React.FC = () => {
   const { totalOnlineUsers, totalActiveUsers } = useOnlineMetrics();
+  const authMetrics = useAuthMetrics(86400);
 
   return (
     <div className="container space-y-8 p-y-8 animate-in fade-in-50">
@@ -252,7 +254,13 @@ const Home: React.FC = () => {
         />
         <QuickStatCard
           title="Auth Requests"
-          value="1.2M"
+          value={
+            authMetrics.isLoading
+              ? "..."
+              : new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(
+                  authMetrics.data?.current.attempts ?? 0
+                )
+          }
           icon={Shield}
           trend="Past 24 hours"
           pulseColor="after:bg-blue-500/10"

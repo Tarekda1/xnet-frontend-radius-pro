@@ -17,6 +17,7 @@ import {
     UserCheck, 
     UserX, 
     Download,
+    Upload,
     Filter,
     PieChart,
     Activity,
@@ -47,6 +48,15 @@ import {
 import { notify } from "@/lib/notify";
 import { MESSAGES } from "@/constants/messages";
 import QueryState from "@/components/QueryState";
+import ActionConfirmDialog from "@/components/ActionConfirmDialog";
+import { useProfiles } from "@/hooks/useProfiles";
+import { apiClient } from "@/api/client";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { downloadTextFile, parseCsv, toCsv } from "@/lib/csv";
+import SavedViews from "@/components/SavedViews";
+import type { SavedViewState } from "@/lib/savedViews";
 
 const MetricItem = ({ 
     label, 
@@ -245,14 +255,17 @@ const BulkActions = ({
     selectedUsers, 
     onBulkAction, 
     onSelectAll, 
-    allUsers 
+    allUsers,
+    profiles,
 }: { 
     selectedUsers: Set<number>;
     onBulkAction: (action: string) => void;
     onSelectAll: (selected: boolean) => void;
     allUsers: User[];
+    profiles: { id?: number; profileName: string }[];
 }) => {
     const isAllSelected = selectedUsers.size === allUsers.length;
+    const [profileId, setProfileId] = useState<string>("");
 
     return (
         <div className="relative overflow-hidden rounded-xl border border-blue-200/50 bg-gradient-to-r from-blue-50/50 via-purple-50/30 to-pink-50/50 p-4 shadow-lg">
@@ -301,6 +314,39 @@ const BulkActions = ({
                         <Button
                             variant="outline"
                             size="sm"
+                            onClick={() => onBulkAction('reset-mac')}
+                            className="bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100 hover:border-purple-300 transition-all duration-300 hover:scale-105"
+                        >
+                            <RefreshCw className="h-4 w-4 mr-1" />
+                            Reset MAC
+                        </Button>
+
+                        <div className="flex items-center gap-2 ml-2">
+                            <Select value={profileId} onValueChange={setProfileId}>
+                                <SelectTrigger className="w-[180px] h-9 bg-white/80">
+                                    <SelectValue placeholder="Assign profile..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {profiles.map((p) => (
+                                        <SelectItem key={String(p.id)} value={String(p.id)}>
+                                            {p.profileName}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={!profileId}
+                                onClick={() => onBulkAction(`assign-profile:${profileId}`)}
+                                className="bg-white/80 border-gray-200 text-gray-800 hover:bg-white transition-all duration-300 hover:scale-105"
+                            >
+                                Assign
+                            </Button>
+                        </div>
+                        <Button
+                            variant="outline"
+                            size="sm"
                             onClick={() => onBulkAction('delete')}
                             className="bg-red-50 border-red-200 text-red-700 hover:bg-red-100 hover:border-red-300 transition-all duration-300 hover:scale-105"
                         >
@@ -340,11 +386,33 @@ const UsersPage: React.FC = () => {
         deleteUserMutation,
         resetMacAddressMutation
     } = useUsers(1, pageSize);
+    const profilesQuery = useProfiles();
+    const [isImportOpen, setIsImportOpen] = useState(false);
+    const [importFileName, setImportFileName] = useState<string>("");
+    const [importRows, setImportRows] = useState<Array<{ raw: Record<string, string>; errors: string[] }>>([]);
+    const [isImporting, setIsImporting] = useState(false);
+
+    // Backend sometimes returns either:
+    // - { users, totalPages, ... } (normal list/search)
+    // - [] (legacy "no users found" response)
+    const serverUsers = useMemo<User[]>(() => {
+        const d: any = (data as any)?.data;
+        if (Array.isArray(d)) return d as User[];
+        return (d?.users ?? []) as User[];
+    }, [data]);
+
+    const isSearching = Boolean(searchQuery?.trim());
+    const [confirmAction, setConfirmAction] = useState<
+        | null
+        | { kind: 'delete-user'; username: string }
+        | { kind: 'reset-mac'; username: string }
+        | { kind: 'reset-quota'; username: string }
+        | { kind: 'bulk'; action: 'suspend' | 'activate' | 'delete' | 'reset-mac' | 'assign-profile'; usernames: string[]; profileId?: number; profileName?: string }
+    >(null);
 
     // Enhanced filtering with advanced filters
     const filteredUsers = React.useMemo(() => {
-        const users = data?.data?.users ?? [];
-        let filtered = users;
+        let filtered = serverUsers;
 
         // Status filter
         if (statusFilter) {
@@ -390,11 +458,11 @@ const UsersPage: React.FC = () => {
         }
 
         return filtered;
-    }, [data?.data?.users, statusFilter, advancedFilters]);
+    }, [serverUsers, statusFilter, advancedFilters]);
 
     // Enhanced metrics with trends
     const metrics = useMemo(() => {
-        const allUsers = data?.data?.users ?? [];
+        const allUsers = serverUsers;
         const active = filteredUsers.filter(u => u.accountStatus === 'active').length;
         const suspended = filteredUsers.filter(u => u.accountStatus === 'suspended').length;
         const online = filteredUsers.filter(u => u.isOnline).length;
@@ -421,12 +489,54 @@ const UsersPage: React.FC = () => {
             quotaTrend,
             quotaTrendValue: quotaExceeded > 0 ? `${quotaExceeded} users` : undefined
         };
-    }, [filteredUsers, data?.data?.users]);
+    }, [filteredUsers, serverUsers]);
 
     const handleSearch = useCallback((term: string) => {
         setSearchQuery(term);
         setCurrentPage(1);
     }, [setSearchQuery, setCurrentPage]);
+
+    const usersSavedViewsKeys = useMemo(
+        () => [
+            "search",
+            "status",
+            "viewMode",
+            "advProfile",
+            "advQuotaExceeded",
+            "advHasMacAddress",
+            "advHasContactInfo",
+        ],
+        []
+    );
+
+    const getUsersViewState = useCallback((): SavedViewState => {
+        return {
+            search: String(searchQuery ?? ""),
+            status: String(statusFilter ?? ""),
+            viewMode: String(viewMode ?? "table"),
+            advProfile: String(advancedFilters.profile ?? "all"),
+            advQuotaExceeded: advancedFilters.quotaExceeded ? "1" : "0",
+            advHasMacAddress: advancedFilters.hasMacAddress ? "1" : "0",
+            advHasContactInfo: advancedFilters.hasContactInfo ? "1" : "0",
+        };
+    }, [searchQuery, statusFilter, viewMode, advancedFilters]);
+
+    const applyUsersViewState = useCallback(
+        (state: SavedViewState) => {
+            setSearchQuery(state.search ?? "");
+            setStatusFilter(state.status ?? "");
+            setViewMode((state.viewMode as any) || "table");
+            setAdvancedFilters((prev) => ({
+                ...prev,
+                profile: state.advProfile ?? "all",
+                quotaExceeded: state.advQuotaExceeded === "1",
+                hasMacAddress: state.advHasMacAddress === "1",
+                hasContactInfo: state.advHasContactInfo === "1",
+            }));
+            setCurrentPage(1);
+        },
+        [setSearchQuery, setCurrentPage]
+    );
 
     const handleRefresh = useCallback(() => {
         setIsRefreshing(true);
@@ -476,32 +586,16 @@ const UsersPage: React.FC = () => {
         }
     }, []);
 
-    const confirmAndExecute = useCallback((message: string, action: () => void) => {
-        if (window.confirm(message)) {
-            action();
-            refetch();
-        }
-    }, [refetch]);
-
     const handleAction = useCallback((action: string, user: User) => {
         const actions = {
             edit: () => {
                 setEditingUser(user);
                 setIsAddUserModalOpen(true);
             },
-            delete: () => confirmAndExecute(
-                `Are you sure you want to delete user ${user.username}?`,
-                () => deleteUserMutation.mutate(user.username)
-            ),
-            'reset-mac': () => confirmAndExecute(
-                `Are you sure you want to reset MAC address for user ${user.username}?`,
-                () => resetMacAddressMutation.mutate(user.username)
-            ),
-            'reset-quota': () => {
-                // Implement reset quota logic here
-                console.log('Reset quota for user:', user.username);
-                alert('Quota reset functionality not implemented yet');
-            }
+            delete: () => setConfirmAction({ kind: 'delete-user', username: user.username }),
+            'reset-mac': () => setConfirmAction({ kind: 'reset-mac', username: user.username }),
+            // Not wired in Users module yet (Live Sessions has it); keep consistent UX.
+            'reset-quota': () => setConfirmAction({ kind: 'reset-quota', username: user.username }),
         };
 
         const actionFunction = actions[action as keyof typeof actions];
@@ -510,40 +604,129 @@ const UsersPage: React.FC = () => {
         } else {
             console.warn('Unknown action:', action);
         }
-    }, [deleteUserMutation, resetMacAddressMutation, confirmAndExecute]);
+    }, [deleteUserMutation, resetMacAddressMutation]);
 
     const handlePageSizeChange = useCallback((newSize: number) => {
         setPageSize(newSize);
         setCurrentPage(1); // Reset to first page when changing page size
     }, [setCurrentPage]);
 
-    const handleExportUsers = useCallback(async () => {
-        // Export only active users (exclude suspended/inactive/etc.)
-        const exportableUsers = filteredUsers.filter(u => u.accountStatus === 'active');
-        if (exportableUsers.length > 0) {
-            const xlsx = await import("xlsx");
-            // Prepare data for export with only the required fields
-            const exportData = exportableUsers.map(user => ({
-                Name: user.userDetails.fullName || 'N/A',
-                Phone: user.userDetails.phoneNumber || 'N/A',
-                Username: user.username || 'N/A'
-            }));
-
-            const ws = xlsx.utils.json_to_sheet(exportData);
-            const wb = xlsx.utils.book_new();
-            xlsx.utils.book_append_sheet(wb, ws, "Users");
-            
-            // Generate filename with current date and filter info
-            const date = new Date().toISOString().split('T')[0];
-            const filterSuffix = statusFilter ? `_${statusFilter}` : '';
-            const filename = `users${filterSuffix}_${date}.xlsx`;
-            
-            xlsx.writeFile(wb, filename);
-            notify.success(MESSAGES.users.exportSuccessTitle, `${exportableUsers.length} users exported to ${filename}`);
-        } else {
+    const handleExportUsers = useCallback(() => {
+        // Export the current filtered view (CSV)
+        const exportableUsers = filteredUsers;
+        if (!exportableUsers.length) {
             notify.error(MESSAGES.users.exportEmptyTitle, MESSAGES.users.exportEmptyDescription);
+            return;
         }
+
+        const rows = exportableUsers.map((u) => ({
+            username: u.username ?? "",
+            fullName: u.userDetails?.fullName ?? "",
+            phoneNumber: u.userDetails?.phoneNumber ?? "",
+            email: u.userDetails?.email ?? "",
+            profile: u.profile?.profileName ?? "",
+            accountStatus: u.accountStatus ?? "",
+            isOnline: u.isOnline ? "true" : "false",
+            macAddress: u.macAddress?.macAddress ?? "",
+            lastTimeActive: u.lastTimeActive ?? "",
+        }));
+        const cols = ["username", "fullName", "phoneNumber", "email", "profile", "accountStatus", "isOnline", "macAddress", "lastTimeActive"];
+        const csv = toCsv(rows, cols);
+
+        const date = new Date().toISOString().split('T')[0];
+        const filterSuffix = statusFilter ? `_${statusFilter}` : '';
+        const filename = `users${filterSuffix}_${date}.csv`;
+        downloadTextFile(filename, csv, "text/csv;charset=utf-8");
+        notify.success(MESSAGES.users.exportSuccessTitle, `${exportableUsers.length} users exported to ${filename}`);
     }, [filteredUsers, statusFilter]);
+
+    const handleImportFile = useCallback(async (file: File | null) => {
+        setImportRows([]);
+        setImportFileName(file?.name ?? "");
+        if (!file) return;
+
+        const text = await file.text();
+        const parsed = parseCsv(text).filter((r) => r.some((c) => String(c ?? "").trim().length > 0));
+        if (!parsed.length) {
+            notify.error("Import failed", "CSV file is empty.");
+            return;
+        }
+
+        const header = (parsed[0] ?? []).map((h) => String(h ?? "").trim().toLowerCase());
+        const mapKey = (k: string) => {
+            const key = k.replace(/\s+/g, "");
+            if (["username", "user", "login"].includes(key)) return "username";
+            if (["password", "pass"].includes(key)) return "password";
+            if (["profileid", "profile_id", "profile"].includes(key)) return "profileId";
+            if (["accountstatus", "status"].includes(key)) return "accountStatus";
+            if (["fullname", "name"].includes(key)) return "fullName";
+            if (["phonenumber", "phone"].includes(key)) return "phoneNumber";
+            if (["email"].includes(key)) return "email";
+            if (["address"].includes(key)) return "address";
+            return key;
+        };
+
+        const keys = header.map(mapKey);
+        const out: Array<{ raw: Record<string, string>; errors: string[] }> = [];
+
+        for (let idx = 1; idx < parsed.length; idx++) {
+            const row = parsed[idx] ?? [];
+            const raw: Record<string, string> = {};
+            keys.forEach((k, i) => {
+                raw[k] = String(row[i] ?? "").trim();
+            });
+            const errors: string[] = [];
+            const username = raw.username?.trim();
+            const password = raw.password?.trim();
+            const profileId = Number(raw.profileId);
+
+            if (!username) errors.push("username is required");
+            if (!password) errors.push("password is required");
+            if (!Number.isFinite(profileId) || profileId <= 0) errors.push("profileId must be a positive number");
+
+            out.push({ raw, errors });
+        }
+
+        setImportRows(out);
+    }, []);
+
+    const runImport = useCallback(async () => {
+        const valid = importRows.filter((r) => r.errors.length === 0).map((r) => r.raw);
+        if (!valid.length) {
+            notify.error("Import", "No valid rows to import.");
+            return;
+        }
+
+        setIsImporting(true);
+        try {
+            let ok = 0;
+            let fail = 0;
+            for (const r of valid) {
+                try {
+                    await apiClient.post("/radius/users", {
+                        username: r.username,
+                        password: r.password,
+                        profileId: Number(r.profileId),
+                        accountStatus: (r.accountStatus || "active") as any,
+                        fullName: r.fullName,
+                        address: r.address,
+                        phoneNumber: r.phoneNumber,
+                        email: r.email,
+                    });
+                    ok += 1;
+                } catch {
+                    fail += 1;
+                }
+            }
+            await refetch();
+            notify.success("Import complete", `${ok} created, ${fail} failed.`);
+            setIsImportOpen(false);
+            setImportRows([]);
+            setImportFileName("");
+        } finally {
+            setIsImporting(false);
+        }
+    }, [importRows, refetch]);
 
     // New handlers for enhanced features
     const handleSelectAll = useCallback((selected: boolean) => {
@@ -554,39 +737,134 @@ const UsersPage: React.FC = () => {
         }
     }, [filteredUsers]);
 
+    const handleToggleSelected = useCallback((userId: number, selected: boolean) => {
+        setSelectedUsers((prev) => {
+            const next = new Set(prev);
+            if (selected) next.add(userId);
+            else next.delete(userId);
+            return next;
+        });
+    }, []);
+
     const handleBulkAction = useCallback((action: string) => {
         const selectedUserList = filteredUsers.filter(u => selectedUsers.has(u.id));
+        const usernames = selectedUserList.map((u) => u.username).filter(Boolean);
         
         switch (action) {
             case 'suspend':
-                if (confirm(`Suspend ${selectedUserList.length} users?`)) {
-                    // Implement bulk suspend
-                    notify.success("Bulk action", `${selectedUserList.length} users suspended`);
-                }
+                setConfirmAction({ kind: 'bulk', action: 'suspend', usernames });
                 break;
             case 'activate':
-                if (confirm(`Activate ${selectedUserList.length} users?`)) {
-                    // Implement bulk activate
-                    notify.success("Bulk action", `${selectedUserList.length} users activated`);
-                }
+                setConfirmAction({ kind: 'bulk', action: 'activate', usernames });
                 break;
             case 'export':
                 handleExportUsers();
                 break;
-            case 'delete':
-                if (confirm(`Delete ${selectedUserList.length} users? This action cannot be undone.`)) {
-                    // Implement bulk delete
-                    notify.success("Bulk action", `${selectedUserList.length} users deleted`);
-                }
+            case 'reset-mac':
+                setConfirmAction({ kind: 'bulk', action: 'reset-mac', usernames });
                 break;
+            case 'delete':
+                setConfirmAction({ kind: 'bulk', action: 'delete', usernames });
+                break;
+            default: {
+                if (action.startsWith('assign-profile:')) {
+                    const idStr = action.split(':')[1];
+                    const pid = Number(idStr);
+                    const p = (profilesQuery.data?.data ?? []).find((x: any) => Number(x.id) === pid);
+                    setConfirmAction({ kind: 'bulk', action: 'assign-profile', usernames, profileId: pid, profileName: p?.profileName });
+                }
+            }
         }
     }, [selectedUsers, filteredUsers, handleExportUsers]);
 
     return (
+        <>
+        <ActionConfirmDialog
+            open={Boolean(confirmAction)}
+            onOpenChange={(open) => {
+                if (!open) setConfirmAction(null);
+            }}
+            title={
+                confirmAction?.kind === 'delete-user'
+                    ? 'Delete user?'
+                    : confirmAction?.kind === 'reset-mac'
+                      ? 'Reset MAC address?'
+                      : confirmAction?.kind === 'reset-quota'
+                        ? 'Reset quota?'
+                        : confirmAction?.kind === 'bulk'
+                          ? confirmAction.action === 'delete'
+                            ? `Delete ${confirmAction.usernames.length} users?`
+                            : confirmAction.action === 'suspend'
+                              ? `Suspend ${confirmAction.usernames.length} users?`
+                              : confirmAction.action === 'activate'
+                                ? `Activate ${confirmAction.usernames.length} users?`
+                                : confirmAction.action === 'reset-mac'
+                                  ? `Reset MAC for ${confirmAction.usernames.length} users?`
+                                  : `Assign profile to ${confirmAction.usernames.length} users?`
+                          : 'Confirm action'
+            }
+            description={
+                confirmAction?.kind === 'delete-user'
+                    ? `This will permanently delete ${confirmAction.username}.`
+                    : confirmAction?.kind === 'reset-mac'
+                      ? `This will clear the stored MAC binding for ${confirmAction.username}.`
+                      : confirmAction?.kind === 'reset-quota'
+                        ? `Quota reset is not wired in Users yet. Use Live Sessions -> Reset Quota for now.`
+                        : confirmAction?.kind === 'bulk'
+                          ? `${confirmAction.action === 'assign-profile' ? `Profile: ${confirmAction.profileName ?? confirmAction.profileId}` + '\n' : ''}Users affected: ${confirmAction.usernames.slice(0, 10).join(', ')}${confirmAction.usernames.length > 10 ? '…' : ''}`
+                          : undefined
+            }
+            confirmText={
+                confirmAction?.kind === 'delete-user' || (confirmAction?.kind === 'bulk' && confirmAction.action === 'delete')
+                    ? 'Delete'
+                    : 'Confirm'
+            }
+            confirmTone={
+                confirmAction?.kind === 'delete-user' || (confirmAction?.kind === 'bulk' && confirmAction.action === 'delete')
+                    ? 'destructive'
+                    : 'default'
+            }
+            onConfirm={async () => {
+                if (!confirmAction) return;
+
+                if (confirmAction.kind === 'delete-user') {
+                    await deleteUserMutation.mutateAsync(confirmAction.username);
+                    await refetch();
+                    return;
+                }
+                if (confirmAction.kind === 'reset-mac') {
+                    await resetMacAddressMutation.mutateAsync(confirmAction.username);
+                    await refetch();
+                    return;
+                }
+                if (confirmAction.kind === 'reset-quota') {
+                    notify.info("Not implemented", "Reset quota from Live Sessions until this is wired to a Users endpoint.");
+                    return;
+                }
+                if (confirmAction.kind === 'bulk') {
+                    // Dry-run UI now; wiring to real batch endpoints comes in a later todo.
+                    if (confirmAction.action === 'suspend') {
+                        notify.success("Bulk action", `${confirmAction.usernames.length} users suspended (dry-run UI)`);
+                    } else if (confirmAction.action === 'activate') {
+                        notify.success("Bulk action", `${confirmAction.usernames.length} users activated (dry-run UI)`);
+                    } else if (confirmAction.action === 'delete') {
+                        notify.success("Bulk action", `${confirmAction.usernames.length} users deleted (dry-run UI)`);
+                    } else if (confirmAction.action === 'reset-mac') {
+                        notify.success("Bulk action", `${confirmAction.usernames.length} users MAC reset (dry-run UI)`);
+                    } else if (confirmAction.action === 'assign-profile') {
+                        notify.success("Bulk action", `${confirmAction.usernames.length} users assigned profile ${confirmAction.profileName ?? confirmAction.profileId} (dry-run UI)`);
+                    }
+                }
+            }}
+        />
+
         <QueryState
             isLoading={isLoading}
             error={error}
-            isEmpty={!isLoading && !error && (data?.data?.users?.length ?? 0) === 0}
+            // Only show the full-page "empty" state when there are truly no users in the system.
+            // If search returns 0 results, keep rendering the page so the user can clear the search
+            // and so the table can show "No users found".
+            isEmpty={!isLoading && !error && !isSearching && serverUsers.length === 0}
             onRetry={() => refetch()}
             loading={
                 <div className="w-full py-6 space-y-6">
@@ -657,6 +935,17 @@ const UsersPage: React.FC = () => {
                             <Badge variant={statusFilter === 'online' ? "secondary" : "outline"} className="cursor-pointer" onClick={() => handleQuickFilter('online')}>Online</Badge>
                             <Badge variant={statusFilter === 'offline' ? "secondary" : "outline"} className="cursor-pointer" onClick={() => handleQuickFilter('offline')}>Offline</Badge>
                         </div>
+                        <div className="hidden lg:block">
+                            <SavedViews
+                                storageKey="savedViews:users"
+                                keys={usersSavedViewsKeys}
+                                getState={getUsersViewState}
+                                applyState={applyUsersViewState}
+                                compact
+                                onSaved={() => notify.success("View saved")}
+                                onDeleted={() => notify.success("View deleted")}
+                            />
+                        </div>
                     </div>
                 )}
                 actions={(
@@ -668,6 +957,10 @@ const UsersPage: React.FC = () => {
                         <Button variant="outline" onClick={handleExportUsers} disabled={filteredUsers.length === 0}>
                             <Download className="h-4 w-4 mr-2" />
                             Export
+                        </Button>
+                        <Button variant="outline" onClick={() => setIsImportOpen(true)}>
+                            <Upload className="h-4 w-4 mr-2" />
+                            Import CSV
                         </Button>
                         <Button onClick={handleAddUser}>
                             <Plus className="h-4 w-4 mr-2" />
@@ -690,6 +983,8 @@ const UsersPage: React.FC = () => {
                                     onSearch={handleSearch}
                                     placeholder="Search by username, status, or profile..."
                                     className="w-full"
+                                    autoSearch={false}
+                                    showButton
                                 />
                             </div>
                             <div className="flex flex-wrap items-center gap-3">
@@ -762,7 +1057,7 @@ const UsersPage: React.FC = () => {
                                 color="text-blue-600"
                                 onClick={() => handleQuickFilter('online')}
                                 showDot={true}
-                                tooltipText={`Online users: ${metrics.online} (${metrics.total ? Math.round((metrics.online / metrics.total) * 100) : 0}%)`}
+                                tooltipText={`Online sessions: ${metrics.online} (${metrics.total ? Math.round((metrics.online / metrics.total) * 100) : 0}%)`}
                                 gradient={true}
                                 iconOnly={false}
                             />
@@ -791,6 +1086,7 @@ const UsersPage: React.FC = () => {
                     onBulkAction={handleBulkAction}
                     onSelectAll={handleSelectAll}
                     allUsers={filteredUsers}
+                    profiles={profilesQuery.data?.data ?? []}
                 />
             )}
 
@@ -887,8 +1183,8 @@ const UsersPage: React.FC = () => {
                 <UsersTable
                     users={filteredUsers}
                     currentPage={currentPage}
-                    totalPages={data?.data?.totalPages ?? 0}
-                    totalUsers={data?.data?.totalUsers ?? 0}
+                    totalPages={Array.isArray((data as any)?.data) ? 1 : ((data as any)?.data?.totalPages ?? 0)}
+                    totalUsers={Array.isArray((data as any)?.data) ? serverUsers.length : ((data as any)?.data?.totalUsers ?? 0)}
                     onPageChange={setCurrentPage}
                     onAction={handleAction}
                     isLoading={isLoading}
@@ -896,6 +1192,9 @@ const UsersPage: React.FC = () => {
                     onPageSizeChange={handlePageSizeChange}
                     deleteUserMutation={deleteUserMutation}
                     resetMacAddressMutation={resetMacAddressMutation}
+                    selectedUserIds={selectedUsers}
+                    onToggleSelected={handleToggleSelected}
+                    onToggleSelectAll={handleSelectAll}
                 />
             )}
 
@@ -908,8 +1207,94 @@ const UsersPage: React.FC = () => {
                     editingUser={editingUser}
                 />
             )}
+
+            {/* CSV Import dialog */}
+            <Dialog open={isImportOpen} onOpenChange={(open) => (isImporting ? null : setIsImportOpen(open))}>
+                <DialogContent className="sm:max-w-[920px]">
+                    <DialogHeader>
+                        <DialogTitle>Import Users (CSV)</DialogTitle>
+                    </DialogHeader>
+
+                    <div className="space-y-3">
+                        <div className="text-sm text-muted-foreground">
+                            Required columns: <span className="font-mono">username,password,profileId</span>. Optional:{" "}
+                            <span className="font-mono">accountStatus,fullName,phoneNumber,email,address</span>.
+                        </div>
+
+                        <Input
+                            type="file"
+                            accept=".csv,text/csv"
+                            onChange={(e) => void handleImportFile(e.target.files?.item(0) ?? null)}
+                            disabled={isImporting}
+                        />
+
+                        {importFileName ? (
+                            <div className="text-sm">
+                                File: <span className="font-medium">{importFileName}</span>
+                            </div>
+                        ) : null}
+
+                        {importRows.length ? (
+                            <div className="flex items-center gap-3 text-sm">
+                                <Badge variant="outline">Total: {importRows.length}</Badge>
+                                <Badge variant="outline" className="border-green-500 text-green-700">
+                                    Valid: {importRows.filter((r) => r.errors.length === 0).length}
+                                </Badge>
+                                <Badge variant="outline" className="border-red-500 text-red-700">
+                                    Invalid: {importRows.filter((r) => r.errors.length > 0).length}
+                                </Badge>
+                            </div>
+                        ) : null}
+
+                        {importRows.length ? (
+                            <div className="max-h-[420px] overflow-auto rounded-md border">
+                                <Table>
+                                    <TableHeader className="sticky top-0 bg-white">
+                                        <TableRow>
+                                            <TableHead className="w-[40px]">#</TableHead>
+                                            <TableHead>Username</TableHead>
+                                            <TableHead className="w-[120px]">Profile</TableHead>
+                                            <TableHead className="w-[120px]">Status</TableHead>
+                                            <TableHead>Errors</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {importRows.slice(0, 50).map((r, idx) => (
+                                            <TableRow key={idx} className={r.errors.length ? "bg-red-50/40" : ""}>
+                                                <TableCell className="font-mono text-xs">{idx + 1}</TableCell>
+                                                <TableCell className="font-mono text-sm">{r.raw.username}</TableCell>
+                                                <TableCell className="font-mono text-sm">{r.raw.profileId}</TableCell>
+                                                <TableCell className="font-mono text-sm">{r.raw.accountStatus || "active"}</TableCell>
+                                                <TableCell className="text-sm">
+                                                    {r.errors.length ? r.errors.join("; ") : <span className="text-green-700">OK</span>}
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                                {importRows.length > 50 ? (
+                                    <div className="p-2 text-xs text-muted-foreground">Showing first 50 rows.</div>
+                                ) : null}
+                            </div>
+                        ) : null}
+                    </div>
+
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsImportOpen(false)} disabled={isImporting}>
+                            Close
+                        </Button>
+                        <Button
+                            onClick={() => void runImport()}
+                            disabled={isImporting || importRows.filter((r) => r.errors.length === 0).length === 0}
+                        >
+                            {isImporting ? "Importing..." : "Create valid users"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
         </QueryState>
+        </>
     );
 };
 

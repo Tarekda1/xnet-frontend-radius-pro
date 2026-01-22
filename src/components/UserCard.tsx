@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { RefreshCw, Edit, Trash2 } from 'lucide-react';
 import { User } from '../types/api';
 import  Loader  from '@/components/ui/loader';
+import { useNavigate } from "react-router-dom";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface UserCardProps {
     user: User;
@@ -13,9 +15,12 @@ interface UserCardProps {
     onResetMAC: () => void;
     onResetQuota: () => void;
     isResettingMAC: boolean;
+    isSelected?: boolean;
+    onToggleSelected?: (selected: boolean) => void;
 }
 
-const UserCard: React.FC<UserCardProps> = ({ user, onEdit, onDelete, onResetMAC, onResetQuota, isResettingMAC }) => {
+const UserCard: React.FC<UserCardProps> = ({ user, onEdit, onDelete, onResetMAC, onResetQuota, isResettingMAC, isSelected, onToggleSelected }) => {
+    const navigate = useNavigate();
     // const dailyUsagePercentage = user.profile.dailyQuota ? (user.profile.dailyUsage / user.profile.dailyQuota) * 100 : 0;
     // const monthlyUsagePercentage = user.profile.monthlyQuota ? (user.monthlyUsage / user.profile.monthlyQuota) * 100 : 0;
 
@@ -23,7 +28,21 @@ const UserCard: React.FC<UserCardProps> = ({ user, onEdit, onDelete, onResetMAC,
         <Card className="mb-4">
             <CardHeader>
                 <CardTitle className="flex justify-between items-center">
-                    <span>{user.username}</span>
+                    <div className="flex items-center gap-2">
+                        <Checkbox
+                            checked={Boolean(isSelected)}
+                            onCheckedChange={(v) => onToggleSelected?.(Boolean(v))}
+                            aria-label="Select user"
+                        />
+                    <button
+                        type="button"
+                        className="text-left hover:underline"
+                        onClick={() => navigate(`/users/${encodeURIComponent(user.username)}`)}
+                        title="View user"
+                    >
+                        {user.username}
+                    </button>
+                    </div>
                     <Badge variant={user.isOnline ? "success" : "secondary"}>
                         {user.isOnline ? "Online" : "Offline"}
                     </Badge>

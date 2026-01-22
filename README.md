@@ -1,50 +1,61 @@
-# React + TypeScript + Vite
+# Xnet Frontend (Radius Pro)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Frontend UI built with React + TypeScript + Vite.
 
-Currently, two official plugins are available:
+## Windows 11 quickstart (recommended)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+Prereqs:
+- Node.js 20+
+- npm
 
-## Expanding the ESLint configuration
+Steps (PowerShell):
 
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
-
-- Configure the top-level `parserOptions` property like this:
-
-```js
-export default tseslint.config({
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
+```powershell
+Copy-Item env.example .env.local
+npm ci
+npm run dev
 ```
 
-- Replace `tseslint.configs.recommended` to `tseslint.configs.recommendedTypeChecked` or `tseslint.configs.strictTypeChecked`
-- Optionally add `...tseslint.configs.stylisticTypeChecked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and update the config:
+If you want a single command that also scaffolds `.env.local` for you:
 
-```js
-// eslint.config.js
-import react from 'eslint-plugin-react'
-
-export default tseslint.config({
-  // Set the react version
-  settings: { react: { version: '18.3' } },
-  plugins: {
-    // Add the react plugin
-    react,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended rules
-    ...react.configs.recommended.rules,
-    ...react.configs['jsx-runtime'].rules,
-  },
-})
+```powershell
+.\scripts\dev.ps1
 ```
+
+Note: if PowerShell blocks scripts, run one of:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+# or for a one-off:
+powershell -ExecutionPolicy Bypass -File .\scripts\dev.ps1
+```
+
+## Docker (Windows 11 + Docker Desktop)
+
+Dev container (Vite inside Docker):
+
+```powershell
+.\scripts\docker-dev.ps1
+```
+
+Stop containers:
+
+```powershell
+.\scripts\docker-down.ps1
+```
+
+Or via npm scripts:
+
+```powershell
+npm run docker:dev
+npm run docker:stop
+```
+
+## Environment variables
+
+- Local dev: use `.env.local` (not committed)
+- Example/template: `env.example` (safe to commit)
+
+Important: `docker-compose.yml` no longer hardcodes NAS credentials; set these in `.env.local` when needed:
+- `VITE_DEFAULT_NAS_SECRET`
+

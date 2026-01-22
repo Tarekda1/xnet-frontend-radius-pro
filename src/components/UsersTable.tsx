@@ -14,6 +14,8 @@ import StatusPill from "@/components/StatusPill";
 import TableToolbar from "@/components/TableToolbar";
 import TablePager from "@/components/TablePager";
 import TableRowActions from "@/components/TableRowActions";
+import { useNavigate } from "react-router-dom";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface UsersTableProps {
     users: User[];
@@ -25,6 +27,9 @@ interface UsersTableProps {
     isLoading: boolean;
     deleteUserMutation: UseMutationResult<any, unknown, string, unknown>;
     resetMacAddressMutation: UseMutationResult<any, unknown, string, unknown>;
+    selectedUserIds?: Set<number>;
+    onToggleSelected?: (userId: number, selected: boolean) => void;
+    onToggleSelectAll?: (selected: boolean) => void;
     pageSize?: number;
     onPageSizeChange?: (size: number) => void;
 }
@@ -46,8 +51,11 @@ const UserRow: React.FC<{
     user: User;
     onAction: (action: string, user: User) => void;
     index: number;
-}> = ({ user, onAction, index }) => {
+    isSelected?: boolean;
+    onToggleSelected?: (userId: number, selected: boolean) => void;
+}> = ({ user, onAction, index, isSelected, onToggleSelected }) => {
     const [isExpanded, setIsExpanded] = useState(false);
+    const navigate = useNavigate();
 
     return (
         <>
@@ -68,6 +76,13 @@ const UserRow: React.FC<{
                     !user.isOnline && "border-l-2 border-l-red-600"
                 )}
             >
+                <TableCell className="w-[44px]">
+                    <Checkbox
+                        checked={Boolean(isSelected)}
+                        onCheckedChange={(v) => onToggleSelected?.(user.id, Boolean(v))}
+                        aria-label="Select user"
+                    />
+                </TableCell>
                 <TableCell>
                     <div className="flex items-center gap-2">
                         <Button
@@ -92,9 +107,14 @@ const UserRow: React.FC<{
                 
                 <TableCell>
                     <div className="flex flex-col">
-                        <span className="font-semibold text-primary hover:text-primary/80">
+                        <button
+                            type="button"
+                            className="text-left font-semibold text-primary hover:text-primary/80"
+                            onClick={() => navigate(`/users/${encodeURIComponent(user.username)}`)}
+                            title="View user"
+                        >
                             {user.username}
-                        </span>
+                        </button>
                         {user.userDetails?.fullName && (
                             <span className="text-sm text-muted-foreground">
                                 {user.userDetails.fullName}
@@ -187,7 +207,7 @@ const UserRow: React.FC<{
 
             {isExpanded && (
                 <TableRow className="bg-slate-50/80 border-y border-y-slate-200">
-                    <TableCell colSpan={8}>
+                    <TableCell colSpan={9}>
                         <div className="p-4 space-y-4">
                             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                                 <div className="space-y-2 bg-white rounded-lg p-3 shadow-sm">
@@ -261,13 +281,31 @@ const UsersTable: React.FC<UsersTableProps> = ({
     onAction,
     isLoading,
     resetMacAddressMutation,
+    selectedUserIds,
+    onToggleSelected,
+    onToggleSelectAll,
     pageSize = 100,
     onPageSizeChange,
 }) => {
     const [sorting, setSorting] = useState<SortingState>([]);
     const pageSizes = [10, 20, 50, 100,200,500];
 
+    const allSelected = Boolean(users.length) && Boolean(selectedUserIds) && selectedUserIds!.size === users.length;
+    const someSelected = Boolean(selectedUserIds) && selectedUserIds!.size > 0 && !allSelected;
+
     const columns: ColumnDef<User>[] = [
+        {
+            id: "select",
+            header: () => (
+                <Checkbox
+                    checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                    onCheckedChange={(v) => onToggleSelectAll?.(Boolean(v))}
+                    aria-label="Select all users"
+                />
+            ),
+            cell: () => null,
+            enableSorting: false,
+        },
         {
             accessorKey: "id",
             header: ({ column }) => {
@@ -359,14 +397,19 @@ const UsersTable: React.FC<UsersTableProps> = ({
         },
     });
 
+    // IMPORTANT:
+    // The headers were toggling TanStack sorting state, but the table body was rendering `users` directly.
+    // Use the sorted row model as the source of truth for the displayed rows.
+    const displayUsers = table.getSortedRowModel().rows.map((r) => r.original);
+
     return (
         <div>
             <div className="rounded-md border shadow-sm overflow-hidden">
-                <TableToolbar label={users.length ? `${users.length} users` : "No users"} />
+                <TableToolbar label={displayUsers.length ? `${displayUsers.length} users` : "No users"} />
 
                 <div className="min-w-[768px] hidden md:block">
                     <div className="overflow-x-auto max-h-[70vh]">
-                        {users.length === 0 ? (
+                        {displayUsers.length === 0 ? (
                             <div className="p-4">
                                 <EmptyState
                                     title="No users found"
@@ -393,12 +436,14 @@ const UsersTable: React.FC<UsersTableProps> = ({
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {users.map((user, index) => (
+                                {displayUsers.map((user, index) => (
                                     <UserRow 
                                         key={user.id} 
                                         user={user} 
                                         onAction={onAction}
                                         index={index}
+                                        isSelected={selectedUserIds?.has(user.id)}
+                                        onToggleSelected={onToggleSelected}
                                     />
                                 ))}
                             </TableBody>
@@ -409,13 +454,13 @@ const UsersTable: React.FC<UsersTableProps> = ({
             </div>
 
             <div className="mt-4 space-y-4 md:hidden">
-                {users.length === 0 ? (
+                {displayUsers.length === 0 ? (
                     <EmptyState
                         title="No users found"
                         description="Try changing filters or search terms."
                     />
                 ) : null}
-                {users.map((user) => (
+                {displayUsers.map((user) => (
                     <UserCard
                         key={user.id}
                         user={user}
@@ -424,6 +469,8 @@ const UsersTable: React.FC<UsersTableProps> = ({
                         onResetMAC={() => onAction('reset-mac', user)}
                         onResetQuota={() => onAction('reset-quota', user)}
                         isResettingMAC={resetMacAddressMutation.variables === user.username}
+                        isSelected={selectedUserIds?.has(user.id)}
+                        onToggleSelected={(checked) => onToggleSelected?.(user.id, checked)}
                     />
                 ))}
             </div>

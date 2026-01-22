@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import PageHeader from "@/components/PageHeader";
 import { Profile, useProfiles } from '../hooks/useProfiles';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Search, Plus, Download, Upload, Clock, Users, Pencil, Network } from 'lucide-react';
+import { Search, Plus, Download, Upload, Clock, Users, Pencil, Network, Trash2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { useForm } from "react-hook-form";
@@ -15,78 +15,116 @@ import { Skeleton } from "@/components/ui/skeleton";
 import SearchBar from "@/components/SearchBar";
 import QueryState from "@/components/QueryState";
 
-const ProfileCard: React.FC<{ profile: Profile; onEdit: () => void }> = ({ profile, onEdit }) => {
+const ProfileCard: React.FC<{ profile: Profile; onEdit: () => void; onDelete: () => void }> = ({ profile, onEdit, onDelete }) => {
   const formatQuota = (quota: string) => {
     const quotaGB = (parseInt(quota) / (1024 * 1024 * 1024)).toFixed(2);
     return `${quotaGB} GB`;
   };
 
-  const formatSpeed = (speedKbps: number) => {
-    if (speedKbps >= 1000000) {
-      return `${(speedKbps / 1000000).toFixed(2)} Gbps`;
-    } else if (speedKbps >= 1000) {
-      return `${(speedKbps / 1000).toFixed(2)} Mbps`;
+  const formatSpeed = (speedKbps?: number) => {
+    const v = Number(speedKbps ?? 0);
+    if (!Number.isFinite(v) || v <= 0) return "—";
+    if (v >= 1000000) {
+      return `${(v / 1000000).toFixed(2)} Gbps`;
+    } else if (v >= 1000) {
+      return `${(v / 1000).toFixed(2)} Mbps`;
     } else {
-      return `${speedKbps} Kbps`;
+      return `${v} Kbps`;
     }
   };
 
-  const formatSessionTimeout = (seconds: number) => {
-    if (seconds >= 86400) {
-      return `${Math.floor(seconds / 86400)} day(s)`;
-    } else if (seconds >= 3600) {
-      return `${Math.floor(seconds / 3600)} hour(s)`;
-    } else if (seconds >= 60) {
-      return `${Math.floor(seconds / 60)} minute(s)`;
+  const formatSessionTimeout = (seconds?: number) => {
+    const s = Number(seconds ?? 0);
+    if (!Number.isFinite(s) || s <= 0) return "—";
+    if (s >= 86400) {
+      return `${Math.floor(s / 86400)} day(s)`;
+    } else if (s >= 3600) {
+      return `${Math.floor(s / 3600)} hour(s)`;
+    } else if (s >= 60) {
+      return `${Math.floor(s / 60)} minute(s)`;
     } else {
-      return `${seconds} second(s)`;
+      return `${s} second(s)`;
     }
   };
 
   return (
-    <Card className="overflow-hidden hover:shadow-lg transition-shadow duration-300">
-      <div className="bg-gradient-to-r from-blue-500 to-purple-600 text-white p-4 relative">
-        <div className="flex justify-between items-center mb-2">
-          <div className="flex items-center gap-2">
-            <h3 className="text-lg font-semibold">{profile.profileName}</h3>
-            <Badge variant="secondary" className="text-xs">ID: {profile.id}</Badge>
+    <Card className="relative overflow-hidden border-0 shadow-xl bg-white/80 backdrop-blur-sm transition-all duration-300 hover:shadow-2xl">
+      <div className="absolute inset-0 bg-gradient-to-br from-blue-50/30 via-purple-50/20 to-pink-50/30" />
+
+      <CardHeader className="relative z-10 pb-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <CardTitle className="text-lg truncate text-gray-900">{profile.profileName}</CardTitle>
+            <CardDescription className="flex items-center gap-2">
+              <Badge variant="outline" className="bg-white/70">
+                ID: {profile.id}
+              </Badge>
+              <span className="text-xs text-muted-foreground truncate">
+                Night: {profile.nightStart || "—"} – {profile.nightEnd || "—"}
+              </span>
+            </CardDescription>
           </div>
-          <Button
-            className="bg-white/10 hover:bg-white/20 text-white rounded-full p-1"
-            onClick={onEdit}
-            title="Edit Profile"
-          >
-            <Pencil className="w-4 h-4" />
-          </Button>
-        </div>
-      </div>
-      <div className="p-4">
-        <div className="grid grid-cols-2 gap-4">
-          <div className="flex items-center">
-            <Download className="w-4 h-4 mr-2 text-blue-500" />
-            <span className="text-sm">{formatSpeed(profile.speedDown!)}</span>
-          </div>
-          <div className="flex items-center">
-            <Upload className="w-4 h-4 mr-2 text-green-500" />
-            <span className="text-sm">{formatSpeed(profile.speedUp!)}</span>
-          </div>
-          <div className="flex items-center">
-            <Clock className="w-4 h-4 mr-2 text-orange-500" />
-            <span className="text-sm">{formatSessionTimeout(profile.sessionTimeout!)} sec</span>
-          </div>
-          <div className="flex items-center">
-            <Users className="w-4 h-4 mr-2 text-purple-500" />
-            <span className="text-sm">{profile.maxSessions}</span>
+
+          <div className="flex gap-2">
+            <Button variant="outline" size="icon" className="bg-white/70" onClick={onEdit} title="Edit profile">
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="bg-white/70 text-red-600 hover:text-red-700"
+              onClick={onDelete}
+              title="Delete profile"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
           </div>
         </div>
-        <div className="mt-4 pt-4 border-t">
-          <p className="text-sm text-gray-600">Daily: {formatQuota(profile.dailyQuota)}</p>
-          <p className="text-sm text-gray-600">Monthly: {formatQuota(profile.monthlyQuota)}</p>
+      </CardHeader>
+
+      <CardContent className="relative z-10 space-y-4">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-lg border bg-white/70 p-3">
+            <div className="text-xs text-muted-foreground flex items-center gap-2">
+              <Download className="h-4 w-4 text-blue-600" />
+              Download
+            </div>
+            <div className="mt-1 font-mono text-sm text-gray-900">{formatSpeed(profile.speedDown)}</div>
+          </div>
+          <div className="rounded-lg border bg-white/70 p-3">
+            <div className="text-xs text-muted-foreground flex items-center gap-2">
+              <Upload className="h-4 w-4 text-emerald-600" />
+              Upload
+            </div>
+            <div className="mt-1 font-mono text-sm text-gray-900">{formatSpeed(profile.speedUp)}</div>
+          </div>
+          <div className="rounded-lg border bg-white/70 p-3">
+            <div className="text-xs text-muted-foreground flex items-center gap-2">
+              <Clock className="h-4 w-4 text-orange-600" />
+              Session timeout
+            </div>
+            <div className="mt-1 font-mono text-sm text-gray-900">{formatSessionTimeout(profile.sessionTimeout)}</div>
+          </div>
+          <div className="rounded-lg border bg-white/70 p-3">
+            <div className="text-xs text-muted-foreground flex items-center gap-2">
+              <Users className="h-4 w-4 text-purple-600" />
+              Max sessions
+            </div>
+            <div className="mt-1 font-mono text-sm text-gray-900">{profile.maxSessions ?? "—"}</div>
+          </div>
         </div>
-        <div className="mt-4 text-xs text-gray-500">
-          Night hours: {profile.nightStart} - {profile.nightEnd}
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-lg border bg-white/70 p-3">
+            <div className="text-xs text-muted-foreground">Daily quota</div>
+            <div className="mt-1 font-mono text-sm text-gray-900">{formatQuota(profile.dailyQuota)}</div>
+          </div>
+          <div className="rounded-lg border bg-white/70 p-3">
+            <div className="text-xs text-muted-foreground">Monthly quota</div>
+            <div className="mt-1 font-mono text-sm text-gray-900">{formatQuota(profile.monthlyQuota)}</div>
+          </div>
         </div>
-      </div>
+      </CardContent>
     </Card>
   );
 };
@@ -154,7 +192,7 @@ const ProfileFormModal: React.FC<ProfileFormModalProps> = ({ profile, onSave, on
 
 
   return (
-    <DialogContent className="sm:max-w-[425px]">
+    <DialogContent className="sm:max-w-[560px] max-h-[85vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle>{profile ? 'Edit Profile' : 'Create New Profile'}</DialogTitle>
       </DialogHeader>
@@ -245,14 +283,17 @@ const ProfileFormModal: React.FC<ProfileFormModalProps> = ({ profile, onSave, on
 };
 
 const ProfilesComponent: React.FC = () => {
-  const { data, error, isLoading, updateProfile, createProfile } = useProfiles();
+  const { data, error, isLoading, updateProfile, createProfile, deleteProfile } = useProfiles();
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProfile, setEditingProfile] = useState<Profile | undefined>(undefined);
 
-  const filteredProfiles = data?.data.filter(profile =>
-    profile.profileName.toLowerCase().includes(searchTerm.toLowerCase())
-  ) || [];
+  const allProfiles = data?.data ?? [];
+  const filteredProfiles = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return allProfiles;
+    return allProfiles.filter((p) => p.profileName.toLowerCase().includes(q));
+  }, [allProfiles, searchTerm]);
 
   const handleSaveProfile = async (profile: Profile) => {
     // Toasts are handled by the hook.
@@ -272,12 +313,20 @@ const ProfilesComponent: React.FC = () => {
     setIsModalOpen(true);
   };
 
+  const handleDeleteProfile = (profile: Profile) => {
+    if (!profile.id) return;
+    const ok = window.confirm(`Delete profile "${profile.profileName}"? This cannot be undone.`);
+    if (!ok) return;
+    deleteProfile(profile.id);
+  };
+
   return (
-    <div className="w-full py-6 space-y-6">
+    <div className="w-full py-6 space-y-6 bg-gradient-to-br from-gray-50/50 via-blue-50/30 to-purple-50/30 min-h-screen">
       <PageHeader
         title="Network Profiles"
         subtitle="Manage and configure network access profiles"
         icon={Network}
+        className="border-0 shadow-xl bg-white/80 backdrop-blur-sm"
         actions={(
           <div className="flex gap-2">
             <Button onClick={() => setIsModalOpen(true)}>
@@ -290,10 +339,11 @@ const ProfilesComponent: React.FC = () => {
       <QueryState
         isLoading={isLoading}
         error={error}
-        isEmpty={!data?.data?.length}
+        // only show empty state when there are truly no profiles in the system
+        isEmpty={!isLoading && !error && allProfiles.length === 0}
         onRetry={() => window.location.reload()}
         loading={
-          <Card>
+          <Card className="border-0 shadow-xl bg-white/80 backdrop-blur-sm">
             <CardHeader>
               <Skeleton className="h-6 w-48" />
               <Skeleton className="h-4 w-64" />
@@ -301,7 +351,7 @@ const ProfilesComponent: React.FC = () => {
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {[1, 2, 3].map((i) => (
-                  <Card key={i} className="overflow-hidden">
+                  <Card key={i} className="overflow-hidden border-0 shadow-lg bg-white/70">
                     <Skeleton className="h-32 w-full" />
                     <div className="p-4 space-y-4">
                       <Skeleton className="h-4 w-3/4" />
@@ -318,7 +368,7 @@ const ProfilesComponent: React.FC = () => {
         emptyTitle="No profiles yet"
         emptyDescription="Create your first profile plan."
       >
-        <Card>
+        <Card className="border-0 shadow-xl bg-white/80 backdrop-blur-sm">
           <CardHeader>
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
               <div>
@@ -343,6 +393,7 @@ const ProfilesComponent: React.FC = () => {
                   key={profile.id}
                   profile={profile}
                   onEdit={() => openEditModal(profile)}
+                  onDelete={() => handleDeleteProfile(profile)}
                 />
               ))}
             </div>
@@ -355,6 +406,14 @@ const ProfilesComponent: React.FC = () => {
                 <p className="text-sm text-muted-foreground mt-1">
                   {searchTerm ? 'Try adjusting your search' : 'Create your first profile'}
                 </p>
+                {!searchTerm ? (
+                  <div className="mt-4">
+                    <Button onClick={() => setIsModalOpen(true)}>
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add Profile
+                    </Button>
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </CardContent>
