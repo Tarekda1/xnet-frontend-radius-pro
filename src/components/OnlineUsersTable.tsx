@@ -6,6 +6,7 @@ import React, {
     useState,
 } from "react";
 import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import {
     OnlineUser,
     useOnlineUsers,
@@ -45,6 +46,7 @@ import TablePager from "@/components/TablePager";
 import TableRowActions from "@/components/TableRowActions";
 import QueryState from "@/components/QueryState";
 import ActionConfirmDialog from "@/components/ActionConfirmDialog";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 import {
     Clock,
@@ -59,6 +61,9 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { notify } from "@/lib/notify";
+import { apiClient } from "@/api/client";
+import { useAuth } from "@/context/AuthContext";
+import { canAny } from "@/lib/permissions";
 
 function readNasConfig(): { ip: string; code: string; port: number; configured: boolean } {
     // - In dev: provided by Vite via import.meta.env.VITE_*
@@ -197,7 +202,11 @@ const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
 const MobileCard: React.FC<{
     user: OnlineUser;
     onAction: (a: string, u: string) => void;
-}> = React.memo(({ user, onAction }) => (
+    canManageRadiusUsers: boolean;
+    canDisconnect: boolean;
+    manageReason: string;
+    disconnectReason: string;
+}> = React.memo(({ user, onAction, canManageRadiusUsers, canDisconnect, manageReason, disconnectReason }) => (
     <Card className="overflow-hidden border border-border/50 hover:border-border transition-colors">
         <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
@@ -243,11 +252,12 @@ const MobileCard: React.FC<{
             <div className="flex w-full justify-end">
                 <TableRowActions
                     actions={[
+                        { label: "Session Details", icon: HardDrive, onClick: () => onAction("details", user.session_username) },
                         { label: "View Traffic", icon: Activity, onClick: () => onAction("view-traffic", user.session_username) },
-                        { label: "Disconnect", icon: Power, onClick: () => onAction("disconnect", user.session_username), tone: "destructive" as const, disabled: !readNasConfig().configured, disabledReason: "Configure NAS IP/secret in env to enable disconnect." },
-                        { label: "Reset MAC", icon: RefreshCw, onClick: () => onAction("reset-mac", user.session_username) },
-                        { label: "Reset Quota", icon: RotateCw, onClick: () => onAction("reset-quota", user.session_username) },
-                        { label: "Change Profile", icon: Settings, onClick: () => onAction("change-profile", user.session_username) },
+                        { label: "Disconnect", icon: Power, onClick: () => onAction("disconnect", user.session_username), tone: "destructive" as const, disabled: !canDisconnect || !readNasConfig().configured, disabledReason: !canDisconnect ? disconnectReason : "Configure NAS IP/secret in env to enable disconnect." },
+                        { label: "Reset MAC", icon: RefreshCw, onClick: () => onAction("reset-mac", user.session_username), disabled: !canManageRadiusUsers, disabledReason: manageReason },
+                        { label: "Reset Quota", icon: RotateCw, onClick: () => onAction("reset-quota", user.session_username), disabled: !canManageRadiusUsers, disabledReason: manageReason },
+                        { label: "Change Profile", icon: Settings, onClick: () => onAction("change-profile", user.session_username), disabled: !canManageRadiusUsers, disabledReason: manageReason },
                     ]}
                 />
             </div>
@@ -259,9 +269,17 @@ const MobileCard: React.FC<{
 const TableRows = function TableRows({
     users,
     onAction,
+    canManageRadiusUsers,
+    canDisconnect,
+    manageReason,
+    disconnectReason,
 }: {
     users: OnlineUser[];
     onAction: (a: string, u: string) => void;
+    canManageRadiusUsers: boolean;
+    canDisconnect: boolean;
+    manageReason: string;
+    disconnectReason: string;
 }) {
     return (
         <>
@@ -342,11 +360,12 @@ const TableRows = function TableRows({
                     <TableCell className="text-center">
                         <TableRowActions
                             actions={[
+                                { label: "Session Details", icon: HardDrive, onClick: () => onAction("details", u.session_username) },
                                 { label: "View Traffic", icon: Activity, onClick: () => onAction("view-traffic", u.session_username) },
-                                    { label: "Disconnect", icon: Power, onClick: () => onAction("disconnect", u.session_username), tone: "destructive" as const, disabled: !readNasConfig().configured, disabledReason: "Configure NAS IP/secret in env to enable disconnect." },
-                                { label: "Reset MAC", icon: RefreshCw, onClick: () => onAction("reset-mac", u.session_username) },
-                                { label: "Reset Quota", icon: RotateCw, onClick: () => onAction("reset-quota", u.session_username) },
-                                { label: "Change Profile", icon: Settings, onClick: () => onAction("change-profile", u.session_username) },
+                                { label: "Disconnect", icon: Power, onClick: () => onAction("disconnect", u.session_username), tone: "destructive" as const, disabled: !canDisconnect || !readNasConfig().configured, disabledReason: !canDisconnect ? disconnectReason : "Configure NAS IP/secret in env to enable disconnect." },
+                                { label: "Reset MAC", icon: RefreshCw, onClick: () => onAction("reset-mac", u.session_username), disabled: !canManageRadiusUsers, disabledReason: manageReason },
+                                { label: "Reset Quota", icon: RotateCw, onClick: () => onAction("reset-quota", u.session_username), disabled: !canManageRadiusUsers, disabledReason: manageReason },
+                                { label: "Change Profile", icon: Settings, onClick: () => onAction("change-profile", u.session_username), disabled: !canManageRadiusUsers, disabledReason: manageReason },
                             ]}
                         />
                     </TableCell>
@@ -359,7 +378,11 @@ const TableRows = function TableRows({
 const DesktopTable: React.FC<{
     users: OnlineUser[];
     onAction: (a: string, u: string) => void;
-}> = React.memo(({ users, onAction }) => (
+    canManageRadiusUsers: boolean;
+    canDisconnect: boolean;
+    manageReason: string;
+    disconnectReason: string;
+}> = React.memo(({ users, onAction, canManageRadiusUsers, canDisconnect, manageReason, disconnectReason }) => (
     <Card className="overflow-hidden border border-border/50">
         <div className="overflow-auto max-h-[70vh]">
         <Table>
@@ -377,7 +400,14 @@ const DesktopTable: React.FC<{
                 </TableRow>
             </TableHeader>
             <TableBody>
-                <TableRows users={users} onAction={onAction} />
+                <TableRows
+                    users={users}
+                    onAction={onAction}
+                    canManageRadiusUsers={canManageRadiusUsers}
+                    canDisconnect={canDisconnect}
+                    manageReason={manageReason}
+                    disconnectReason={disconnectReason}
+                />
             </TableBody>
         </Table>
         </div>
@@ -402,6 +432,11 @@ const OnlineUsersTable: React.FC<Props> = ({
     onChangeProfile,
     onViewTraffic,
 }) => {
+    const { user: authUser } = useAuth();
+    const canManageRadiusUsers = useMemo(() => canAny(authUser, ["users.view", "reseller.users.manage"]), [authUser]);
+    const canDisconnect = useMemo(() => canAny(authUser, ["users.online.view", "reseller.users.manage"]), [authUser]);
+    const manageReason = "You don't have permission to manage users.";
+    const disconnectReason = "You don't have permission to disconnect sessions.";
     /* local pagination to keep table self-contained */
     //const [page, setPage] = useState(1);
 
@@ -421,6 +456,27 @@ const OnlineUsersTable: React.FC<Props> = ({
     //search,
 
     const [confirm, setConfirm] = useState<null | { action: "reset-quota" | "reset-mac" | "disconnect"; username: string }>(null);
+    const [detailUsername, setDetailUsername] = useState<string | null>(null);
+
+    const sessionDetailQuery = useQuery({
+        queryKey: ["sessions", "live", detailUsername],
+        queryFn: async () => {
+            const resp = await apiClient.get(`/sessions/live/${encodeURIComponent(String(detailUsername))}`);
+            return resp?.data?.data;
+        },
+        enabled: Boolean(detailUsername),
+        staleTime: 5000,
+    });
+
+    const sessionRejectsQuery = useQuery({
+        queryKey: ["sessions", "rejects", detailUsername],
+        queryFn: async () => {
+            const resp = await apiClient.get(`/sessions/rejects/${encodeURIComponent(String(detailUsername))}`, { params: { limit: 25 } });
+            return resp?.data?.data ?? [];
+        },
+        enabled: Boolean(detailUsername),
+        staleTime: 5000,
+    });
 
     const onAction = useCallback(
         (action: string, username: string) => {
@@ -449,6 +505,11 @@ const OnlineUsersTable: React.FC<Props> = ({
 
             if (action === "view-traffic") {
                 onViewTraffic?.(username);
+                return;
+            }
+
+            if (action === "details") {
+                setDetailUsername(username);
                 return;
             }
         },
@@ -491,6 +552,68 @@ const OnlineUsersTable: React.FC<Props> = ({
 
     return (
         <>
+            <Sheet open={Boolean(detailUsername)} onOpenChange={(open) => (!open ? setDetailUsername(null) : null)}>
+                <SheetContent className="sm:max-w-[520px]">
+                    <SheetHeader>
+                        <SheetTitle>Session Details</SheetTitle>
+                        <SheetDescription>
+                            {detailUsername ? (
+                                <span>
+                                    User:{" "}
+                                    <Link className="underline" to={`/users/${encodeURIComponent(detailUsername)}`}>
+                                        {detailUsername}
+                                    </Link>
+                                </span>
+                            ) : null}
+                        </SheetDescription>
+                    </SheetHeader>
+
+                    <div className="px-4 pb-4 space-y-4 overflow-auto">
+                        {sessionDetailQuery.isLoading ? (
+                            <div className="text-sm text-muted-foreground">Loading session detail…</div>
+                        ) : sessionDetailQuery.error ? (
+                            <div className="text-sm text-red-600">Failed to load session detail.</div>
+                        ) : !sessionDetailQuery.data ? (
+                            <div className="text-sm text-muted-foreground">No live session found.</div>
+                        ) : (
+                            <div className="space-y-2 text-sm">
+                                <div className="flex justify-between gap-2"><span className="text-muted-foreground">Status</span><span className="font-medium">{sessionDetailQuery.data.status ?? "—"}</span></div>
+                                <div className="flex justify-between gap-2"><span className="text-muted-foreground">Profile</span><span className="font-medium">{sessionDetailQuery.data.profileName ?? "—"}</span></div>
+                                <div className="flex justify-between gap-2"><span className="text-muted-foreground">NAS IP</span><span className="font-mono text-xs">{sessionDetailQuery.data.nasIpAddress ?? "—"}</span></div>
+                                <div className="flex justify-between gap-2"><span className="text-muted-foreground">Framed IP</span><span className="font-mono text-xs">{sessionDetailQuery.data.framedIpAddress ?? "—"}</span></div>
+                                <div className="flex justify-between gap-2"><span className="text-muted-foreground">Calling Station</span><span className="font-mono text-xs">{sessionDetailQuery.data.callingStationId ?? "—"}</span></div>
+                                <div className="flex justify-between gap-2"><span className="text-muted-foreground">Acct Session Id</span><span className="font-mono text-xs">{sessionDetailQuery.data.sessionId ?? "—"}</span></div>
+                                <div className="flex justify-between gap-2"><span className="text-muted-foreground">Start</span><span className="font-mono text-xs">{sessionDetailQuery.data.acctStartTime ? new Date(sessionDetailQuery.data.acctStartTime).toLocaleString() : "—"}</span></div>
+                                <div className="flex justify-between gap-2"><span className="text-muted-foreground">Last Update</span><span className="font-mono text-xs">{sessionDetailQuery.data.acctUpdateTime ? new Date(sessionDetailQuery.data.acctUpdateTime).toLocaleString() : "—"}</span></div>
+                            </div>
+                        )}
+
+                        <div className="border rounded-md">
+                            <div className="px-3 py-2 border-b text-sm font-medium">Recent rejects</div>
+                            <div className="p-3">
+                                {sessionRejectsQuery.isLoading ? (
+                                    <div className="text-sm text-muted-foreground">Loading rejects…</div>
+                                ) : sessionRejectsQuery.error ? (
+                                    <div className="text-sm text-red-600">Failed to load rejects.</div>
+                                ) : (Array.isArray(sessionRejectsQuery.data) ? sessionRejectsQuery.data.length : 0) === 0 ? (
+                                    <div className="text-sm text-muted-foreground">No recent rejects recorded.</div>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {(sessionRejectsQuery.data as any[]).slice(0, 8).map((r, idx) => (
+                                            <div key={idx} className="flex items-center justify-between gap-2 text-xs">
+                                                <span className="font-mono">{r.timestamp ? new Date(r.timestamp).toLocaleString() : "—"}</span>
+                                                <span className="text-muted-foreground">{r.status ?? "rejected"}</span>
+                                                <span className="font-mono">{r.nasIp ?? "—"}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </SheetContent>
+            </Sheet>
+
             <ActionConfirmDialog
                 open={Boolean(confirm)}
                 onOpenChange={(open) => {
@@ -563,13 +686,28 @@ const OnlineUsersTable: React.FC<Props> = ({
 
             {/* Desktop */}
             <div className="hidden md:block">
-                <DesktopTable users={rows} onAction={onAction} />
+                <DesktopTable
+                    users={rows}
+                    onAction={onAction}
+                    canManageRadiusUsers={canManageRadiusUsers}
+                    canDisconnect={canDisconnect}
+                    manageReason={manageReason}
+                    disconnectReason={disconnectReason}
+                />
             </div>
 
             {/* Mobile */}
             <div className="md:hidden space-y-4">
                 {rows.map((u) => (
-                    <MobileCard key={u.session_username} user={u} onAction={onAction} />
+                    <MobileCard
+                        key={u.session_username}
+                        user={u}
+                        onAction={onAction}
+                        canManageRadiusUsers={canManageRadiusUsers}
+                        canDisconnect={canDisconnect}
+                        manageReason={manageReason}
+                        disconnectReason={disconnectReason}
+                    />
                 ))}
             </div>
 

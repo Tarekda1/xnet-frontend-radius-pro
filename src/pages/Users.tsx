@@ -57,6 +57,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { downloadTextFile, parseCsv, toCsv } from "@/lib/csv";
 import SavedViews from "@/components/SavedViews";
 import type { SavedViewState } from "@/lib/savedViews";
+import { useAuth } from "@/context/AuthContext";
+import { canAny } from "@/lib/permissions";
 
 const MetricItem = ({ 
     label, 
@@ -266,6 +268,9 @@ const BulkActions = ({
 }) => {
     const isAllSelected = selectedUsers.size === allUsers.length;
     const [profileId, setProfileId] = useState<string>("");
+    const { user: authUser } = useAuth();
+    const canManageUsers = useMemo(() => canAny(authUser, ["users.view", "reseller.users.manage"]), [authUser]);
+    const manageUsersReason = "You don't have permission to manage users.";
 
     return (
         <div className="relative overflow-hidden rounded-xl border border-blue-200/50 bg-gradient-to-r from-blue-50/50 via-purple-50/30 to-pink-50/50 p-4 shadow-lg">
@@ -288,6 +293,8 @@ const BulkActions = ({
                             variant="outline"
                             size="sm"
                             onClick={() => onBulkAction('suspend')}
+                            disabled={!canManageUsers}
+                            title={!canManageUsers ? manageUsersReason : "Suspend selected users"}
                             className="bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100 hover:border-orange-300 transition-all duration-300 hover:scale-105"
                         >
                             <UserX className="h-4 w-4 mr-1" />
@@ -297,6 +304,8 @@ const BulkActions = ({
                             variant="outline"
                             size="sm"
                             onClick={() => onBulkAction('activate')}
+                            disabled={!canManageUsers}
+                            title={!canManageUsers ? manageUsersReason : "Activate selected users"}
                             className="bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100 hover:border-emerald-300 transition-all duration-300 hover:scale-105"
                         >
                             <UserCheck className="h-4 w-4 mr-1" />
@@ -315,6 +324,8 @@ const BulkActions = ({
                             variant="outline"
                             size="sm"
                             onClick={() => onBulkAction('reset-mac')}
+                            disabled={!canManageUsers}
+                            title={!canManageUsers ? manageUsersReason : "Reset MAC for selected users"}
                             className="bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100 hover:border-purple-300 transition-all duration-300 hover:scale-105"
                         >
                             <RefreshCw className="h-4 w-4 mr-1" />
@@ -337,8 +348,9 @@ const BulkActions = ({
                             <Button
                                 variant="outline"
                                 size="sm"
-                                disabled={!profileId}
+                                disabled={!profileId || !canManageUsers}
                                 onClick={() => onBulkAction(`assign-profile:${profileId}`)}
+                                title={!canManageUsers ? manageUsersReason : !profileId ? "Select a profile first" : "Assign profile"}
                                 className="bg-white/80 border-gray-200 text-gray-800 hover:bg-white transition-all duration-300 hover:scale-105"
                             >
                                 Assign
@@ -348,6 +360,8 @@ const BulkActions = ({
                             variant="outline"
                             size="sm"
                             onClick={() => onBulkAction('delete')}
+                            disabled={!canManageUsers}
+                            title={!canManageUsers ? manageUsersReason : "Delete selected users"}
                             className="bg-red-50 border-red-200 text-red-700 hover:bg-red-100 hover:border-red-300 transition-all duration-300 hover:scale-105"
                         >
                             <Trash2 className="h-4 w-4 mr-1" />
@@ -361,6 +375,7 @@ const BulkActions = ({
 };
 
 const UsersPage: React.FC = () => {
+    const { user: authUser } = useAuth();
     const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
     const [pageSize, setPageSize] = useState(50);
@@ -538,6 +553,9 @@ const UsersPage: React.FC = () => {
         [setSearchQuery, setCurrentPage]
     );
 
+    const canManageUsers = useMemo(() => canAny(authUser, ["users.view", "reseller.users.manage"]), [authUser]);
+    const manageUsersReason = "You don't have permission to manage users.";
+
     const handleRefresh = useCallback(() => {
         setIsRefreshing(true);
         refetch().finally(() => {
@@ -699,27 +717,32 @@ const UsersPage: React.FC = () => {
 
         setIsImporting(true);
         try {
-            let ok = 0;
-            let fail = 0;
-            for (const r of valid) {
-                try {
-                    await apiClient.post("/radius/users", {
-                        username: r.username,
-                        password: r.password,
-                        profileId: Number(r.profileId),
-                        accountStatus: (r.accountStatus || "active") as any,
-                        fullName: r.fullName,
-                        address: r.address,
-                        phoneNumber: r.phoneNumber,
-                        email: r.email,
-                    });
-                    ok += 1;
-                } catch {
-                    fail += 1;
-                }
-            }
+            const resp = await apiClient.post("/radius/users/bulk/create", {
+                users: valid.map((r) => ({
+                    username: r.username,
+                    password: r.password,
+                    profileId: Number(r.profileId),
+                    accountStatus: (r.accountStatus || "active") as any,
+                    fullName: r.fullName,
+                    address: r.address,
+                    phoneNumber: r.phoneNumber,
+                    email: r.email,
+                })),
+            });
+
+            const created = Number(resp?.data?.data?.created ?? 0);
+            const failed = Number(resp?.data?.data?.failed ?? 0);
+            const results = resp?.data?.data?.results as Array<{ username: string; ok: boolean; error?: string }> | undefined;
             await refetch();
-            notify.success("Import complete", `${ok} created, ${fail} failed.`);
+            if (failed > 0 && Array.isArray(results)) {
+                const firstErrors = results
+                    .filter((x) => !x.ok)
+                    .slice(0, 5)
+                    .map((x) => `${x.username || "(missing username)"}: ${x.error || "failed"}`);
+                notify.error("Import completed with errors", `${created} created, ${failed} failed.\n${firstErrors.join("\n")}`);
+            } else {
+                notify.success("Import complete", `${created} created, ${failed} failed.`);
+            }
             setIsImportOpen(false);
             setImportRows([]);
             setImportFileName("");
@@ -809,7 +832,7 @@ const UsersPage: React.FC = () => {
                     : confirmAction?.kind === 'reset-mac'
                       ? `This will clear the stored MAC binding for ${confirmAction.username}.`
                       : confirmAction?.kind === 'reset-quota'
-                        ? `Quota reset is not wired in Users yet. Use Live Sessions -> Reset Quota for now.`
+                        ? `This will reset the daily quota counters for ${confirmAction.username}.`
                         : confirmAction?.kind === 'bulk'
                           ? `${confirmAction.action === 'assign-profile' ? `Profile: ${confirmAction.profileName ?? confirmAction.profileId}` + '\n' : ''}Users affected: ${confirmAction.usernames.slice(0, 10).join(', ')}${confirmAction.usernames.length > 10 ? '…' : ''}`
                           : undefined
@@ -838,21 +861,73 @@ const UsersPage: React.FC = () => {
                     return;
                 }
                 if (confirmAction.kind === 'reset-quota') {
-                    notify.info("Not implemented", "Reset quota from Live Sessions until this is wired to a Users endpoint.");
+                    await apiClient.put(`/radius/users/resetQuota/${encodeURIComponent(confirmAction.username)}`);
+                    await refetch();
+                    notify.success("Quota reset", `Daily quota reset for ${confirmAction.username}.`);
                     return;
                 }
                 if (confirmAction.kind === 'bulk') {
-                    // Dry-run UI now; wiring to real batch endpoints comes in a later todo.
-                    if (confirmAction.action === 'suspend') {
-                        notify.success("Bulk action", `${confirmAction.usernames.length} users suspended (dry-run UI)`);
-                    } else if (confirmAction.action === 'activate') {
-                        notify.success("Bulk action", `${confirmAction.usernames.length} users activated (dry-run UI)`);
-                    } else if (confirmAction.action === 'delete') {
-                        notify.success("Bulk action", `${confirmAction.usernames.length} users deleted (dry-run UI)`);
-                    } else if (confirmAction.action === 'reset-mac') {
-                        notify.success("Bulk action", `${confirmAction.usernames.length} users MAC reset (dry-run UI)`);
-                    } else if (confirmAction.action === 'assign-profile') {
-                        notify.success("Bulk action", `${confirmAction.usernames.length} users assigned profile ${confirmAction.profileName ?? confirmAction.profileId} (dry-run UI)`);
+                    const usernames = confirmAction.usernames;
+                    if (!usernames.length) return;
+
+                    try {
+                        if (confirmAction.action === 'suspend' || confirmAction.action === 'activate') {
+                            const accountStatus = confirmAction.action === 'suspend' ? 'suspended' : 'active';
+                            const resp = await apiClient.post("/radius/users/bulk/set-status", {
+                                usernames,
+                                accountStatus,
+                                dryRun: false,
+                            });
+                            const updated = resp?.data?.data?.updated ?? usernames.length;
+                            await refetch();
+                            setSelectedUsers(new Set());
+                            notify.success("Bulk action", `${updated} users set to ${accountStatus}.`);
+                            return;
+                        }
+
+                        if (confirmAction.action === 'reset-mac') {
+                            const resp = await apiClient.post("/radius/users/bulk/reset-mac", {
+                                usernames,
+                                dryRun: false,
+                            });
+                            const deleted = resp?.data?.data?.deleted ?? resp?.data?.data?.willDelete ?? 0;
+                            await refetch();
+                            setSelectedUsers(new Set());
+                            notify.success("Bulk action", `MAC reset for ${deleted} users.`);
+                            return;
+                        }
+
+                        if (confirmAction.action === 'assign-profile') {
+                            const profileId = confirmAction.profileId;
+                            if (!profileId) {
+                                notify.error("Bulk action failed", "Missing profileId.");
+                                return;
+                            }
+                            const resp = await apiClient.post("/radius/users/bulk/assign-profile", {
+                                usernames,
+                                profileId,
+                                dryRun: false,
+                            });
+                            const updated = resp?.data?.data?.updated ?? usernames.length;
+                            await refetch();
+                            setSelectedUsers(new Set());
+                            notify.success("Bulk action", `${updated} users assigned profile ${confirmAction.profileName ?? profileId}.`);
+                            return;
+                        }
+
+                        if (confirmAction.action === 'delete') {
+                            const resp = await apiClient.post("/radius/users/bulk/delete", {
+                                usernames,
+                                dryRun: false,
+                            });
+                            const deleted = resp?.data?.data?.deleted ?? 0;
+                            await refetch();
+                            setSelectedUsers(new Set());
+                            notify.success("Bulk action", `${deleted} users deleted.`);
+                            return;
+                        }
+                    } catch (e: any) {
+                        notify.error("Bulk action failed", e?.response?.data?.message || e?.message || "Request failed");
                     }
                 }
             }}
@@ -958,11 +1033,11 @@ const UsersPage: React.FC = () => {
                             <Download className="h-4 w-4 mr-2" />
                             Export
                         </Button>
-                        <Button variant="outline" onClick={() => setIsImportOpen(true)}>
+                        <Button variant="outline" onClick={() => setIsImportOpen(true)} disabled={!canManageUsers} title={!canManageUsers ? manageUsersReason : "Import CSV"}>
                             <Upload className="h-4 w-4 mr-2" />
                             Import CSV
                         </Button>
-                        <Button onClick={handleAddUser}>
+                        <Button onClick={handleAddUser} disabled={!canManageUsers} title={!canManageUsers ? manageUsersReason : "New User"}>
                             <Plus className="h-4 w-4 mr-2" />
                             New User
                         </Button>
@@ -1195,6 +1270,8 @@ const UsersPage: React.FC = () => {
                     selectedUserIds={selectedUsers}
                     onToggleSelected={handleToggleSelected}
                     onToggleSelectAll={handleSelectAll}
+                    canManageUsers={canManageUsers}
+                    manageUsersReason={manageUsersReason}
                 />
             )}
 

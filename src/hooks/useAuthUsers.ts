@@ -4,12 +4,29 @@ import { apiClient } from '@/api/client';
 import { notify } from '@/lib/notify';
 import { MESSAGES } from '@/constants/messages';
 
-interface AuthUserMutationData {
+export type AuthUserRole = "admin" | "manager" | "support" | "collector" | "reseller";
+
+export interface CreateAuthUserInput {
   username: string;
   email: string;
   password: string;
-  role: string;
+  role: AuthUserRole;
   isActive: boolean;
+}
+
+export interface UpdateAuthUserInput {
+  id: number;
+  username: string;
+  email?: string;
+  password?: string; // omit to keep current
+  role?: AuthUserRole;
+  isActive?: boolean;
+}
+
+export interface ResetAuthUserPasswordInput {
+  id: number;
+  newPassword: string;
+  mustChangePassword?: boolean;
 }
 
 const fetchAuthUsers = async (): Promise<AuthUsersApiResponse> => {
@@ -17,14 +34,18 @@ const fetchAuthUsers = async (): Promise<AuthUsersApiResponse> => {
   return response.data;
 };
 
-const createAuthUser = async (userData: AuthUserMutationData): Promise<AuthUser> => {
+const createAuthUser = async (userData: CreateAuthUserInput): Promise<AuthUser> => {
   const response = await apiClient.post<AuthUser>('/auth/register', userData);
   return response.data;
 };
 
-const updateAuthUser = async ({ id, ...userData }: AuthUserMutationData & { id: number }): Promise<AuthUser> => {
+const updateAuthUser = async ({ id, ...userData }: UpdateAuthUserInput): Promise<AuthUser> => {
   const response = await apiClient.put<AuthUser>(`/auth/users/${id}`, userData);
   return response.data;
+};
+
+const resetAuthUserPassword = async ({ id, ...payload }: ResetAuthUserPasswordInput): Promise<void> => {
+  await apiClient.post(`/auth/users/${id}/reset-password`, payload);
 };
 
 
@@ -37,7 +58,7 @@ const useAuthUsers = () => {
     queryFn: fetchAuthUsers
   });
 
-  const createAuthUserMutation = useMutation<AuthUser, Error, AuthUserMutationData>({
+  const createAuthUserMutation = useMutation<AuthUser, Error, CreateAuthUserInput>({
     mutationFn: createAuthUser,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['authUsers'] });
@@ -48,7 +69,7 @@ const useAuthUsers = () => {
     },
   });
 
-  const updateAuthUserMutation = useMutation<AuthUser, Error, AuthUserMutationData & { id: number }>({
+  const updateAuthUserMutation = useMutation<AuthUser, Error, UpdateAuthUserInput>({
     mutationFn: updateAuthUser,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['authUsers'] });
@@ -56,6 +77,17 @@ const useAuthUsers = () => {
     },
     onError: (error) => {
       notify.error("Save failed", error.message);
+    },
+  });
+
+  const resetAuthUserPasswordMutation = useMutation<void, Error, ResetAuthUserPasswordInput>({
+    mutationFn: resetAuthUserPassword,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['authUsers'] });
+      notify.success("Password reset", "New password has been set.");
+    },
+    onError: (error) => {
+      notify.error("Reset failed", error.message);
     },
   });
 
@@ -74,6 +106,7 @@ const useAuthUsers = () => {
     ...authUsersQuery,
     createAuthUserMutation,
     updateAuthUserMutation,
+    resetAuthUserPasswordMutation,
     deleteAuthUserMutation
   };
 };

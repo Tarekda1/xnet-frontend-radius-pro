@@ -81,20 +81,11 @@ const changeUserProfile = async ({
 
 const disconnectSession = async ({
   username,
-  ip,
-  code,
-  port,
 }: {
   username: string;
-  ip: string;
-  code: string;
-  port?: number;
 }): Promise<DisconnectSessionResponse> => {
   const response = await apiClient.post<DisconnectSessionResponse>(`/sessions/disconnect`, {
     username,
-    ip,
-    code,
-    port,
   });
   return response.data;
 };
@@ -136,7 +127,7 @@ export const useOnlineUsers = (
     onError: (error) => notify.error("Action failed", error.message),
   });
 
-  const disconnectUserSessionMutation = useMutation<DisconnectSessionResponse, Error, { username: string; ip: string; code: string; port?: number }>({
+  const disconnectUserSessionMutation = useMutation<DisconnectSessionResponse, Error, { username: string }>({
     mutationFn: disconnectSession,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['onlineUsers'] });

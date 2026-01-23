@@ -1,5 +1,5 @@
 import { useOnlineMetrics } from '@/hooks/useOnlineMetrics';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import PageHeader from "@/components/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useExpenseMonthlyTotals } from '@/hooks/useExpenses';
 import { useAuthMetrics } from "@/hooks/useAuthMetrics";
+import { useQuery } from "@tanstack/react-query";
 import { 
   Users, 
   UserCheck, 
@@ -23,7 +24,9 @@ import {
   Bell,
   Settings,
   LineChart,
-  Receipt
+  Receipt,
+  Clock,
+  User as UserIcon
 } from 'lucide-react';
 import {
   Tooltip,
@@ -38,9 +41,18 @@ import BandwidthWidget from '@/components/BandwidthWidget';
 import { useAlerts } from '@/hooks/useAlerts';
 import CollectedSummaryCards from '@/components/CollectedSummaryCards';
 import { useAuth } from '@/context/AuthContext';
-import { can } from '@/lib/permissions';
+import { can, canAny } from '@/lib/permissions';
 import { fetchResellerMe } from '@/api/resellers';
 import { apiClient } from '@/api/client';
+import { Link } from "react-router-dom";
+
+type AuditLogRow = {
+  id: number;
+  level: string;
+  message: string;
+  meta: any;
+  timestamp: string;
+};
 
 const Dashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
@@ -53,11 +65,36 @@ const Dashboard: React.FC = () => {
   const canSeeTotals = can(user, 'dashboard.widget.totalAmount');
   const canSeeInvoiceCounts = can(user, 'dashboard.widget.invoiceCounts');
   const canSeeCollections = can(user, 'billing.collections.view');
+  const canSeeAudit = canAny(user, ['users.view', 'reseller.users.view']);
   
   const { data: alerts, isLoading: alertsLoading } = useAlerts();
   const onlineMetrics = useOnlineMetrics();
   const expenseMonthlyTotals = useExpenseMonthlyTotals();
   const authMetrics = useAuthMetrics(86400);
+
+  const recentAuditQuery = useQuery({
+    queryKey: ["audit", "recent"],
+    queryFn: async () => {
+      const resp = await apiClient.get("/audit", { params: { limit: 8 } });
+      const rows = (resp?.data?.data ?? []) as AuditLogRow[];
+      return Array.isArray(rows) ? rows : [];
+    },
+    enabled: Boolean(canSeeAudit) && !isLoading,
+    refetchInterval: 30000,
+  });
+
+  const recentAudit = useMemo(() => {
+    const rows = recentAuditQuery.data ?? [];
+    return rows.map((e) => {
+      const meta = (e as any)?.meta ?? {};
+      const actor = meta?.actor?.username ?? "—";
+      const targets = Array.isArray(meta?.targets) ? meta.targets : [];
+      const primaryTarget = targets[0] ?? null;
+      const action = String(e.message ?? "").replace(/^audit\./, "") || "—";
+      const ts = e.timestamp ? new Date(e.timestamp) : null;
+      return { id: e.id, actor, targets, primaryTarget, action, ts };
+    });
+  }, [recentAuditQuery.data]);
 
   // Extract data from hooks
   const [resellerBalance, setResellerBalance] = useState<number | null>(null);
@@ -248,6 +285,28 @@ const Dashboard: React.FC = () => {
         )}
       />
 
+      <div className="flex flex-wrap gap-2">
+        {((!isReseller && canSeeOnline) || isReseller) ? (
+          <Button variant="outline" size="sm" className="text-black" asChild>
+            <Link to="/online-users">Open Live Sessions</Link>
+          </Button>
+        ) : null}
+        {canAny(user, ["users.view", "reseller.users.view"]) ? (
+          <Button variant="outline" size="sm" className="text-black" asChild>
+            <Link to="/users/list">Open Users</Link>
+          </Button>
+        ) : null}
+        {can(user, "radius.profiles.view") ? (
+          <Button variant="outline" size="sm" className="text-black" asChild>
+            <Link to="/profiles/list">Open Profiles</Link>
+          </Button>
+        ) : null}
+        <div className="ml-auto text-xs text-muted-foreground flex items-center gap-1">
+          Tip: Press <span className="font-mono rounded border px-1.5 py-0.5 bg-white">Ctrl</span>+
+          <span className="font-mono rounded border px-1.5 py-0.5 bg-white">K</span> to search commands
+        </div>
+      </div>
+
       {isLoading ? (
         <LoadingSkeleton />
       ) : (
@@ -276,7 +335,8 @@ const Dashboard: React.FC = () => {
 
             {/* Reseller users */}
             {isReseller ? (
-              <Card className="hover:shadow-lg transition-shadow">
+              <Link to="/users/list" className="block">
+              <Card className="hover:shadow-lg transition-shadow cursor-pointer">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">My Users</CardTitle>
                   <Users className="h-4 w-4 text-blue-600" />
@@ -292,11 +352,13 @@ const Dashboard: React.FC = () => {
                   </div>
                 </CardContent>
               </Card>
+              </Link>
             ) : null}
 
             {/* Live Sessions Card */}
             {(!isReseller && canSeeOnline) || isReseller ? (
-            <Card className="hover:shadow-lg transition-shadow">
+            <Link to="/online-users" className="block">
+            <Card className="hover:shadow-lg transition-shadow cursor-pointer">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Live Sessions</CardTitle>
                 <Users className="h-4 w-4 text-blue-600" />
@@ -314,11 +376,13 @@ const Dashboard: React.FC = () => {
                 </div>
               </CardContent>
             </Card>
+            </Link>
             ) : null}
 
             {/* Active Users Card */}
             {(!isReseller && canSeeOnline) || isReseller ? (
-            <Card className="hover:shadow-lg transition-shadow">
+            <Link to="/users/list" className="block">
+            <Card className="hover:shadow-lg transition-shadow cursor-pointer">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Active Users</CardTitle>
                 <UserCheck className="h-4 w-4 text-green-600" />
@@ -336,6 +400,7 @@ const Dashboard: React.FC = () => {
                 </div>
               </CardContent>
             </Card>
+            </Link>
             ) : null}
 
             {/* Expenses This Month */}
@@ -534,6 +599,78 @@ const Dashboard: React.FC = () => {
                 </TooltipProvider>
               </CardContent>
             </Card>
+
+            {/* Recent Activity */}
+            {canSeeAudit ? (
+              <Card className="md:col-span-3 hover:shadow-lg transition-shadow">
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle>Recent Activity</CardTitle>
+                      <CardDescription>Latest admin and reseller actions</CardDescription>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => recentAuditQuery.refetch()}
+                      disabled={recentAuditQuery.isFetching}
+                      className="text-black"
+                    >
+                      <RefreshCw className={`mr-2 h-4 w-4 ${recentAuditQuery.isFetching ? "animate-spin" : ""}`} />
+                      Refresh
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {recentAuditQuery.isLoading ? (
+                    <div className="space-y-3">
+                      {[...Array(4)].map((_, i) => (
+                        <div key={i} className="flex items-center gap-3 rounded-lg border p-3">
+                          <Skeleton className="h-8 w-8 rounded-full" />
+                          <div className="flex-1 space-y-2">
+                            <Skeleton className="h-4 w-[220px]" />
+                            <Skeleton className="h-3 w-[140px]" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : recentAuditQuery.error ? (
+                    <div className="text-sm text-red-600">Failed to load activity.</div>
+                  ) : recentAudit.length === 0 ? (
+                    <div className="text-sm text-muted-foreground">No recent activity.</div>
+                  ) : (
+                    <div className="space-y-3">
+                      {recentAudit.map((e) => (
+                        <div key={String(e.id)} className="flex items-start gap-3 rounded-lg border p-3 hover:bg-slate-50 transition-colors">
+                          <div className="mt-0.5 h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center">
+                            <UserIcon className="h-4 w-4 text-slate-600" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-sm font-medium truncate">{e.action}</div>
+                            <div className="text-xs text-muted-foreground truncate">
+                              Actor: {e.actor}
+                              {e.primaryTarget ? (
+                                <>
+                                  {" • "}
+                                  Target:{" "}
+                                  <a className="underline" href={`/users/${encodeURIComponent(String(e.primaryTarget))}`}>
+                                    {String(e.primaryTarget)}
+                                  </a>
+                                </>
+                              ) : null}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap">
+                            <Clock className="h-3.5 w-3.5" />
+                            {e.ts ? e.ts.toLocaleTimeString() : "—"}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ) : null}
 
             {/* Bandwidth Widget */}
             <div className="col-span-full lg:col-span-3">

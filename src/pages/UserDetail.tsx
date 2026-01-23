@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -9,15 +9,28 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
+import { DateRangePicker } from "@/components/ui/DateRangePicker";
 
 import { apiClient } from "@/api/client";
 import { notify } from "@/lib/notify";
 import ActionConfirmDialog from "@/components/ActionConfirmDialog";
 import UserSessionsPanel from "@/components/UserSessionsPanel";
 import { useProfiles } from "@/hooks/useProfiles";
+import { downloadTextFile, toCsv } from "@/lib/csv";
 
 import type { User } from "@/types/api";
-import { ArrowLeft, History, Settings, Trash2, Wifi, KeyRound } from "lucide-react";
+import type { DateRange } from "react-day-picker";
+import { ArrowLeft, History, Settings, Trash2, Wifi, KeyRound, Activity, Download, RefreshCw } from "lucide-react";
+
+type AuditLogRow = {
+  id: number;
+  level: string;
+  message: string;
+  meta: any;
+  timestamp: string;
+};
 
 async function fetchUserByUsername(username: string): Promise<User | null> {
   if (!username) return null;
@@ -26,6 +39,19 @@ async function fetchUserByUsername(username: string): Promise<User | null> {
   const users: User[] = resp?.data?.data?.users ?? resp?.data?.data ?? [];
   const exact = users.find((u) => String(u.username).toLowerCase() === username.toLowerCase());
   return exact ?? users[0] ?? null;
+}
+
+async function fetchAudit(params: {
+  limit?: number;
+  targetUsername?: string;
+  actorUsername?: string;
+  action?: string;
+  from?: string;
+  to?: string;
+}): Promise<AuditLogRow[]> {
+  const resp = await apiClient.get("/audit", { params });
+  const rows = (resp?.data?.data ?? []) as AuditLogRow[];
+  return Array.isArray(rows) ? rows : [];
 }
 
 export default function UserDetailPage() {
@@ -98,21 +124,14 @@ export default function UserDetailPage() {
 
   const disconnectMutation = useMutation({
     mutationFn: async () => {
-      const runtimeEnv = (window as any).__ENV__ || {};
-      const ip = String(runtimeEnv.DEFAULT_NAS_IP ?? import.meta.env.VITE_DEFAULT_NAS_IP ?? "").trim();
-      const code = String(runtimeEnv.DEFAULT_NAS_SECRET ?? import.meta.env.VITE_DEFAULT_NAS_SECRET ?? "").trim();
-      const port = Number(runtimeEnv.DEFAULT_NAS_COA_PORT ?? import.meta.env.VITE_DEFAULT_NAS_COA_PORT ?? 1700);
-      if (!ip || !code) {
-        throw new Error("NAS IP/secret not configured");
-      }
-      return apiClient.post(`/sessions/disconnect`, { username, ip, code, port });
+      // Backend will disconnect from MikroTik (PPPoE/Hotspot) and/or fall back to RADIUS DM if configured server-side.
+      return apiClient.post(`/sessions/disconnect`, { username });
     },
     onSuccess: () => {
       notify.success("Success", "Disconnect sent.");
       qc.invalidateQueries({ queryKey: ["onlineUsers"] });
     },
-    onError: (e: any) =>
-      notify.error("Disconnect failed", e?.message ?? "Set DEFAULT_NAS_* (prod) or VITE_DEFAULT_NAS_* (dev)."),
+    onError: (e: any) => notify.error("Disconnect failed", e?.message ?? "Failed to disconnect user."),
   });
 
   const derived = useMemo(() => {
@@ -124,6 +143,62 @@ export default function UserDetailPage() {
     const last = user?.lastTimeActive ?? null;
     return { fullName, profileName, mac, status, online, last };
   }, [user]);
+
+  const [auditActor, setAuditActor] = useState<string>("");
+  const [auditAction, setAuditAction] = useState<string>("");
+  const [auditRange, setAuditRange] = useState<DateRange | undefined>(undefined);
+
+  const auditParams = useMemo(() => {
+    const from = auditRange?.from ? new Date(auditRange.from) : null;
+    const to = auditRange?.to ? new Date(auditRange.to) : null;
+    if (from) from.setHours(0, 0, 0, 0);
+    if (to) to.setHours(23, 59, 59, 999);
+
+    return {
+      limit: 200,
+      targetUsername: username,
+      actorUsername: auditActor.trim() || undefined,
+      action: auditAction.trim() || undefined,
+      from: from ? from.toISOString() : undefined,
+      to: to ? to.toISOString() : undefined,
+    };
+  }, [username, auditActor, auditAction, auditRange]);
+
+  const auditQuery = useQuery({
+    queryKey: ["audit", auditParams],
+    queryFn: () => fetchAudit(auditParams),
+    enabled: Boolean(username),
+  });
+
+  const auditForUser = useMemo(() => {
+    const rows = (auditQuery.data ?? []) as AuditLogRow[];
+    // Backend should already filter by targetUsername, but keep a safety filter.
+    return rows.filter((r) => {
+      const meta = (r as any)?.meta ?? {};
+      const targets: unknown = meta?.targets;
+      if (Array.isArray(targets)) return targets.map(String).includes(username);
+      const targetUsername = meta?.target?.username;
+      return targetUsername ? String(targetUsername) === username : false;
+    });
+  }, [auditQuery.data, username]);
+
+  const exportAuditCsv = useCallback(() => {
+    const rows = auditForUser.map((e) => {
+      const meta = (e as any)?.meta ?? {};
+      return {
+        timestamp: e.timestamp ?? "",
+        action: String(e.message ?? "").replace(/^audit\./, ""),
+        actor: meta?.actor?.username ?? "",
+        requestId: meta?.requestId ?? "",
+        targets: Array.isArray(meta?.targets) ? meta.targets.join(",") : "",
+      };
+    });
+    const cols = ["timestamp", "action", "actor", "requestId", "targets"];
+    const csv = toCsv(rows, cols);
+    const date = new Date().toISOString().split("T")[0];
+    downloadTextFile(`user_${username}_activity_${date}.csv`, csv, "text/csv;charset=utf-8");
+    notify.success("Exported", "Activity exported to CSV.");
+  }, [auditForUser, username]);
 
   // Default selections when user loads
   useMemo(() => {
@@ -204,6 +279,7 @@ export default function UserDetailPage() {
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="sessions">Sessions</TabsTrigger>
+          <TabsTrigger value="activity">Activity</TabsTrigger>
           <TabsTrigger value="actions">Actions</TabsTrigger>
         </TabsList>
 
@@ -245,7 +321,7 @@ export default function UserDetailPage() {
                   <SelectContent>
                     <SelectItem value="active">active</SelectItem>
                     <SelectItem value="suspended">suspended</SelectItem>
-                    <SelectItem value="inactive">inactive</SelectItem>
+                    <SelectItem value="terminated">terminated</SelectItem>
                   </SelectContent>
                 </Select>
                 <Button className="mt-2" disabled={!selectedStatus} onClick={() => updateUserMutation.mutate({ accountStatus: selectedStatus })}>
@@ -269,6 +345,99 @@ export default function UserDetailPage() {
 
         <TabsContent value="sessions" className="space-y-4">
           <UserSessionsPanel username={username} />
+        </TabsContent>
+
+        <TabsContent value="activity" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between gap-3">
+                <span className="flex items-center gap-2">
+                  <Activity className="h-4 w-4" />
+                  Activity
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => auditQuery.refetch()}
+                    disabled={auditQuery.isFetching}
+                  >
+                    <RefreshCw className={`h-4 w-4 mr-2 ${auditQuery.isFetching ? "animate-spin" : ""}`} />
+                    Refresh
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={exportAuditCsv}
+                    disabled={auditForUser.length === 0}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Export CSV
+                  </Button>
+                </div>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col lg:flex-row gap-2 lg:items-center lg:justify-between pb-4">
+                <div className="flex flex-col md:flex-row gap-2 md:items-center">
+                  <Input
+                    value={auditActor}
+                    onChange={(e) => setAuditActor(e.target.value)}
+                    placeholder="Filter by actor username…"
+                    className="md:w-[220px]"
+                  />
+                  <Input
+                    value={auditAction}
+                    onChange={(e) => setAuditAction(e.target.value)}
+                    placeholder="Filter by action (e.g. users.bulk.delete)…"
+                    className="md:w-[300px]"
+                  />
+                </div>
+                <DateRangePicker dateRange={auditRange} onDateRangeChange={setAuditRange} />
+              </div>
+
+              {auditQuery.isLoading ? (
+                <div className="text-sm text-muted-foreground">Loading activity…</div>
+              ) : auditQuery.error ? (
+                <div className="text-sm text-red-600">Failed to load activity.</div>
+              ) : auditForUser.length === 0 ? (
+                <div className="text-sm text-muted-foreground">No activity recorded for this user yet.</div>
+              ) : (
+                <div className="w-full overflow-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="whitespace-nowrap">Time</TableHead>
+                        <TableHead className="whitespace-nowrap">Action</TableHead>
+                        <TableHead className="whitespace-nowrap">Actor</TableHead>
+                        <TableHead className="whitespace-nowrap">Request</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {auditForUser.slice(0, 50).map((e) => {
+                        const meta = (e as any)?.meta ?? {};
+                        const actor = meta?.actor?.username ?? "—";
+                        const requestId = meta?.requestId ?? "—";
+                        const action = String(e.message ?? "").replace(/^audit\./, "") || "—";
+                        const ts = e.timestamp ? new Date(e.timestamp).toLocaleString() : "—";
+                        return (
+                          <TableRow key={String(e.id)}>
+                            <TableCell className="whitespace-nowrap">{ts}</TableCell>
+                            <TableCell className="whitespace-nowrap">{action}</TableCell>
+                            <TableCell className="whitespace-nowrap">{actor}</TableCell>
+                            <TableCell className="font-mono text-xs whitespace-nowrap">{requestId}</TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                  {auditForUser.length > 50 ? (
+                    <div className="pt-2 text-xs text-muted-foreground">Showing latest 50 events for this user.</div>
+                  ) : null}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="actions" className="space-y-4">

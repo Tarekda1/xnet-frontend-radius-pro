@@ -113,7 +113,7 @@ const Sidebar: React.FC = () => {
 
     const isAdminRoute = useMemo(() => {
       const p = location.pathname || '';
-      return p.startsWith('/analytics') || p.startsWith('/alerts') || p.startsWith('/expenses') || p.startsWith('/auth-users');
+      return p.startsWith('/analytics') || p.startsWith('/alerts') || p.startsWith('/expenses') || p.startsWith('/auth-users') || p.startsWith('/backups') || p.startsWith('/access');
     }, [location.pathname]);
 
     const [isUsersGroupOpen, setIsUsersGroupOpen] = useState<boolean>(isUsersRoute);
@@ -142,6 +142,7 @@ const Sidebar: React.FC = () => {
       { to: '/expenses', label: 'Expenses', icon: Receipt, perm: 'admin.expenses.view' },
       { to: '/auth-users', label: 'Auth Users', icon: FaUserShield, perm: 'admin.authUsers.manage' },
       { to: '/access', label: 'Roles & Access', icon: FaUserShield, perm: 'admin.access.manage' },
+      { to: '/backups', label: 'Backups', icon: Folder, perm: 'admin.access.manage' },
       { to: '/admin/resellers', label: 'Resellers', icon: FaUsers, perm: 'admin.resellers.manage' },
     ] as const;
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
     Table,
     TableBody,
@@ -35,6 +35,11 @@ import TableToolbar from "@/components/TableToolbar";
 import TableRowActions from "@/components/TableRowActions";
 import SearchBar from "@/components/SearchBar";
 import QueryState from "@/components/QueryState";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useAuth } from "@/context/AuthContext";
+import { canAny } from "@/lib/permissions";
 
 const UserCard: React.FC<{ user: AuthUser; onEdit: () => void; onDelete: () => void }> = ({ user, onEdit, onDelete }) => {
     return (
@@ -168,13 +173,17 @@ const columns: ColumnDef<AuthUser>[] = [
 ];
 
 const AuthUsersComponent: React.FC = () => {
-    const { data, error, isLoading, refetch, deleteAuthUserMutation } = useAuthUsers();
+    const { data, error, isLoading, refetch, deleteAuthUserMutation, resetAuthUserPasswordMutation } = useAuthUsers();
+    const { user: authUser } = useAuth();
+    const canManageAuthUsers = useMemo(() => canAny(authUser, ["admin.authUsers.manage"]), [authUser]);
     const [sorting, setSorting] = useState<SortingState>([]);
     const [globalFilter, setGlobalFilter] = useState('');
     const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
     const [userToEdit, setUserToEdit] = useState<AuthUser | undefined>(undefined);
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const [userToDelete, setUserToDelete] = useState<AuthUser | null>(null);
+    const [resetUser, setResetUser] = useState<AuthUser | null>(null);
+    const [newPassword, setNewPassword] = useState<string>("");
 
     const confirmDelete = async () => {
         if (userToDelete) {
@@ -336,13 +345,14 @@ const AuthUsersComponent: React.FC = () => {
                                                 <TableCell className="text-right">
                                                     <TableRowActions
                                                         actions={[
-                                                            { label: "Edit", icon: Edit, onClick: () => handleEditUser(row.original) },
-                                                            { label: "Reset Password", icon: RefreshCw, onClick: () => console.log("Reset Password", row.original) },
+                                                            { label: "Edit", icon: Edit, onClick: () => handleEditUser(row.original), disabled: !canManageAuthUsers, disabledReason: "You don't have permission to manage auth users." },
+                                                            { label: "Reset Password", icon: RefreshCw, onClick: () => { setResetUser(row.original); setNewPassword(""); }, disabled: !canManageAuthUsers, disabledReason: "You don't have permission to manage auth users." },
                                                             {
                                                                 label: "Delete",
                                                                 icon: Trash2,
                                                                 onClick: () => handleDeleteUser(row.original),
-                                                                disabled: row.original.role.toLowerCase() === "admin",
+                                                                disabled: !canManageAuthUsers || row.original.role.toLowerCase() === "admin",
+                                                                disabledReason: !canManageAuthUsers ? "You don't have permission to manage auth users." : "Admin users cannot be deleted.",
                                                                 tone: "destructive",
                                                             },
                                                         ]}
@@ -399,6 +409,58 @@ const AuthUsersComponent: React.FC = () => {
                 onClose={handleCloseModal}
                 userToEdit={userToEdit}
             />
+
+            <Dialog open={Boolean(resetUser)} onOpenChange={(open) => (!open ? setResetUser(null) : null)}>
+                <DialogContent className="sm:max-w-[520px]">
+                    <DialogHeader>
+                        <DialogTitle>Reset password</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                        <div className="text-sm text-muted-foreground">
+                            Set a new password for <span className="font-medium text-foreground">{resetUser?.username}</span>. The user will be required to change it at next login.
+                        </div>
+                        <div className="grid gap-2">
+                            <Label htmlFor="newPassword">New password</Label>
+                            <Input
+                                id="newPassword"
+                                type="password"
+                                value={newPassword}
+                                onChange={(e) => setNewPassword(e.target.value)}
+                                placeholder="At least 8 characters"
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button
+                            variant="outline"
+                            onClick={() => setResetUser(null)}
+                            disabled={resetAuthUserPasswordMutation.isPending}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={async () => {
+                                if (!resetUser) return;
+                                if (newPassword.trim().length < 8) {
+                                    notify.error("Invalid password", "Password must be at least 8 characters.");
+                                    return;
+                                }
+                                await resetAuthUserPasswordMutation.mutateAsync({
+                                    id: resetUser.id,
+                                    newPassword: newPassword.trim(),
+                                    mustChangePassword: true,
+                                });
+                                setResetUser(null);
+                                setNewPassword("");
+                            }}
+                            disabled={resetAuthUserPasswordMutation.isPending}
+                        >
+                            Reset password
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
                 <AlertDialogContent>
                     <AlertDialogHeader>

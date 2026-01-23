@@ -17,9 +17,11 @@ interface UserCardProps {
     isResettingMAC: boolean;
     isSelected?: boolean;
     onToggleSelected?: (selected: boolean) => void;
+    canManageUsers?: boolean;
+    manageUsersReason?: string;
 }
 
-const UserCard: React.FC<UserCardProps> = ({ user, onEdit, onDelete, onResetMAC, onResetQuota, isResettingMAC, isSelected, onToggleSelected }) => {
+const UserCard: React.FC<UserCardProps> = ({ user, onEdit, onDelete, onResetMAC, onResetQuota, isResettingMAC, isSelected, onToggleSelected, canManageUsers = true, manageUsersReason = "You don't have permission to manage users." }) => {
     const navigate = useNavigate();
     // const dailyUsagePercentage = user.profile.dailyQuota ? (user.profile.dailyUsage / user.profile.dailyQuota) * 100 : 0;
     // const monthlyUsagePercentage = user.profile.monthlyQuota ? (user.monthlyUsage / user.profile.monthlyQuota) * 100 : 0;
@@ -64,17 +66,17 @@ const UserCard: React.FC<UserCardProps> = ({ user, onEdit, onDelete, onResetMAC,
                 </div>
             </CardContent>
             <CardFooter className="flex justify-between">
-                <Button variant="outline" size="sm" onClick={onEdit}>
+                <Button variant="outline" size="sm" onClick={onEdit} disabled={!canManageUsers} title={!canManageUsers ? manageUsersReason : "Edit user"}>
                     <Edit className="w-4 h-4 mr-2" /> Edit
                 </Button>
-                <Button variant="outline" size="sm" onClick={onResetMAC} disabled={isResettingMAC}>
+                <Button variant="outline" size="sm" onClick={onResetMAC} disabled={isResettingMAC || !canManageUsers} title={!canManageUsers ? manageUsersReason : "Reset MAC"}>
                     {isResettingMAC ? <Loader  /> : <RefreshCw className="w-4 h-4 mr-2" />}
                     Reset MAC
                 </Button>
                 <Button variant="outline" size="sm" onClick={onResetQuota}>
                     <RefreshCw className="w-4 h-4 mr-2" /> Reset Quota
                 </Button>
-                <Button variant="outline" size="sm" onClick={onDelete} className="text-red-600">
+                <Button variant="outline" size="sm" onClick={onDelete} disabled={!canManageUsers} title={!canManageUsers ? manageUsersReason : "Delete user"} className="text-red-600">
                     <Trash2 className="w-4 h-4 mr-2" /> Delete
                 </Button>
             </CardFooter>

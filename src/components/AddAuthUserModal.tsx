@@ -29,7 +29,7 @@ const AddAuthUserModal: React.FC<AddAuthUserModalProps> = ({ isOpen, onClose, us
       setFormData({
         username: userToEdit.username,
         email: userToEdit.email,
-        password: userToEdit.password||"", // Don't populate password for editing
+        password: "", // never populate password for editing
         role: userToEdit.role,
         isActive: userToEdit.isActive === 1,
       });
@@ -63,7 +63,15 @@ const AddAuthUserModal: React.FC<AddAuthUserModalProps> = ({ isOpen, onClose, us
     e.preventDefault();
     try {
       if (userToEdit) {
-        await updateAuthUserMutation.mutateAsync({ ...formData, id: userToEdit.id });
+        const password = formData.password.trim();
+        await updateAuthUserMutation.mutateAsync({
+          id: userToEdit.id,
+          username: formData.username,
+          email: formData.email,
+          role: formData.role as any,
+          isActive: formData.isActive,
+          ...(password.length ? { password } : {}),
+        });
       } else {
         await createAuthUserMutation.mutateAsync(formData);
       }
@@ -133,6 +141,8 @@ const AddAuthUserModal: React.FC<AddAuthUserModalProps> = ({ isOpen, onClose, us
                 <SelectContent>
                   <SelectItem value="admin">Admin</SelectItem>
                   <SelectItem value="manager">Manager</SelectItem>
+                <SelectItem value="reseller">Reseller</SelectItem>
+                <SelectItem value="collector">Collector</SelectItem>
                   <SelectItem value="support">Support</SelectItem>
                 </SelectContent>
               </Select>

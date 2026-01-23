@@ -32,6 +32,8 @@ interface UsersTableProps {
     onToggleSelectAll?: (selected: boolean) => void;
     pageSize?: number;
     onPageSizeChange?: (size: number) => void;
+    canManageUsers?: boolean;
+    manageUsersReason?: string;
 }
 
 const getProfileBadge = (profileName: string) => {
@@ -53,7 +55,9 @@ const UserRow: React.FC<{
     index: number;
     isSelected?: boolean;
     onToggleSelected?: (userId: number, selected: boolean) => void;
-}> = ({ user, onAction, index, isSelected, onToggleSelected }) => {
+    canManageUsers?: boolean;
+    manageUsersReason?: string;
+}> = ({ user, onAction, index, isSelected, onToggleSelected, canManageUsers = true, manageUsersReason = "You don't have permission to manage users." }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const navigate = useNavigate();
 
@@ -196,10 +200,10 @@ const UserRow: React.FC<{
                 <TableCell align="right" className="text-right">
                     <TableRowActions
                         actions={[
-                            { label: "Reset MAC", icon: RefreshCw, onClick: () => onAction("reset-mac", user) },
-                            { label: "Reset Quota", icon: RefreshCw, onClick: () => onAction("reset-quota", user) },
-                            { label: "Edit", icon: Edit, onClick: () => onAction("edit", user) },
-                            { label: "Delete", icon: Trash2, onClick: () => onAction("delete", user), tone: "destructive" },
+                            { label: "Reset MAC", icon: RefreshCw, onClick: () => onAction("reset-mac", user), disabled: !canManageUsers, disabledReason: manageUsersReason },
+                            { label: "Reset Quota", icon: RefreshCw, onClick: () => onAction("reset-quota", user), disabled: !canManageUsers, disabledReason: manageUsersReason },
+                            { label: "Edit", icon: Edit, onClick: () => onAction("edit", user), disabled: !canManageUsers, disabledReason: manageUsersReason },
+                            { label: "Delete", icon: Trash2, onClick: () => onAction("delete", user), tone: "destructive", disabled: !canManageUsers, disabledReason: manageUsersReason },
                         ]}
                     />
                 </TableCell>
@@ -286,6 +290,8 @@ const UsersTable: React.FC<UsersTableProps> = ({
     onToggleSelectAll,
     pageSize = 100,
     onPageSizeChange,
+    canManageUsers = true,
+    manageUsersReason = "You don't have permission to manage users.",
 }) => {
     const [sorting, setSorting] = useState<SortingState>([]);
     const pageSizes = [10, 20, 50, 100,200,500];
@@ -444,6 +450,8 @@ const UsersTable: React.FC<UsersTableProps> = ({
                                         index={index}
                                         isSelected={selectedUserIds?.has(user.id)}
                                         onToggleSelected={onToggleSelected}
+                                        canManageUsers={canManageUsers}
+                                        manageUsersReason={manageUsersReason}
                                     />
                                 ))}
                             </TableBody>
@@ -471,6 +479,8 @@ const UsersTable: React.FC<UsersTableProps> = ({
                         isResettingMAC={resetMacAddressMutation.variables === user.username}
                         isSelected={selectedUserIds?.has(user.id)}
                         onToggleSelected={(checked) => onToggleSelected?.(user.id, checked)}
+                        canManageUsers={canManageUsers}
+                        manageUsersReason={manageUsersReason}
                     />
                 ))}
             </div>

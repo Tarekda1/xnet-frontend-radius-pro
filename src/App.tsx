@@ -13,6 +13,7 @@ import { Loader } from 'lucide-react';
 import { websocketService } from './services/websocket';
 import { Toaster } from './components/ui/toaster';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import CommandPalette from './components/CommandPalette';
 
 const Home = React.lazy(() => import('./pages/Home'));
 const Dashboard = React.lazy(() => import('./pages/Dashboard'));
@@ -32,6 +33,7 @@ const AlertsComponent = React.lazy(() => import('./pages/Alerts'));
 const CollectionsComponent = React.lazy(() => import('./pages/Collections'));
 const ExpensesComponent = React.lazy(() => import('./pages/Expenses'));
 const AccessComponent = React.lazy(() => import('./pages/Access'));
+const BackupsComponent = React.lazy(() => import('./pages/Backups'));
 const ResellersComponent = React.lazy(() => import('./pages/Resellers'));
 const ChangePasswordComponent = React.lazy(() => import('./pages/ChangePassword'));
 const NotFoundComponent = React.lazy(() => import('./pages/NotFound'));
@@ -83,6 +85,7 @@ const AppRoutes: React.FC = () => {
       <Suspense fallback={<div><Loader width={20} height={20}/>Loading...</div>}>
         <SidebarProvider>
           <AuthProvider>
+            <CommandPalette />
             <Routes>
               <Route path="/login" element={<Login />} />
               <Route path="/change-password" element={<ProtectedRoute element={<ChangePasswordComponent />} />} />
@@ -104,6 +107,7 @@ const AppRoutes: React.FC = () => {
                 <Route path="/invoice-upload" element={<ProtectedRoute element={<InvoiceUpload />} />} />
                 <Route path="/external-invoices" element={<ProtectedRoute element={<ExternalInvoicesComponent />} />} />
                 <Route path="/access" element={<ProtectedRoute element={<AccessComponent />} />} />
+                <Route path="/backups" element={<ProtectedPermissionRoute anyOf={['admin.access.manage']} element={<BackupsComponent />} />} />
                 <Route path="/analytics" element={<ProtectedRoute element={<AnalyticsComponent />} />} />
                 <Route path="/alerts" element={<ProtectedRoute element={<AlertsComponent />} />} />
                 <Route path="/collections" element={<ProtectedRoute element={<CollectionsComponent />} />} />
