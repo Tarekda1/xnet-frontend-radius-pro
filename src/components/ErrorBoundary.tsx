@@ -1,6 +1,7 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { captureException } from "@/lib/telemetry";
 
 type Props = {
   children: React.ReactNode;
@@ -24,6 +25,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
   componentDidCatch(error: unknown) {
     // Keep minimal logging (use a real error tracker in production).
     if (import.meta.env.DEV) console.error("UI crashed:", error);
+    captureException(error);
   }
 
   render() {

@@ -58,6 +58,15 @@ services:
       - NODE_ENV=production
       # Runtime config (served via /env.js)
       - API_URL=${API_URL:-${VITE_API_URL:-https://api.xnetcloud.tech/api}}
+      # Feature flags (served via /env.js)
+      - FEATURE_FLAGS=${FEATURE_FLAGS:-}
+      # Optional: error reporting (served via /env.js)
+      - SENTRY_DSN=${SENTRY_DSN:-https://d300b4a14f76b044f347b4c519f4c131@o4510782900535296.ingest.us.sentry.io/4510782901583872}
+      - SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT:-production}
+      # Optional: app metadata (served via /env.js)
+      - APP_VERSION=${APP_VERSION:-}
+      - APP_BUILD_TIME=${APP_BUILD_TIME:-}
+      - APP_GIT_SHA=${APP_GIT_SHA:-}
       # Optional: NAS config for CoA actions (Online Users -> Disconnect)
       - DEFAULT_NAS_IP=${DEFAULT_NAS_IP:-${VITE_DEFAULT_NAS_IP:-}}
       - DEFAULT_NAS_SECRET=${DEFAULT_NAS_SECRET:-${VITE_DEFAULT_NAS_SECRET:-}}

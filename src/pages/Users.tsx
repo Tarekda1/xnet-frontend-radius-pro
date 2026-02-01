@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import PageHeader from "@/components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { useQuery } from "@tanstack/react-query";
 import {
     Tooltip,
     TooltipContent,
@@ -55,10 +56,62 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { downloadTextFile, parseCsv, toCsv } from "@/lib/csv";
-import SavedViews from "@/components/SavedViews";
-import type { SavedViewState } from "@/lib/savedViews";
 import { useAuth } from "@/context/AuthContext";
 import { canAny } from "@/lib/permissions";
+import { useOnlineUsers } from "@/hooks/useOnlineUsers";
+
+type AuditLogRow = {
+    id: number;
+    message: string;
+    meta: any;
+    timestamp: string;
+};
+
+function formatAuditTitle(action: string, meta: any): { title: string; detail?: string } {
+    const a = String(action || "");
+    const m = meta ?? {};
+
+    const pretty =
+        a === "users.resetMac"
+            ? "Reset MAC"
+            : a === "users.resetDailyQuota"
+              ? "Reset daily quota"
+              : a === "users.resetMonthlyQuota"
+                ? "Reset monthly traffic"
+                : a === "users.bulk.resetMac"
+                  ? "Bulk reset MAC"
+                  : a === "users.bulk.setStatus"
+                    ? "Bulk set user status"
+                    : a === "users.update"
+                      ? "Update user"
+                      : a === "users.create"
+                        ? "Create user"
+                        : a === "users.delete"
+                          ? "Delete user"
+                          : a || "Activity";
+
+    if (a === "users.update") {
+        const ch = (m as any)?.changed ?? {};
+        const status = ch?.accountStatus;
+        if (status?.from && status?.to && status.from !== status.to) {
+            return {
+                title: status.to === "suspended" ? "Suspend user" : status.to === "active" ? "Activate user" : pretty,
+                detail: `${status.from} → ${status.to}`,
+            };
+        }
+        const prof = ch?.profileId;
+        if (prof?.from && prof?.to && prof.from !== prof.to) {
+            return { title: "Change profile", detail: `#${prof.from} → #${prof.to}` };
+        }
+    }
+
+    if (a === "users.bulk.setStatus") {
+        const s = String((m as any)?.accountStatus ?? "");
+        if (s) return { title: s === "suspended" ? "Bulk suspend users" : s === "active" ? "Bulk activate users" : pretty, detail: s };
+    }
+
+    return { title: pretty };
+}
 
 const MetricItem = ({ 
     label, 
@@ -97,7 +150,7 @@ const MetricItem = ({
                     onClick={onClick}
                 >
                     <div className={`
-                        relative ${iconOnly ? 'p-2' : 'p-3'} rounded-xl border transition-all duration-300
+                        relative ${iconOnly ? 'p-2' : 'p-2 sm:p-3'} rounded-xl border transition-all duration-300
                         ${gradient ? 'bg-gradient-to-br from-white to-gray-50/50' : 'bg-white/80 backdrop-blur-sm'}
                         ${onClick ? 'hover:shadow-lg hover:scale-105 hover:border-primary/20' : ''}
                         ${gradient ? 'shadow-sm' : 'shadow-md'}
@@ -123,7 +176,7 @@ const MetricItem = ({
                             
                             {!iconOnly && (
                                 <div className="flex items-end justify-between">
-                                    <span className={`text-xl font-bold ${color} transition-colors duration-300`}>
+                                    <span className={`text-lg sm:text-xl font-bold ${color} transition-colors duration-300`}>
                                         {value.toLocaleString()}
                                     </span>
                                     {trend && (
@@ -210,41 +263,67 @@ const UsageChart = ({ users }: { users: User[] }) => {
     );
 };
 
-const ActivityTimeline = ({ users }: { users: User[] }) => {
-    const recentActivity = useMemo(() => {
-        // Simulate recent activity based on user status
-        return users.slice(0, 5).map((user, index) => ({
-            id: index,
-            user: user.username,
-            action: user.isOnline ? 'Logged in' : 'Logged out',
-            time: new Date(Date.now() - Math.random() * 24 * 60 * 60 * 1000).toLocaleTimeString(),
-            status: user.isOnline ? 'online' : 'offline'
-        }));
-    }, [users]);
+const AuditActivityTimeline = ({ enabled }: { enabled: boolean }) => {
+    const auditQuery = useQuery({
+        queryKey: ["audit", "users", "recent"],
+        queryFn: async () => {
+            const resp = await apiClient.get("/audit", { params: { limit: 8, actionPrefix: "users." } });
+            const rows = (resp?.data?.data ?? []) as AuditLogRow[];
+            return Array.isArray(rows) ? rows : [];
+        },
+        enabled,
+        refetchInterval: 30000,
+        staleTime: 10000,
+    });
+
+    const items = useMemo(() => {
+        const rows = auditQuery.data ?? [];
+        return rows.map((e) => {
+            const meta = (e as any)?.meta ?? {};
+            const actor = meta?.actor?.username ?? "—";
+            const targets = Array.isArray(meta?.targets) ? meta.targets : [];
+            const primaryTarget = targets[0] ?? null;
+            const action = String(e.message ?? "").replace(/^audit\./, "") || "—";
+            const ts = e.timestamp ? new Date(e.timestamp) : null;
+            const fmt = formatAuditTitle(action, meta);
+            return { id: e.id, actor, primaryTarget, title: fmt.title, detail: fmt.detail, ts };
+        });
+    }, [auditQuery.data]);
+
+    if (auditQuery.isLoading) {
+        return <div className="text-sm text-muted-foreground">Loading activity…</div>;
+    }
+    if (auditQuery.error) {
+        return <div className="text-sm text-red-600">Failed to load activity.</div>;
+    }
+    if (items.length === 0) {
+        return <div className="text-sm text-muted-foreground">No recent user activity.</div>;
+    }
 
     return (
         <div className="space-y-3">
-            {recentActivity.map((activity, index) => (
-                <div 
-                    key={activity.id} 
+            {items.map((e) => (
+                <div
+                    key={String(e.id)}
                     className="group relative p-3 rounded-lg hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-purple-50/50 transition-all duration-300 hover:shadow-md border border-transparent hover:border-blue-200/50"
-                    style={{ animationDelay: `${index * 100}ms` }}
                 >
                     <div className="flex items-center gap-3">
                         <div className="relative">
-                            <div className={`w-3 h-3 rounded-full ${activity.status === 'online' ? 'bg-emerald-500' : 'bg-gray-400'} animate-pulse`} />
-                            <div className={`absolute inset-0 w-3 h-3 rounded-full ${activity.status === 'online' ? 'bg-emerald-500' : 'bg-gray-400'} animate-ping opacity-75`} />
+                            <div className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse" />
+                            <div className="absolute inset-0 w-3 h-3 rounded-full bg-emerald-500 animate-ping opacity-75" />
                         </div>
                         <div className="flex-1 min-w-0">
                             <p className="text-sm font-semibold text-gray-900 group-hover:text-blue-600 transition-colors duration-300 truncate">
-                                {activity.user}
+                                {e.title}
                             </p>
-                            <p className="text-xs text-gray-500 group-hover:text-gray-600 transition-colors duration-300">
-                                {activity.action}
+                            <p className="text-xs text-gray-500 group-hover:text-gray-600 transition-colors duration-300 truncate">
+                                Actor: {e.actor}
+                                {e.primaryTarget ? ` • Target: ${String(e.primaryTarget)}` : ""}
+                                {e.detail ? ` • ${e.detail}` : ""}
                             </p>
                         </div>
-                        <span className="text-xs text-gray-400 group-hover:text-gray-600 transition-colors duration-300 font-mono">
-                            {activity.time}
+                        <span className="text-xs text-gray-400 group-hover:text-gray-600 transition-colors duration-300 font-mono whitespace-nowrap">
+                            {e.ts ? e.ts.toLocaleTimeString() : "—"}
                         </span>
                     </div>
                 </div>
@@ -275,7 +354,7 @@ const BulkActions = ({
     return (
         <div className="relative overflow-hidden rounded-xl border border-blue-200/50 bg-gradient-to-r from-blue-50/50 via-purple-50/30 to-pink-50/50 p-4 shadow-lg">
             <div className="absolute inset-0 bg-gradient-to-r from-blue-100/20 via-purple-100/20 to-pink-100/20 animate-pulse" />
-            <div className="relative z-10 flex items-center gap-4">
+            <div className="relative z-10 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3">
                     <Checkbox
                         checked={isAllSelected}
@@ -288,7 +367,7 @@ const BulkActions = ({
                 </div>
                 
                 {selectedUsers.size > 0 && (
-                    <div className="flex gap-2 ml-4">
+                    <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:ml-4">
                         <Button
                             variant="outline"
                             size="sm"
@@ -334,7 +413,7 @@ const BulkActions = ({
 
                         <div className="flex items-center gap-2 ml-2">
                             <Select value={profileId} onValueChange={setProfileId}>
-                                <SelectTrigger className="w-[180px] h-9 bg-white/80">
+                                <SelectTrigger className="w-full sm:w-[180px] h-9 bg-white/80">
                                     <SelectValue placeholder="Assign profile..." />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -376,6 +455,11 @@ const BulkActions = ({
 
 const UsersPage: React.FC = () => {
     const { user: authUser } = useAuth();
+    const canSeeAudit = useMemo(() => canAny(authUser, ["users.view", "reseller.users.view"]), [authUser]);
+    const canSeeLiveSessions = useMemo(
+        () => canAny(authUser, ["users.online.view", "reseller.users.view"]),
+        [authUser]
+    );
     const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
     const [pageSize, setPageSize] = useState(50);
@@ -410,11 +494,39 @@ const UsersPage: React.FC = () => {
     // Backend sometimes returns either:
     // - { users, totalPages, ... } (normal list/search)
     // - [] (legacy "no users found" response)
-    const serverUsers = useMemo<User[]>(() => {
+    const serverUsersBase = useMemo<User[]>(() => {
         const d: any = (data as any)?.data;
         if (Array.isArray(d)) return d as User[];
         return (d?.users ?? []) as User[];
     }, [data]);
+
+    // Live online status (avoids stale cached user-list "isOnline")
+    const liveOnlineQuery = useOnlineUsers("", 1, 5000, {
+        enabled: Boolean(canSeeLiveSessions),
+        refetchInterval: 10000,
+    });
+    const liveOnlineSet = useMemo(() => {
+        const rows = (liveOnlineQuery.data?.data ?? []) as any[];
+        const set = new Set<string>();
+        for (const r of rows) {
+            const username = String(r?.session_username ?? "").trim();
+            if (!username) continue;
+            const status = String(r?.session_status ?? "").toLowerCase();
+            if (status === "disconnected") continue;
+            set.add(username);
+        }
+        return set;
+    }, [liveOnlineQuery.data]);
+
+    const serverUsers = useMemo<User[]>(() => {
+        if (!canSeeLiveSessions) return serverUsersBase;
+        // If the live query hasn't loaded (or errored), fall back to server-provided isOnline.
+        if (!liveOnlineQuery.data) return serverUsersBase;
+        return serverUsersBase.map((u) => ({
+            ...u,
+            isOnline: liveOnlineSet.has(String(u.username ?? "")),
+        }));
+    }, [serverUsersBase, canSeeLiveSessions, liveOnlineQuery.data, liveOnlineSet]);
 
     const isSearching = Boolean(searchQuery?.trim());
     const [confirmAction, setConfirmAction] = useState<
@@ -422,6 +534,7 @@ const UsersPage: React.FC = () => {
         | { kind: 'delete-user'; username: string }
         | { kind: 'reset-mac'; username: string }
         | { kind: 'reset-quota'; username: string }
+        | { kind: 'reset-monthly-quota'; username: string }
         | { kind: 'bulk'; action: 'suspend' | 'activate' | 'delete' | 'reset-mac' | 'assign-profile'; usernames: string[]; profileId?: number; profileName?: string }
     >(null);
 
@@ -511,48 +624,6 @@ const UsersPage: React.FC = () => {
         setCurrentPage(1);
     }, [setSearchQuery, setCurrentPage]);
 
-    const usersSavedViewsKeys = useMemo(
-        () => [
-            "search",
-            "status",
-            "viewMode",
-            "advProfile",
-            "advQuotaExceeded",
-            "advHasMacAddress",
-            "advHasContactInfo",
-        ],
-        []
-    );
-
-    const getUsersViewState = useCallback((): SavedViewState => {
-        return {
-            search: String(searchQuery ?? ""),
-            status: String(statusFilter ?? ""),
-            viewMode: String(viewMode ?? "table"),
-            advProfile: String(advancedFilters.profile ?? "all"),
-            advQuotaExceeded: advancedFilters.quotaExceeded ? "1" : "0",
-            advHasMacAddress: advancedFilters.hasMacAddress ? "1" : "0",
-            advHasContactInfo: advancedFilters.hasContactInfo ? "1" : "0",
-        };
-    }, [searchQuery, statusFilter, viewMode, advancedFilters]);
-
-    const applyUsersViewState = useCallback(
-        (state: SavedViewState) => {
-            setSearchQuery(state.search ?? "");
-            setStatusFilter(state.status ?? "");
-            setViewMode((state.viewMode as any) || "table");
-            setAdvancedFilters((prev) => ({
-                ...prev,
-                profile: state.advProfile ?? "all",
-                quotaExceeded: state.advQuotaExceeded === "1",
-                hasMacAddress: state.advHasMacAddress === "1",
-                hasContactInfo: state.advHasContactInfo === "1",
-            }));
-            setCurrentPage(1);
-        },
-        [setSearchQuery, setCurrentPage]
-    );
-
     const canManageUsers = useMemo(() => canAny(authUser, ["users.view", "reseller.users.manage"]), [authUser]);
     const manageUsersReason = "You don't have permission to manage users.";
 
@@ -587,9 +658,6 @@ const UsersPage: React.FC = () => {
             case 'all':
                 setStatusFilter('');
                 break;
-            case 'active':
-                setStatusFilter('active');
-                break;
             case 'suspended':
                 setStatusFilter('suspended');
                 break;
@@ -614,6 +682,7 @@ const UsersPage: React.FC = () => {
             'reset-mac': () => setConfirmAction({ kind: 'reset-mac', username: user.username }),
             // Not wired in Users module yet (Live Sessions has it); keep consistent UX.
             'reset-quota': () => setConfirmAction({ kind: 'reset-quota', username: user.username }),
+            'reset-monthly': () => setConfirmAction({ kind: 'reset-monthly-quota', username: user.username }),
         };
 
         const actionFunction = actions[action as keyof typeof actions];
@@ -814,6 +883,8 @@ const UsersPage: React.FC = () => {
                       ? 'Reset MAC address?'
                       : confirmAction?.kind === 'reset-quota'
                         ? 'Reset quota?'
+                      : confirmAction?.kind === 'reset-monthly-quota'
+                        ? 'Reset monthly traffic?'
                         : confirmAction?.kind === 'bulk'
                           ? confirmAction.action === 'delete'
                             ? `Delete ${confirmAction.usernames.length} users?`
@@ -833,6 +904,8 @@ const UsersPage: React.FC = () => {
                       ? `This will clear the stored MAC binding for ${confirmAction.username}.`
                       : confirmAction?.kind === 'reset-quota'
                         ? `This will reset the daily quota counters for ${confirmAction.username}.`
+                      : confirmAction?.kind === 'reset-monthly-quota'
+                        ? `This will reset the monthly traffic counters for ${confirmAction.username}.`
                         : confirmAction?.kind === 'bulk'
                           ? `${confirmAction.action === 'assign-profile' ? `Profile: ${confirmAction.profileName ?? confirmAction.profileId}` + '\n' : ''}Users affected: ${confirmAction.usernames.slice(0, 10).join(', ')}${confirmAction.usernames.length > 10 ? '…' : ''}`
                           : undefined
@@ -864,6 +937,12 @@ const UsersPage: React.FC = () => {
                     await apiClient.put(`/radius/users/resetQuota/${encodeURIComponent(confirmAction.username)}`);
                     await refetch();
                     notify.success("Quota reset", `Daily quota reset for ${confirmAction.username}.`);
+                    return;
+                }
+                if (confirmAction.kind === 'reset-monthly-quota') {
+                    await apiClient.put(`/radius/users/resetMonthlyQuota/${encodeURIComponent(confirmAction.username)}`);
+                    await refetch();
+                    notify.success("Quota reset", `Monthly traffic reset for ${confirmAction.username}.`);
                     return;
                 }
                 if (confirmAction.kind === 'bulk') {
@@ -983,17 +1062,17 @@ const UsersPage: React.FC = () => {
             emptyTitle="No users yet"
             emptyDescription="Create your first user to get started."
         >
-        <div className="w-full py-6 space-y-6 bg-gradient-to-br from-gray-50/50 via-blue-50/30 to-purple-50/30 min-h-screen">
+        <div className="w-full min-w-0 sm:px-0 py-6 space-y-6 bg-gradient-to-br from-gray-50/50 via-blue-50/30 to-purple-50/30 min-h-screen">
             <PageHeader 
                 title="Users Management"
                 subtitle="Comprehensive user management and monitoring system"
                 icon={UsersIcon}
                 rightContent={(
-                    <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-3">
-                            <Label className="text-sm font-medium">View:</Label>
+                    <div className="flex w-full flex-col gap-3 md:w-auto md:flex-row md:items-center md:justify-end">
+                        <div className="flex items-center gap-2">
+                            <Label className="hidden sm:inline text-sm font-medium">View:</Label>
                             <Select value={viewMode} onValueChange={(value: 'table' | 'cards' | 'analytics') => setViewMode(value)}>
-                                <SelectTrigger className="w-[140px]">
+                                <SelectTrigger className="w-full sm:w-[140px]">
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -1003,41 +1082,48 @@ const UsersPage: React.FC = () => {
                                 </SelectContent>
                             </Select>
                         </div>
-                        <div className="hidden lg:flex flex-wrap gap-2">
-                            <Badge variant={!statusFilter ? "secondary" : "outline"} className="cursor-pointer" onClick={() => handleQuickFilter('all')}>All Users</Badge>
-                            <Badge variant={statusFilter === 'active' ? "secondary" : "outline"} className="cursor-pointer" onClick={() => handleQuickFilter('active')}>Active</Badge>
-                            <Badge variant={statusFilter === 'suspended' ? "secondary" : "outline"} className="cursor-pointer" onClick={() => handleQuickFilter('suspended')}>Suspended</Badge>
-                            <Badge variant={statusFilter === 'online' ? "secondary" : "outline"} className="cursor-pointer" onClick={() => handleQuickFilter('online')}>Online</Badge>
-                            <Badge variant={statusFilter === 'offline' ? "secondary" : "outline"} className="cursor-pointer" onClick={() => handleQuickFilter('offline')}>Offline</Badge>
-                        </div>
-                        <div className="hidden lg:block">
-                            <SavedViews
-                                storageKey="savedViews:users"
-                                keys={usersSavedViewsKeys}
-                                getState={getUsersViewState}
-                                applyState={applyUsersViewState}
-                                compact
-                                onSaved={() => notify.success("View saved")}
-                                onDeleted={() => notify.success("View deleted")}
-                            />
+                        <div className="flex items-center gap-2">
+                            <Label className="hidden sm:inline text-sm font-medium">Filter:</Label>
+                            <Select
+                                value={
+                                    statusFilter === "online"
+                                        ? "online"
+                                        : statusFilter === "offline"
+                                          ? "offline"
+                                          : statusFilter === "suspended"
+                                            ? "suspended"
+                                            : "all"
+                                }
+                                onValueChange={(v) => handleQuickFilter(v)}
+                            >
+                                <SelectTrigger className="w-full sm:w-[160px]">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All</SelectItem>
+                                    <SelectItem value="online">Online</SelectItem>
+                                    <SelectItem value="offline">Offline</SelectItem>
+                                    <SelectItem value="suspended">Suspended</SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
                     </div>
                 )}
                 actions={(
-                    <div className="flex gap-2">
-                        <Button variant="outline" onClick={handleRefresh} disabled={isRefreshing}>
+                    <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+                        <Button variant="outline" onClick={handleRefresh} disabled={isRefreshing} className="w-full justify-center sm:w-auto">
                             <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
                             {isRefreshing ? 'Refreshing...' : 'Refresh'}
                         </Button>
-                        <Button variant="outline" onClick={handleExportUsers} disabled={filteredUsers.length === 0}>
+                        <Button variant="outline" onClick={handleExportUsers} disabled={filteredUsers.length === 0} className="w-full justify-center sm:w-auto">
                             <Download className="h-4 w-4 mr-2" />
                             Export
                         </Button>
-                        <Button variant="outline" onClick={() => setIsImportOpen(true)} disabled={!canManageUsers} title={!canManageUsers ? manageUsersReason : "Import CSV"}>
+                        <Button variant="outline" onClick={() => setIsImportOpen(true)} disabled={!canManageUsers} title={!canManageUsers ? manageUsersReason : "Import CSV"} className="w-full justify-center sm:w-auto">
                             <Upload className="h-4 w-4 mr-2" />
                             Import CSV
                         </Button>
-                        <Button onClick={handleAddUser} disabled={!canManageUsers} title={!canManageUsers ? manageUsersReason : "New User"}>
+                        <Button onClick={handleAddUser} disabled={!canManageUsers} title={!canManageUsers ? manageUsersReason : "New User"} className="w-full justify-center sm:w-auto">
                             <Plus className="h-4 w-4 mr-2" />
                             New User
                         </Button>
@@ -1048,7 +1134,7 @@ const UsersPage: React.FC = () => {
             {/* Enhanced Dashboard Controls Card */}
             <Card className="relative overflow-hidden border-0 shadow-xl bg-white/80 backdrop-blur-sm">
                 <div className="absolute inset-0 bg-gradient-to-r from-blue-50/30 via-purple-50/20 to-pink-50/30" />
-                <CardContent className="relative z-10 p-4">
+                <CardContent className="relative z-10 p-4 sm:p-5">
                     <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
                         {/* Search + Inline Filters */}
                         <div className="flex-1 min-w-0 lg:max-w-5xl flex flex-col md:flex-row gap-3 items-start md:items-center">
@@ -1062,13 +1148,17 @@ const UsersPage: React.FC = () => {
                                     showButton
                                 />
                             </div>
-                            <div className="flex flex-wrap items-center gap-3">
-                                <Filter className="h-4 w-4 text-gray-500" />
+                            <div className="w-full">
+                            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:gap-3">
+                                <div className="col-span-2 flex items-center gap-2 text-xs text-muted-foreground">
+                                    <Filter className="h-4 w-4 text-gray-500" />
+                                    <span className="font-medium">Filters</span>
+                                </div>
                                 <Select 
                                     value={advancedFilters.profile} 
                                     onValueChange={(value) => setAdvancedFilters(prev => ({ ...prev, profile: value }))}
                                 >
-                                    <SelectTrigger className="w-[140px] bg-white/80 border-gray-200/60">
+                                    <SelectTrigger className="col-span-2 w-full sm:w-[140px] bg-white/80 border-gray-200/60">
                                         <SelectValue placeholder="Profile" />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -1112,10 +1202,11 @@ const UsersPage: React.FC = () => {
                                     <Label htmlFor="hasContactInfo" className="text-xs font-medium text-gray-700">Contact</Label>
                                 </div>
                             </div>
+                            </div>
                         </div>
 
                         {/* Compact Metrics Section */}
-                        <div className="flex items-center gap-4 lg:border-l lg:border-gray-200/60 lg:pl-4">
+                        <div className="grid w-full grid-cols-3 gap-2 lg:w-auto lg:flex lg:items-center lg:gap-4 lg:border-l lg:border-gray-200/60 lg:pl-4">
                             <MetricItem
                                 label="Total"
                                 value={metrics.total}
@@ -1196,7 +1287,7 @@ const UsersPage: React.FC = () => {
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="relative z-10">
-                            <ActivityTimeline users={filteredUsers} />
+                            <AuditActivityTimeline enabled={Boolean(canSeeAudit)} />
                         </CardContent>
                     </Card>
 

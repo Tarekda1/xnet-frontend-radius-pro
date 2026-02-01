@@ -26,7 +26,7 @@ const PageHeader: React.FC<PageHeaderProps> = ({
   return (
     <div
       className={cn(
-        "rounded-2xl border p-5",
+        "rounded-2xl border p-4 sm:p-5",
         isGradient
           ? "relative overflow-hidden border-transparent bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 text-white shadow-xl"
           : "bg-background",
@@ -42,7 +42,7 @@ const PageHeader: React.FC<PageHeaderProps> = ({
       ) : null}
 
       <div className={cn("relative", isGradient && "z-10")}>
-        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div className="flex flex-col gap-3 sm:gap-4 md:flex-row md:items-start md:justify-between">
           <div className="flex items-start gap-3 min-w-0">
             {Icon ? (
               <div
@@ -56,7 +56,7 @@ const PageHeader: React.FC<PageHeaderProps> = ({
             ) : null}
 
             <div className="min-w-0">
-              <h1 className={cn("text-2xl font-semibold leading-tight", isGradient && "text-white")}>{title}</h1>
+              <h1 className={cn("text-xl sm:text-2xl font-semibold leading-tight", isGradient && "text-white")}>{title}</h1>
               {subtitle ? (
                 <p className={cn("mt-1 text-sm", isGradient ? "text-white/80" : "text-muted-foreground")}>{subtitle}</p>
               ) : null}

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { useQuery } from "@tanstack/react-query";
 import PageHeader from "@/components/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +11,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import SearchBar from "@/components/SearchBar";
 import FiltersBar from "@/components/FiltersBar";
 import QueryState from "@/components/QueryState";
+import { apiClient } from "@/api/client";
+import { QuotaExceededAlert, type FupAccountRow } from "@/components/ui/Alert";
 import { 
   Dialog, 
   DialogContent, 
@@ -44,6 +47,7 @@ import {
   CheckCircle, 
   XCircle, 
   AlertTriangle,
+  Users,
   Settings,
   Clock,
   Mail,
@@ -92,6 +96,26 @@ const Alerts: React.FC = () => {
   const acknowledgeAlert = useAcknowledgeAlert();
   const resolveAlert = useResolveAlert();
   const updateSettings = useUpdateAlertSettings();
+
+  const now = useMemo(() => new Date(), []);
+  const monthLabel = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const dayLabel = now.toISOString().slice(0, 10);
+
+  const quotaExceededQuery = useQuery({
+    queryKey: ["users", "quota-exceeded", "rows"],
+    queryFn: async () => {
+      const resp = await apiClient.get("/radius/users/quota-exceeded", { params: { includeRows: 1 } });
+      return resp?.data?.data as {
+        totalUsers: number;
+        monthlyCount: number;
+        dailyCount: number;
+        monthlyAccounts?: FupAccountRow[];
+        dailyAccounts?: FupAccountRow[];
+      };
+    },
+    enabled: activeTab === "quota",
+    refetchInterval: 60000,
+  });
 
   // Form state
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -309,7 +333,7 @@ const Alerts: React.FC = () => {
 
       {/* Main Content */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="rules" className="flex items-center gap-2">
             <Bell className="h-4 w-4" />
             Alert Rules
@@ -317,6 +341,10 @@ const Alerts: React.FC = () => {
           <TabsTrigger value="alerts" className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4" />
             Active Alerts
+          </TabsTrigger>
+          <TabsTrigger value="quota" className="flex items-center gap-2">
+            <Users className="h-4 w-4" />
+            Quota Exceeded
           </TabsTrigger>
           <TabsTrigger value="history" className="flex items-center gap-2">
             <Clock className="h-4 w-4" />
@@ -569,6 +597,33 @@ const Alerts: React.FC = () => {
                 </Card>
               ))}
             </div>
+          </QueryState>
+        </TabsContent>
+
+        {/* Quota Exceeded Tab */}
+        <TabsContent value="quota" className="space-y-4">
+          <QueryState
+            isLoading={quotaExceededQuery.isLoading}
+            error={quotaExceededQuery.error as any}
+            isEmpty={
+              !quotaExceededQuery.isLoading &&
+              !quotaExceededQuery.error &&
+              ((quotaExceededQuery.data?.monthlyAccounts?.length ?? 0) + (quotaExceededQuery.data?.dailyAccounts?.length ?? 0) === 0)
+            }
+            onRetry={() => quotaExceededQuery.refetch()}
+            loading={<LoadingSpinner />}
+            errorTitle="Failed to load quota exceeded users"
+            emptyTitle="No quota exceeded users"
+            emptyDescription="No users exceeded their daily or monthly quota."
+          >
+            <QuotaExceededAlert
+              monthLabel={monthLabel}
+              dayLabel={dayLabel}
+              monthlyAccounts={quotaExceededQuery.data?.monthlyAccounts ?? []}
+              dailyAccounts={quotaExceededQuery.data?.dailyAccounts ?? []}
+              totalUsers={quotaExceededQuery.data?.totalUsers}
+              className="rounded-md"
+            />
           </QueryState>
         </TabsContent>
 

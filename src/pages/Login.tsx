@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -8,20 +8,30 @@ import { useAuth } from '@/context/AuthContext';
 import { Loader2, Lock, User } from 'lucide-react';
 import Alert from '@/components/ui/Alert';
 import PageHeader from "@/components/PageHeader";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 
 const Login: React.FC = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState<boolean>(true);
   const { login, isLoading, error } = useLogin();
   const { login: authLogin } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
+  useEffect(() => {
+    const raw = localStorage.getItem("login.rememberMe");
+    if (raw === null) return;
+    setRememberMe(raw === "true");
+  }, []);
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     const resp = await login(username, password);
     if (resp?.data.accessToken) {
-      authLogin(resp?.data.user, resp?.data.accessToken);
+      localStorage.setItem("login.rememberMe", String(Boolean(rememberMe)));
+      authLogin(resp?.data.user, resp?.data.accessToken, rememberMe);
       let redirectPath = '/';
       const state = location.state as { from?: Location } | null;
       const fromStatePathname = state?.from?.pathname;
@@ -90,6 +100,24 @@ const Login: React.FC = () => {
                 />
               </div>
             </div>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="rememberMe"
+                  checked={rememberMe}
+                  onCheckedChange={(v) => setRememberMe(Boolean(v))}
+                />
+                <Label htmlFor="rememberMe" className="text-sm text-muted-foreground">
+                  Remember me
+                </Label>
+              </div>
+              <a
+                href="#"
+                className="text-sm text-blue-600 hover:text-blue-800 underline-offset-4 hover:underline"
+              >
+                Forgot your password?
+              </a>
+            </div>
             {error && (
               <Alert
                 type="error"
@@ -112,16 +140,7 @@ const Login: React.FC = () => {
             </Button>
           </form>
         </CardContent>
-        <CardFooter className="flex flex-col space-y-4">
-          <div className="text-sm text-center text-muted-foreground">
-            <a
-              href="#"
-              className="text-blue-600 hover:text-blue-800 underline-offset-4 hover:underline"
-            >
-              Forgot your password?
-            </a>
-          </div>
-        </CardFooter>
+        <CardFooter className="flex flex-col space-y-4" />
       </Card>
       </div>
     </div>

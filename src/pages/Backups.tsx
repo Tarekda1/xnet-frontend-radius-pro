@@ -45,11 +45,13 @@ async function downloadBlob(filename: string, blob: Blob) {
     const a = document.createElement("a");
     a.href = url;
     a.download = filename;
+    a.style.display = "none";
     document.body.appendChild(a);
     a.click();
     a.remove();
   } finally {
-    URL.revokeObjectURL(url);
+    // Some browsers can produce 0-byte downloads if we revoke immediately.
+    window.setTimeout(() => URL.revokeObjectURL(url), 1500);
   }
 }
 
@@ -106,7 +108,11 @@ const Backups: React.FC = () => {
     },
     mutationFn: async (b: BackupMeta) => {
       const resp = await apiClient.get(`/backups/${encodeURIComponent(b.id)}/download`, { responseType: "blob" });
-      await downloadBlob(b.filename, resp.data as Blob);
+      const blob = resp.data as Blob;
+      if (blob && typeof (blob as any).size === "number" && blob.size === 0) {
+        throw new Error("Downloaded file is empty (0 bytes). Check MikroTik export credentials/permissions.");
+      }
+      await downloadBlob(b.filename, blob);
     },
     onError: (e: any) => notify.error("Download failed", e?.message || "Failed to download backup"),
     onSettled: () => setDownloadingId(null),

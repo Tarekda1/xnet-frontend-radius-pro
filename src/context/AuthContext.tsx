@@ -3,11 +3,12 @@ import axios, { AxiosError } from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { AuthUser } from '@/types/api';
 import { apiClient } from '@/api/client';
+import { clearTelemetryUser, setTelemetryUser } from '@/lib/telemetry';
 
 interface AuthContextType {
   isAuthenticated: boolean;
   accessToken: string | null;
-  login: (user: AuthUser, accessToken: string) => void;
+  login: (user: AuthUser, accessToken: string, rememberMe?: boolean) => void;
   logout: () => void;
   updateUser: (patch: Partial<AuthUser>) => void;
   user: AuthUser | null;
@@ -16,16 +17,53 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const getStoredAuth = (): { accessToken: string | null; user: AuthUser | null; storage: "local" | "session" | null } => {
+    const localToken = localStorage.getItem("accessToken");
+    const sessionToken = sessionStorage.getItem("accessToken");
+    const storage: "local" | "session" | null = localToken ? "local" : sessionToken ? "session" : null;
+    const token = localToken ?? sessionToken ?? null;
+    const userRaw =
+      storage === "local"
+        ? localStorage.getItem("user")
+        : storage === "session"
+          ? sessionStorage.getItem("user")
+          : null;
+    const user = userRaw ? (JSON.parse(userRaw) as AuthUser) : null;
+    return { accessToken: token, user, storage };
+  };
+
+  const storageFor = (rememberMe: boolean) => (rememberMe ? localStorage : sessionStorage);
+
   const [authState, setAuthState] = useState<{
     isAuthenticated: boolean;
     accessToken: string | null;
     user: AuthUser | null;
-  }>(() => ({
-    isAuthenticated: localStorage.getItem('accessToken') !== null,
-    accessToken: localStorage.getItem('accessToken'),
-    user: localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')!) : null,
-  }));
+    storage: "local" | "session" | null;
+  }>(() => {
+    const stored = getStoredAuth();
+    return {
+      isAuthenticated: stored.accessToken !== null,
+      accessToken: stored.accessToken,
+      user: stored.user,
+      storage: stored.storage,
+    };
+  });
   const navigate = useNavigate();
+
+  // Attach user context to telemetry (Sentry), if enabled.
+  useEffect(() => {
+    const u = authState.user;
+    if (!authState.isAuthenticated || !u) {
+      clearTelemetryUser();
+      return;
+    }
+    setTelemetryUser({
+      id: u.id,
+      username: u.username,
+      email: u.email,
+      role: (u as any).role,
+    });
+  }, [authState.isAuthenticated, authState.user]);
 
   useEffect(() => {
     if (authState.accessToken) {
@@ -78,7 +116,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (!u || cancelled) return;
         // preserve existing role/fields if backend returns partial
         const merged: AuthUser = { ...(authState.user ?? ({} as any)), ...u };
-        localStorage.setItem("user", JSON.stringify(merged));
+        const store = authState.storage === "session" ? sessionStorage : localStorage;
+        store.setItem("user", JSON.stringify(merged));
         setAuthState((prev) => ({ ...prev, user: merged }));
       } catch {
         // ignore; UI will treat as no permissions and backend will still enforce
@@ -98,7 +137,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const response = await axios.post('/api/refresh-token');
       const newToken = response.data.accessToken;
       const user = response.data?.user;
-      login(user, newToken);
+      login(user, newToken, authState.storage === "session" ? false : true);
       return true;
     } catch (error) {
       console.error('Failed to refresh token:', error);
@@ -106,24 +145,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const login = (user: AuthUser, accessToken: string) => {
-    localStorage.setItem('accessToken', accessToken);
-    localStorage.setItem('user', JSON.stringify(user));
-    setAuthState({ isAuthenticated: true, accessToken, user: user });
+  const login = (user: AuthUser, accessToken: string, rememberMe: boolean = true) => {
+    const store = storageFor(Boolean(rememberMe));
+    const other = store === localStorage ? sessionStorage : localStorage;
+
+    // Ensure we don't keep stale auth in the other storage
+    other.removeItem("accessToken");
+    other.removeItem("user");
+
+    store.setItem("accessToken", accessToken);
+    store.setItem("user", JSON.stringify(user));
+    setAuthState({ isAuthenticated: true, accessToken, user: user, storage: rememberMe ? "local" : "session" });
   };
 
   const updateUser = (patch: Partial<AuthUser>) => {
     setAuthState((prev) => {
       const merged = { ...(prev.user ?? ({} as any)), ...patch } as AuthUser;
-      localStorage.setItem("user", JSON.stringify(merged));
+      const store = prev.storage === "session" ? sessionStorage : localStorage;
+      store.setItem("user", JSON.stringify(merged));
       return { ...prev, user: merged };
     });
   };
 
   const logout = () => {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('user');
-    setAuthState({ isAuthenticated: false, accessToken: null, user: null });
+    localStorage.removeItem("accessToken");
+    localStorage.removeItem("user");
+    sessionStorage.removeItem("accessToken");
+    sessionStorage.removeItem("user");
+    setAuthState({ isAuthenticated: false, accessToken: null, user: null, storage: null });
   };
 
   const value = {

@@ -37,6 +37,9 @@ import {
     TooltipTrigger,
     TooltipContent,
 } from "@/components/ui/tooltip";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import Loader from "@/components/ui/loader";
 import { Skeleton } from "@/components/ui/skeleton";
 import EmptyState from "@/components/EmptyState";
@@ -60,20 +63,11 @@ import {
     Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { notify } from "@/lib/notify";
 import { apiClient } from "@/api/client";
 import { useAuth } from "@/context/AuthContext";
 import { canAny } from "@/lib/permissions";
 
-function readNasConfig(): { ip: string; code: string; port: number; configured: boolean } {
-    // - In dev: provided by Vite via import.meta.env.VITE_*
-    // - In prod Docker: provided at runtime via /env.js (window.__ENV__)
-    const runtimeEnv = (window as any).__ENV__ || {};
-    const ip = String(runtimeEnv.DEFAULT_NAS_IP ?? import.meta.env.VITE_DEFAULT_NAS_IP ?? "").trim();
-    const code = String(runtimeEnv.DEFAULT_NAS_SECRET ?? import.meta.env.VITE_DEFAULT_NAS_SECRET ?? "").trim();
-    const port = Number(runtimeEnv.DEFAULT_NAS_COA_PORT ?? import.meta.env.VITE_DEFAULT_NAS_COA_PORT ?? 1700);
-    return { ip, code, port, configured: Boolean(ip) && Boolean(code) };
-}
+// Disconnect is handled server-side (MikroTik API / radclient fallback).
 
 /* ───────── helpers (same logic you used before) */
 const formatBytes = (b: string) => {
@@ -94,6 +88,18 @@ const formatUptime = (s: number) => {
     return [d && `${d}d`, h && `${h}h`, m && `${m}m`, sec && `${sec}s`]
         .filter(Boolean)
         .join(" ");
+};
+const formatAgo = (iso: string | null | undefined) => {
+    const t = iso ? Date.parse(iso) : NaN;
+    if (!Number.isFinite(t)) return "—";
+    const sec = Math.max(Math.floor((Date.now() - t) / 1000), 0);
+    if (sec < 60) return `${sec}s ago`;
+    const min = Math.floor(sec / 60);
+    if (min < 60) return `${min}m ago`;
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return `${hr}h ago`;
+    const d = Math.floor(hr / 24);
+    return `${d}d ago`;
 };
 const formatStatus = (s: string) =>
 ({ active: "Online", idle: "Idle", disconnected: "Disconnected" }[
@@ -236,6 +242,13 @@ const MobileCard: React.FC<{
                         {user.session_mac_address}
                     </div>
                 </div>
+                <div className="space-y-1">
+                    <div className="text-sm text-muted-foreground">Last update</div>
+                    <div className="flex items-center text-sm">
+                        <Clock className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
+                        <span title={user.session_last_update || ""}>{formatAgo(user.session_last_update)}</span>
+                    </div>
+                </div>
                 <UsageBar
                     used={user.real_time_data_usage}
                     total={user.profile_daily_quota}
@@ -254,9 +267,10 @@ const MobileCard: React.FC<{
                     actions={[
                         { label: "Session Details", icon: HardDrive, onClick: () => onAction("details", user.session_username) },
                         { label: "View Traffic", icon: Activity, onClick: () => onAction("view-traffic", user.session_username) },
-                        { label: "Disconnect", icon: Power, onClick: () => onAction("disconnect", user.session_username), tone: "destructive" as const, disabled: !canDisconnect || !readNasConfig().configured, disabledReason: !canDisconnect ? disconnectReason : "Configure NAS IP/secret in env to enable disconnect." },
+                        { label: "Disconnect", icon: Power, onClick: () => onAction("disconnect", user.session_username), tone: "destructive" as const, disabled: !canDisconnect, disabledReason: disconnectReason },
                         { label: "Reset MAC", icon: RefreshCw, onClick: () => onAction("reset-mac", user.session_username), disabled: !canManageRadiusUsers, disabledReason: manageReason },
                         { label: "Reset Quota", icon: RotateCw, onClick: () => onAction("reset-quota", user.session_username), disabled: !canManageRadiusUsers, disabledReason: manageReason },
+                        { label: "Reset Monthly", icon: RotateCw, onClick: () => onAction("reset-monthly", user.session_username), disabled: !canManageRadiusUsers, disabledReason: manageReason },
                         { label: "Change Profile", icon: Settings, onClick: () => onAction("change-profile", user.session_username), disabled: !canManageRadiusUsers, disabledReason: manageReason },
                     ]}
                 />
@@ -344,6 +358,11 @@ const TableRows = function TableRows({
                         </div>
                     </TableCell>
                     <TableCell>
+                        <div className="text-sm" title={u.session_last_update || ""}>
+                            {formatAgo(u.session_last_update)}
+                        </div>
+                    </TableCell>
+                    <TableCell>
                         <UsageBar
                             used={u.real_time_data_usage}
                             total={u.profile_daily_quota}
@@ -362,9 +381,10 @@ const TableRows = function TableRows({
                             actions={[
                                 { label: "Session Details", icon: HardDrive, onClick: () => onAction("details", u.session_username) },
                                 { label: "View Traffic", icon: Activity, onClick: () => onAction("view-traffic", u.session_username) },
-                                { label: "Disconnect", icon: Power, onClick: () => onAction("disconnect", u.session_username), tone: "destructive" as const, disabled: !canDisconnect || !readNasConfig().configured, disabledReason: !canDisconnect ? disconnectReason : "Configure NAS IP/secret in env to enable disconnect." },
+                                { label: "Disconnect", icon: Power, onClick: () => onAction("disconnect", u.session_username), tone: "destructive" as const, disabled: !canDisconnect, disabledReason: disconnectReason },
                                 { label: "Reset MAC", icon: RefreshCw, onClick: () => onAction("reset-mac", u.session_username), disabled: !canManageRadiusUsers, disabledReason: manageReason },
                                 { label: "Reset Quota", icon: RotateCw, onClick: () => onAction("reset-quota", u.session_username), disabled: !canManageRadiusUsers, disabledReason: manageReason },
+                                { label: "Reset Monthly", icon: RotateCw, onClick: () => onAction("reset-monthly", u.session_username), disabled: !canManageRadiusUsers, disabledReason: manageReason },
                                 { label: "Change Profile", icon: Settings, onClick: () => onAction("change-profile", u.session_username), disabled: !canManageRadiusUsers, disabledReason: manageReason },
                             ]}
                         />
@@ -394,6 +414,7 @@ const DesktopTable: React.FC<{
                     <TableHead className="w-[120px]">Status</TableHead>
                     <TableHead className="w-[80px]">FUP</TableHead>
                     <TableHead className="w-[120px]">Uptime</TableHead>
+                    <TableHead className="w-[120px]">Last update</TableHead>
                     <TableHead>Daily Usage</TableHead>
                     <TableHead>Monthly Usage</TableHead>
                     <TableHead className="text-center w-[100px]">Actions</TableHead>
@@ -450,12 +471,15 @@ const OnlineUsersTable: React.FC<Props> = ({
         page,
         setPage,
         resetDailyUserQuotaMutation,
+        resetMonthlyUserQuotaMutation,
         resetMacAddressMutation,
         disconnectUserSessionMutation,
     } = useOnlineUsers(search, 1, 100);
     //search,
 
-    const [confirm, setConfirm] = useState<null | { action: "reset-quota" | "reset-mac" | "disconnect"; username: string }>(null);
+    const [confirm, setConfirm] = useState<
+        null | { action: "reset-quota" | "reset-monthly" | "reset-mac" | "disconnect"; username: string }
+    >(null);
     const [detailUsername, setDetailUsername] = useState<string | null>(null);
 
     const sessionDetailQuery = useQuery({
@@ -488,6 +512,11 @@ const OnlineUsersTable: React.FC<Props> = ({
                 return;
             }
 
+            if (action === "reset-monthly") {
+                setConfirm({ action: "reset-monthly", username });
+                return;
+            }
+
             if (action === "reset-mac") {
                 setConfirm({ action: "reset-mac", username });
                 return;
@@ -513,23 +542,39 @@ const OnlineUsersTable: React.FC<Props> = ({
                 return;
             }
         },
-        [resetDailyUserQuotaMutation, resetMacAddressMutation, disconnectUserSessionMutation, refetch, onChangeProfile, onViewTraffic]
+        [resetDailyUserQuotaMutation, resetMonthlyUserQuotaMutation, resetMacAddressMutation, disconnectUserSessionMutation, refetch, onChangeProfile, onViewTraffic]
     );
 
     // Allow parent to trigger a refetch (e.g., top Refresh button)
     useEffect(() => {
         if (!refreshToken) return;
-        refetch();
+        // Avoid unhandled promise rejections crashing the page
+        refetch().catch(() => null);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [refreshToken]);
 
-    useEffect(() => {
-        console.log("page", page);
-        console.log("limit", limit);
-    }, [page, limit]);
-
     /* page-size select options */
     const pageSizes = useMemo(() => [10, 25, 50, 100], []);
+
+    type StatusFilter = "all" | "active" | "idle" | "disconnected";
+    type SortKey =
+        | "lastUpdateDesc"
+        | "usernameAsc"
+        | "usernameDesc"
+        | "uptimeDesc"
+        | "dailyPctDesc"
+        | "monthlyPctDesc";
+
+    // View state persistence disabled (no localStorage)
+    const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+    const [fupOnly, setFupOnly] = useState<boolean>(false);
+    const [sortKey, setSortKey] = useState<SortKey>("lastUpdateDesc");
+
+    const clearFilters = useCallback(() => {
+        setStatusFilter("all");
+        setFupOnly(false);
+        // keep sortKey as-is; sorting doesn’t hide rows
+    }, [setStatusFilter, setFupOnly]);
 
     // Update count when users change
     useEffect(() => {
@@ -538,20 +583,57 @@ const OnlineUsersTable: React.FC<Props> = ({
 
     // Search/refresh are controlled by the page component.
 
-    if (isRefreshing) {
-        return (
-            <div className="space-y-2">
-                <Skeleton className="h-8 w-full" />
-                <Skeleton className="h-8 w-full" />
-                <Skeleton className="h-8 w-full" />
-            </div>
-        );
-    }
-
     const rows = data?.data ?? [];
+    const displayRows = useMemo(() => {
+        let out = rows;
+        if (statusFilter !== "all") {
+            out = out.filter((u) => String(u.session_status || "").toLowerCase() === statusFilter);
+        }
+        if (fupOnly) {
+            out = out.filter((u) => Boolean(u.is_fallback));
+        }
+
+        const num = (s: any) => {
+            const n = typeof s === "number" ? s : parseInt(String(s ?? "0"), 10);
+            return Number.isFinite(n) ? n : 0;
+        };
+        const pctOf = (used: any, total: any) => {
+            const t = num(total);
+            if (t <= 0) return 0;
+            return (num(used) / t) * 100;
+        };
+        const lastUpdateMs = (u: OnlineUser) => {
+            const t = u.session_last_update ? Date.parse(u.session_last_update) : NaN;
+            return Number.isFinite(t) ? t : 0;
+        };
+
+        const sorted = [...out].sort((a, b) => {
+            if (sortKey === "usernameAsc") return String(a.session_username).localeCompare(String(b.session_username));
+            if (sortKey === "usernameDesc") return String(b.session_username).localeCompare(String(a.session_username));
+            if (sortKey === "uptimeDesc") return num(b.session_session_time) - num(a.session_session_time);
+            if (sortKey === "dailyPctDesc") return pctOf(b.real_time_data_usage, b.profile_daily_quota) - pctOf(a.real_time_data_usage, a.profile_daily_quota);
+            if (sortKey === "monthlyPctDesc") return pctOf(b.monthly_usage, b.profile_monthly_quota) - pctOf(a.monthly_usage, a.profile_monthly_quota);
+            // lastUpdateDesc default
+            return lastUpdateMs(b) - lastUpdateMs(a);
+        });
+
+        return sorted;
+    }, [rows, statusFilter, fupOnly, sortKey]);
+
+    const hasClientFilters = fupOnly || statusFilter !== "all" || Boolean(String(search ?? "").trim());
+    const isTrulyEmpty = rows.length === 0 && !hasClientFilters;
+    const isNoMatches = rows.length > 0 && displayRows.length === 0;
 
     return (
         <>
+            {isRefreshing ? (
+                <div className="space-y-2">
+                    <Skeleton className="h-8 w-full" />
+                    <Skeleton className="h-8 w-full" />
+                    <Skeleton className="h-8 w-full" />
+                </div>
+            ) : null}
+
             <Sheet open={Boolean(detailUsername)} onOpenChange={(open) => (!open ? setDetailUsername(null) : null)}>
                 <SheetContent className="sm:max-w-[520px]">
                     <SheetHeader>
@@ -624,14 +706,18 @@ const OnlineUsersTable: React.FC<Props> = ({
                         ? "Disconnect session?"
                         : confirm?.action === "reset-mac"
                           ? "Reset MAC address?"
-                          : "Reset daily quota?"
+                          : confirm?.action === "reset-monthly"
+                            ? "Reset monthly traffic?"
+                            : "Reset daily quota?"
                 }
                 description={
                     confirm?.action === "disconnect"
                         ? `This will send a CoA disconnect for ${confirm?.username}.`
                         : confirm?.action === "reset-mac"
                           ? `This will clear the stored MAC binding for ${confirm?.username}.`
-                          : `This will reset the daily quota counters for ${confirm?.username}.`
+                          : confirm?.action === "reset-monthly"
+                            ? `This will reset the monthly traffic counters for ${confirm?.username}.`
+                            : `This will reset the daily quota counters for ${confirm?.username}.`
                 }
                 confirmText={confirm?.action === "disconnect" ? "Disconnect" : "Confirm"}
                 confirmTone={confirm?.action === "disconnect" ? "destructive" : "default"}
@@ -639,27 +725,32 @@ const OnlineUsersTable: React.FC<Props> = ({
                     if (!confirm) return;
                     const username = confirm.username;
 
-                    if (confirm.action === "reset-quota") {
-                        await resetDailyUserQuotaMutation.mutateAsync({ username });
-                        await refetch();
-                        return;
-                    }
-
-                    if (confirm.action === "reset-mac") {
-                        await resetMacAddressMutation.mutateAsync({ username });
-                        await refetch();
-                        return;
-                    }
-
-                    if (confirm.action === "disconnect") {
-                        const nas = readNasConfig();
-                        if (!nas.configured) {
-                            notify.error("Missing NAS config", "Set DEFAULT_NAS_IP/DEFAULT_NAS_SECRET (prod) or VITE_DEFAULT_NAS_* (dev).");
+                    try {
+                        if (confirm.action === "reset-quota") {
+                            await resetDailyUserQuotaMutation.mutateAsync({ username });
+                            await refetch();
                             return;
                         }
 
-                        await disconnectUserSessionMutation.mutateAsync({ username, ip: nas.ip, code: nas.code, port: nas.port });
-                        await refetch();
+                        if (confirm.action === "reset-monthly") {
+                            await resetMonthlyUserQuotaMutation.mutateAsync({ username });
+                            await refetch();
+                            return;
+                        }
+
+                        if (confirm.action === "reset-mac") {
+                            await resetMacAddressMutation.mutateAsync({ username });
+                            await refetch();
+                            return;
+                        }
+
+                        if (confirm.action === "disconnect") {
+                            await disconnectUserSessionMutation.mutateAsync({ username });
+                            await refetch();
+                        }
+                    } finally {
+                        // Ensure the dialog closes even if refetch/mutations hang or throw.
+                        setConfirm(null);
                     }
                 }}
             />
@@ -667,7 +758,9 @@ const OnlineUsersTable: React.FC<Props> = ({
         <QueryState
             isLoading={isLoading}
             error={error}
-            isEmpty={rows.length === 0}
+            // IMPORTANT: don't treat "filtered to 0" as a hard empty state,
+            // otherwise the toolbar (and FUP toggle) disappears and user can't undo.
+            isEmpty={isTrulyEmpty}
             onRetry={() => refetch()}
             loading={
                 <div className="flex justify-center py-20">
@@ -677,17 +770,79 @@ const OnlineUsersTable: React.FC<Props> = ({
             empty={
                 <EmptyState
                     title="No live sessions"
-                    description="Try adjusting your search."
+                    description="Try adjusting your search or filters."
                 />
             }
             errorTitle="Failed to load live sessions"
         >
-            <TableToolbar label={`${data?.totalUsers ?? 0} sessions`} className="mb-2 rounded-md border" />
+            <TableToolbar
+                label={`${displayRows.length} of ${data?.totalUsers ?? 0} sessions`}
+                className="mb-2 rounded-md border"
+                right={
+                    <div className="flex items-center gap-3">
+                        <div className="hidden lg:flex items-center gap-2">
+                            <Label className="text-xs text-muted-foreground">Status</Label>
+                            <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as any)}>
+                                <SelectTrigger className="h-8 w-[140px]">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All</SelectItem>
+                                    <SelectItem value="active">Active</SelectItem>
+                                    <SelectItem value="idle">Idle</SelectItem>
+                                    <SelectItem value="disconnected">Disconnected</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="hidden lg:flex items-center gap-2">
+                            <Label className="text-xs text-muted-foreground">Sort</Label>
+                            <Select value={sortKey} onValueChange={(v) => setSortKey(v as any)}>
+                                <SelectTrigger className="h-8 w-[180px]">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="lastUpdateDesc">Last update (newest)</SelectItem>
+                                    <SelectItem value="uptimeDesc">Uptime (highest)</SelectItem>
+                                    <SelectItem value="dailyPctDesc">Daily usage % (highest)</SelectItem>
+                                    <SelectItem value="monthlyPctDesc">Monthly usage % (highest)</SelectItem>
+                                    <SelectItem value="usernameAsc">Username (A→Z)</SelectItem>
+                                    <SelectItem value="usernameDesc">Username (Z→A)</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                            <TooltipProvider>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <div className="flex items-center gap-2">
+                                            <Label className="text-xs text-muted-foreground">FUP only</Label>
+                                            <Switch checked={fupOnly} onCheckedChange={setFupOnly} />
+                                        </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Show only users currently in fallback/FUP.</TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
+                        </div>
+                    </div>
+                }
+            />
+
+            {isNoMatches ? (
+                <EmptyState
+                    title="No matches"
+                    description="No sessions match the current filters (e.g. FUP only)."
+                    actionLabel="Clear filters"
+                    onAction={clearFilters}
+                    className="mb-4"
+                />
+            ) : null}
 
             {/* Desktop */}
             <div className="hidden md:block">
                 <DesktopTable
-                    users={rows}
+                    users={displayRows}
                     onAction={onAction}
                     canManageRadiusUsers={canManageRadiusUsers}
                     canDisconnect={canDisconnect}
@@ -698,7 +853,7 @@ const OnlineUsersTable: React.FC<Props> = ({
 
             {/* Mobile */}
             <div className="md:hidden space-y-4">
-                {rows.map((u) => (
+                {displayRows.map((u) => (
                     <MobileCard
                         key={u.session_username}
                         user={u}

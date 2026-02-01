@@ -60,6 +60,7 @@ export const MESSAGES = {
     deleted: "User deleted successfully.",
     macReset: "MAC address reset successfully.",
     quotaReset: "Daily quota reset successfully.",
+    monthlyQuotaReset: "Monthly quota reset successfully.",
   },
 
   onlineUsers: {

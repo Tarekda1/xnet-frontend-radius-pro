@@ -200,8 +200,15 @@ const UserRow: React.FC<{
                 <TableCell align="right" className="text-right">
                     <TableRowActions
                         actions={[
-                            { label: "Reset MAC", icon: RefreshCw, onClick: () => onAction("reset-mac", user), disabled: !canManageUsers, disabledReason: manageUsersReason },
+                            {
+                                label: "Reset MAC",
+                                icon: RefreshCw,
+                                onClick: () => onAction("reset-mac", user),
+                                disabled: !canManageUsers || !user.macAddress?.macAddress,
+                                disabledReason: !canManageUsers ? manageUsersReason : "No MAC is currently bound for this user.",
+                            },
                             { label: "Reset Quota", icon: RefreshCw, onClick: () => onAction("reset-quota", user), disabled: !canManageUsers, disabledReason: manageUsersReason },
+                            { label: "Reset Monthly", icon: RefreshCw, onClick: () => onAction("reset-monthly", user), disabled: !canManageUsers, disabledReason: manageUsersReason },
                             { label: "Edit", icon: Edit, onClick: () => onAction("edit", user), disabled: !canManageUsers, disabledReason: manageUsersReason },
                             { label: "Delete", icon: Trash2, onClick: () => onAction("delete", user), tone: "destructive", disabled: !canManageUsers, disabledReason: manageUsersReason },
                         ]}
@@ -476,11 +483,13 @@ const UsersTable: React.FC<UsersTableProps> = ({
                         onDelete={() => onAction('delete', user)}
                         onResetMAC={() => onAction('reset-mac', user)}
                         onResetQuota={() => onAction('reset-quota', user)}
+                        onResetMonthly={() => onAction('reset-monthly', user)}
                         isResettingMAC={resetMacAddressMutation.variables === user.username}
                         isSelected={selectedUserIds?.has(user.id)}
                         onToggleSelected={(checked) => onToggleSelected?.(user.id, checked)}
                         canManageUsers={canManageUsers}
                         manageUsersReason={manageUsersReason}
+                        canResetMac={Boolean(user.macAddress?.macAddress)}
                     />
                 ))}
             </div>

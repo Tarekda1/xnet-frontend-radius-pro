@@ -58,7 +58,7 @@ const Collections: React.FC = () => {
   };
 
   return (
-    <div className="w-full space-y-6 p-6">
+    <div className="w-full min-w-0 space-y-6 px-4 py-6 sm:px-6 lg:px-8">
       <PageHeader
         title="Collections"
         subtitle="Monitor collected invoices and cash by collectors."
@@ -149,10 +149,13 @@ const Collections: React.FC = () => {
               <CardTitle>Date Range</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center gap-3">
-                <DateRangePicker dateRange={range} onDateRangeChange={setRange} />
-                <Button variant="outline" onClick={() => setRange(undefined)}>Clear</Button>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                <div className="w-full min-w-0 sm:w-auto">
+                  <DateRangePicker dateRange={range} onDateRangeChange={setRange} />
+                </div>
+                <Button className="w-full justify-center sm:w-auto" variant="outline" onClick={() => setRange(undefined)}>Clear</Button>
                 <Button
+                  className="w-full justify-center sm:w-auto"
                   variant="outline"
                   onClick={() => {
                     const today = new Date();
@@ -200,84 +203,86 @@ const Collections: React.FC = () => {
               <CardTitle>Collected Invoices</CardTitle>
             </CardHeader>
             <CardContent>
+              <TableToolbar
+                label={`Invoices: ${(collectedList?.total ?? 0).toLocaleString()} • Page ${page} / ${(collectedList?.totalPages ?? 1)} • Page total: ${(collectedList?.pageTotalAmount ?? 0).toFixed(2)}`}
+              />
               <div className="overflow-x-auto">
-                <TableToolbar
-                  label={`Invoices: ${(collectedList?.total ?? 0).toLocaleString()} • Page ${page} / ${(collectedList?.totalPages ?? 1)} • Page total: ${(collectedList?.pageTotalAmount ?? 0).toFixed(2)}`}
-                />
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>#</TableHead>
-                      <TableHead>User</TableHead>
-                      <TableHead>Full Name</TableHead>
-                      <TableHead>Amount</TableHead>
-                      <TableHead>Payment Method</TableHead>
-                      <TableHead>Collected By</TableHead>
-                      <TableHead>Collected At</TableHead>
-                      <TableHead>Reconciled</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {collectedList?.data?.map((inv: CollectedInvoicesList['data'][number]) => (
-                      <TableRow key={inv.id}>
-                        <TableCell>{inv.id}</TableCell>
-                        <TableCell>{inv?.username ?? '-'}</TableCell>
-                        <TableCell>{inv?.fullName ?? '-'}</TableCell>
-                        <TableCell>{inv.amount?.toFixed(2)}</TableCell>
-                        <TableCell>{inv.paymentMethod ?? '-'}</TableCell>
-                        <TableCell>{inv.collectedBy ?? '-'}</TableCell>
-                        <TableCell>{inv.collectedAt ? new Date(inv.collectedAt).toLocaleString() : '-'}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            {parseMysqlBool(inv.cashReconciled) ? (
-                              <>
-                                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                                <span className="text-sm text-emerald-700">Yes</span>
-                              </>
-                            ) : (
-                              <>
-                                <XCircle className="h-4 w-4 text-slate-400" />
-                                <span className="text-sm text-slate-600">No</span>
-                              </>
-                            )}
-                            {inv.reconciledAt ? (
-                              <span className="text-xs text-muted-foreground">
-                                {new Date(inv.reconciledAt).toLocaleString()}
-                              </span>
-                            ) : null}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <TableRowActions
-                            actions={[
-                              {
-                                label: 'Set Reconciled',
-                                onClick: () => onReconcile(inv.id),
-                                disabled: !canReconcile(inv),
-                              },
-                            ]}
-                          />
-                        </TableCell>
+                <div className="min-w-[980px]">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>#</TableHead>
+                        <TableHead>User</TableHead>
+                        <TableHead>Full Name</TableHead>
+                        <TableHead>Amount</TableHead>
+                        <TableHead>Payment Method</TableHead>
+                        <TableHead>Collected By</TableHead>
+                        <TableHead>Collected At</TableHead>
+                        <TableHead>Reconciled</TableHead>
+                        <TableHead>Actions</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-                <TablePager
-                  currentPage={page}
-                  totalPages={collectedList?.totalPages ?? 1}
-                  totalItems={collectedList?.total ?? 0}
-                  pageSize={limit}
-                  pageSizeOptions={[10, 20, 50, 100, 200]}
-                  onPageChange={setPage}
-                  onPageSizeChange={(n) => {
-                    setLimit(n);
-                    setPage(1);
-                  }}
-                  isDisabled={listQuery.isLoading}
-                  noun="invoices"
-                />
+                    </TableHeader>
+                    <TableBody>
+                      {collectedList?.data?.map((inv: CollectedInvoicesList['data'][number]) => (
+                        <TableRow key={inv.id}>
+                          <TableCell>{inv.id}</TableCell>
+                          <TableCell>{inv?.username ?? '-'}</TableCell>
+                          <TableCell>{inv?.fullName ?? '-'}</TableCell>
+                          <TableCell>{inv.amount?.toFixed(2)}</TableCell>
+                          <TableCell>{inv.paymentMethod ?? '-'}</TableCell>
+                          <TableCell>{inv.collectedBy ?? '-'}</TableCell>
+                          <TableCell>{inv.collectedAt ? new Date(inv.collectedAt).toLocaleString() : '-'}</TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap items-center gap-2">
+                              {parseMysqlBool(inv.cashReconciled) ? (
+                                <>
+                                  <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                                  <span className="text-sm text-emerald-700">Yes</span>
+                                </>
+                              ) : (
+                                <>
+                                  <XCircle className="h-4 w-4 text-slate-400" />
+                                  <span className="text-sm text-slate-600">No</span>
+                                </>
+                              )}
+                              {inv.reconciledAt ? (
+                                <span className="text-xs text-muted-foreground whitespace-nowrap">
+                                  {new Date(inv.reconciledAt).toLocaleString()}
+                                </span>
+                              ) : null}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <TableRowActions
+                              actions={[
+                                {
+                                  label: 'Set Reconciled',
+                                  onClick: () => onReconcile(inv.id),
+                                  disabled: !canReconcile(inv),
+                                },
+                              ]}
+                            />
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               </div>
+              <TablePager
+                currentPage={page}
+                totalPages={collectedList?.totalPages ?? 1}
+                totalItems={collectedList?.total ?? 0}
+                pageSize={limit}
+                pageSizeOptions={[10, 20, 50, 100, 200]}
+                onPageChange={setPage}
+                onPageSizeChange={(n) => {
+                  setLimit(n);
+                  setPage(1);
+                }}
+                isDisabled={listQuery.isLoading}
+                noun="invoices"
+              />
             </CardContent>
           </Card>
         )}

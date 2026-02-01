@@ -4,6 +4,7 @@ import { apiClient } from '../api/client';
 import { ExternalInvoice } from '@/types/api';
 import { notify } from '@/lib/notify';
 import { MESSAGES } from '@/constants/messages';
+import { isFeatureEnabled } from "@/lib/featureFlags";
 // Removed unused local table states (sorting/rowSelection) from this hook
 
 // interface ExternalInvoice {
@@ -128,6 +129,9 @@ const deleteInvoicesBulk = async (invoiceIds: number[]): Promise<BulkDeleteResul
 };
 
 const sendReminder = async (invoiceId: number): Promise<ApiResponse<{ ok: boolean }>> => {
+    if (!isFeatureEnabled("whatsapp-remind")) {
+        throw new Error("Reminder feature is disabled");
+    }
     const response = await apiClient.post(`/invoices/external/${invoiceId}/remind`);
     return response.data;
 };

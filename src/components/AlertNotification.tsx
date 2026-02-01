@@ -34,8 +34,6 @@ const AlertNotification: React.FC<AlertNotificationProps> = ({
 
   const criticalAlerts = recentAlerts.filter(alert => alert.severity === 'critical');
   const highAlerts = recentAlerts.filter(alert => alert.severity === 'high');
-  const mediumAlerts = recentAlerts.filter(alert => alert.severity === 'medium');
-  const lowAlerts = recentAlerts.filter(alert => alert.severity === 'low');
 
   const getAlertIcon = (severity: string) => {
     switch (severity) {
@@ -69,14 +67,14 @@ const AlertNotification: React.FC<AlertNotificationProps> = ({
   };
 
   return (
-    <Card className="hover:shadow-lg transition-shadow">
+    <Card className="w-full min-w-0 hover:shadow-lg transition-shadow">
       <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <div>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
             <CardTitle className="text-lg">Recent Alerts</CardTitle>
             <CardDescription>Latest system alerts and notifications</CardDescription>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
             {criticalAlerts.length > 0 && (
               <Badge variant="destructive" className="flex items-center gap-1">
                 {getAlertIcon('critical')}
@@ -105,9 +103,9 @@ const AlertNotification: React.FC<AlertNotificationProps> = ({
                   {getAlertIcon(alert.severity)}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-start justify-between gap-2 mb-1">
                     <h4 className="text-sm font-medium truncate">{alert.ruleName}</h4>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2 justify-end">
                       <Badge variant="outline" className={`text-xs ${getSeverityColor(alert.severity)}`}>
                         {alert.severity}
                       </Badge>
@@ -120,9 +118,11 @@ const AlertNotification: React.FC<AlertNotificationProps> = ({
                   <p className="text-xs text-muted-foreground mb-2 line-clamp-2">
                     {alert.message}
                   </p>
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>Value: {alert.value} | Threshold: {alert.threshold}</span>
-                    <span>{formatDistanceToNow(alert.timestamp, { addSuffix: true })}</span>
+                  <div className="flex flex-col gap-1 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+                    <span className="min-w-0 break-words">
+                      Value: {String(alert.value)} | Threshold: {String(alert.threshold)}
+                    </span>
+                    <span className="whitespace-nowrap">{formatDistanceToNow(alert.timestamp, { addSuffix: true })}</span>
                   </div>
                 </div>
               </div>

@@ -85,15 +85,15 @@ const BandwidthWidget: React.FC = () => {
   const uploadMbps = Number.isFinite(uploadRate) ? uploadRate.toFixed(1) : '0';
 
   return (
-    <Card className="hover:shadow-lg transition-shadow">
+    <Card className="w-full min-w-0 hover:shadow-lg transition-shadow">
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
             <CardTitle className="text-sm font-medium">Bandwidth Monitor</CardTitle>
             <CardDescription>Real-time network traffic</CardDescription>
           </div>
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="flex items-center gap-1">
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+            <Badge variant="outline" className="flex w-fit items-center gap-1">
               <Activity className="h-3 w-3 text-green-500" />
               Live
             </Badge>

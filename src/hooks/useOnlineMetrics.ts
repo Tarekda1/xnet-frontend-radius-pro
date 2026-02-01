@@ -1,11 +1,27 @@
 // src/hooks/useOnlineMetrics.ts
 import { useState, useEffect } from 'react';
-import { getSocket } from '../socket';
 import { apiClient } from '../api/client';
 
 interface OnlineMetrics {
     totalOnlineUsers: number;
     totalActiveUsers: number;
+}
+
+function deriveWsUrlFromApiBase(apiBase: string): string {
+    // apiBase is typically like: http(s)://host:port/api
+    // We want: ws(s)://host:port
+    try {
+        const u = new URL(apiBase);
+        u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:';
+        // If API is mounted at /api, WS server is at root (same host/port)
+        u.pathname = '/';
+        u.search = '';
+        u.hash = '';
+        return u.toString().replace(/\/$/, '');
+    } catch {
+        // Fallback: best-effort replace
+        return apiBase.replace(/^http/i, 'ws').replace(/\/api\/?$/, '');
+    }
 }
 
 export const useOnlineMetrics = () => {
@@ -29,7 +45,9 @@ export const useOnlineMetrics = () => {
         fetchInitialMetrics();
 
         // Set up WebSocket connection
-        const ws = new WebSocket('ws://localhost:3000');
+        const apiBase = (apiClient.defaults.baseURL || 'http://localhost:3000/api') as string;
+        const wsUrl = deriveWsUrlFromApiBase(apiBase);
+        const ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
             console.log('✅ WebSocket connected');

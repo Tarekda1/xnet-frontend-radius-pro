@@ -52,15 +52,20 @@ export default function TableToolbar({
   }, [density, densityStorageKey]);
 
   return (
-    <div className={cn("flex items-center justify-between px-3 py-2 border-b bg-white", className)}>
-      <div className="text-sm text-muted-foreground">{label}</div>
-      <div className="flex items-center gap-2">
+    <div
+      className={cn(
+        "flex flex-col gap-2 px-3 py-2 border-b bg-white sm:flex-row sm:items-center sm:justify-between",
+        className
+      )}
+    >
+      <div className="min-w-0 text-sm text-muted-foreground break-words">{label}</div>
+      <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
         {right}
         <Button
           variant="outline"
           size="sm"
           onClick={() => setDensity((d) => (d === "compact" ? "comfortable" : "compact"))}
-          className="gap-2"
+          className="w-full gap-2 sm:w-auto"
         >
           {density === "compact" ? <Rows3 className="h-4 w-4" /> : <LayoutGrid className="h-4 w-4" />}
           {density === "compact" ? "Compact" : "Comfortable"}

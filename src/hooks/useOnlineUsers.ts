@@ -42,6 +42,11 @@ interface ResetDailyQuotaResponse {
   message: string;
 }
 
+interface ResetMonthlyQuotaResponse {
+  success: boolean;
+  message: string;
+}
+
 interface DisconnectSessionResponse {
   success: boolean;
   message: string;
@@ -55,6 +60,12 @@ const fetchOnlineUsers = async (page: number = 1, limit: number = 10, search: st
 // Define the API call for resetting the daily quota
 const resetDailyQuota = async ({ username }: { username: string }): Promise<ResetDailyQuotaResponse> => {
   const response = await apiClient.put<ResetDailyQuotaResponse>(`/radius/users/resetQuota/${username}`);
+  return response.data;
+};
+
+// Define the API call for resetting the monthly quota/traffic
+const resetMonthlyQuota = async ({ username }: { username: string }): Promise<ResetMonthlyQuotaResponse> => {
+  const response = await apiClient.put<ResetMonthlyQuotaResponse>(`/radius/users/resetMonthlyQuota/${username}`);
   return response.data;
 };
 
@@ -73,7 +84,7 @@ const changeUserProfile = async ({
 }): Promise<{ success: boolean; message: string }> => {
   // Reuse existing update-user endpoint
   const response = await apiClient.put<{ success: boolean; message: string }>(
-    `/radius/users/${username}`,
+    `/radius/users/${encodeURIComponent(username)}`,
     { username, profileId }
   );
   return response.data;
@@ -118,6 +129,15 @@ export const useOnlineUsers = (
     onError: (error) => notify.error("Action failed", error.message),
   });
 
+  const resetMonthlyUserQuotaMutation = useMutation<ResetMonthlyQuotaResponse, Error, { username: string }>({
+    mutationFn: resetMonthlyQuota,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['onlineUsers'] });
+      notify.success("Success", MESSAGES.users.monthlyQuotaReset);
+    },
+    onError: (error) => notify.error("Action failed", error.message),
+  });
+
   const resetMacAddressMutation = useMutation<ResetDailyQuotaResponse, Error, { username: string }>({
     mutationFn: resetMacAddress,
     onSuccess: () => {
@@ -152,6 +172,7 @@ export const useOnlineUsers = (
   return {
     ...userQuery,
     resetDailyUserQuotaMutation,
+    resetMonthlyUserQuotaMutation,
     resetMacAddressMutation,
     disconnectUserSessionMutation,
     changeUserProfileMutation,

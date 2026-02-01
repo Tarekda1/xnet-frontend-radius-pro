@@ -30,6 +30,8 @@ export default function AccessPage() {
   const userBoxRef = useRef<HTMLDivElement | null>(null);
 
   const selectedRole = useMemo(() => roles.find((r) => r.key === selectedRoleKey) ?? null, [roles, selectedRoleKey]);
+  const sidebarPerms = useMemo(() => allPermissions.filter((p) => p.startsWith("ui.sidebar.")), [allPermissions]);
+  const featurePerms = useMemo(() => allPermissions.filter((p) => !p.startsWith("ui.sidebar.")), [allPermissions]);
 
   useEffect(() => {
     if (!canManage) return;
@@ -175,16 +177,36 @@ export default function AccessPage() {
             <CardTitle>{selectedRole ? `Role permissions: ${selectedRole.name}` : "Role permissions"}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-2 sm:grid-cols-2">
-              {allPermissions.map((p) => (
-                <label key={p} className="flex items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={!!rolePermsDraft[p]}
-                    onCheckedChange={(v) => setRolePermsDraft((prev) => ({ ...prev, [p]: !!v }))}
-                  />
-                  <span className="font-mono">{p}</span>
-                </label>
-              ))}
+            <div className="space-y-4">
+              <div>
+                <div className="text-sm font-semibold mb-2">Feature permissions</div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {featurePerms.map((p) => (
+                    <label key={p} className="flex items-center gap-2 text-sm">
+                      <Checkbox
+                        checked={!!rolePermsDraft[p]}
+                        onCheckedChange={(v) => setRolePermsDraft((prev) => ({ ...prev, [p]: !!v }))}
+                      />
+                      <span className="font-mono">{p}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <div className="text-sm font-semibold mb-2">Sidebar tabs (show/hide)</div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {sidebarPerms.map((p) => (
+                    <label key={p} className="flex items-center gap-2 text-sm">
+                      <Checkbox
+                        checked={!!rolePermsDraft[p]}
+                        onCheckedChange={(v) => setRolePermsDraft((prev) => ({ ...prev, [p]: !!v }))}
+                      />
+                      <span className="font-mono">{p}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
             </div>
             <div className="flex gap-2">
               <Button onClick={saveRole} disabled={!selectedRole}>

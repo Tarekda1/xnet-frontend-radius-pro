@@ -3,8 +3,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { 
-  LineChart, 
-  Line, 
   AreaChart, 
   Area,
   XAxis, 
@@ -81,14 +79,14 @@ const AnalyticsWidget: React.FC<AnalyticsWidgetProps> = ({
   };
 
   return (
-    <Card className="hover:shadow-lg transition-shadow">
+    <Card className="w-full min-w-0 hover:shadow-lg transition-shadow">
       <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <div>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
             <CardTitle className="text-lg">Quick Analytics</CardTitle>
             <CardDescription>Real-time system overview</CardDescription>
           </div>
-          <Badge variant="secondary" className="flex gap-1 items-center">
+          <Badge variant="secondary" className="flex w-fit gap-1 items-center">
             <BarChart3 className="h-3 w-3" />
             Live
           </Badge>
@@ -96,7 +94,7 @@ const AnalyticsWidget: React.FC<AnalyticsWidgetProps> = ({
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Mini Metrics */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="space-y-1">
             <p className="text-sm text-muted-foreground">Active Users</p>
             <div className="flex items-center gap-2">

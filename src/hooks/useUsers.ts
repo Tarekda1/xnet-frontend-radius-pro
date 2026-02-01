@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import axios from "axios";
 import { UsersApiResponse, User } from '../types/api';
 import { apiClient } from '@/api/client';
 import { useState } from 'react';
@@ -44,16 +45,16 @@ const createUser = async ({ username, ...userData }:  UserMutationData & { usern
 };
 
 const updateUser = async ({ username, ...userData }: UserMutationData & { username: string }): Promise<User> => {
-  const response = await apiClient.put<User>(`/radius/users/${username}`, { username, ...userData });
+  const response = await apiClient.put<User>(`/radius/users/${encodeURIComponent(username)}`, { username, ...userData });
   return response.data;
 };
 
 const deleteUser = async (username: string): Promise<void> => {
-  await apiClient.delete(`/radius/users/${username}`);
+  await apiClient.delete(`/radius/users/${encodeURIComponent(username)}`);
 };
 
 const resetMacAddress = async (username: string): Promise<User> => {
-  const response = await apiClient.post<User>(`/radius/users/resetAddress/${username}`);
+  const response = await apiClient.post<User>(`/radius/users/resetAddress/${encodeURIComponent(username)}`);
   return response.data;
 };
 
@@ -108,8 +109,22 @@ const useUsers = (initialPage = 1, pageSize = 10) => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       notify.success("Success", MESSAGES.users.macReset);
     },
-    onError: (error) => {
-      notify.error("Action failed", error.message);
+    onError: (error: any) => {
+      // Backend returns 404 if there is no MAC bound; treat as informational.
+      if (axios.isAxiosError(error)) {
+        const status = error.response?.status;
+        const message =
+          (error.response?.data as any)?.message ||
+          (error.response?.data as any)?.error ||
+          error.message;
+        if (status === 404) {
+          notify.info("No MAC to reset", String(message || "MAC address not found for the user."));
+          return;
+        }
+        notify.error("Action failed", String(message || "Request failed"));
+        return;
+      }
+      notify.error("Action failed", error?.message ? String(error.message) : "Request failed");
     },
   });
 

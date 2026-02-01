@@ -1,5 +1,6 @@
 import { Client, Message } from '@stomp/stompjs';
 import { toast } from '@/components/ui/use-toast';
+import { apiClient } from '@/api/client';
 
 class WebSocketService {
     private client: Client | null = null;
@@ -19,7 +20,28 @@ class WebSocketService {
             return;
         }
 
-        const wsUrl = `${import.meta.env.VITE_WS_URL || 'ws://localhost:15674'}/ws`;
+        // Prefer explicit VITE_WS_URL, otherwise derive from API baseURL.
+        // - apiClient baseURL is typically http(s)://host:port/api
+        // - STOMP broker endpoint is /ws on the same host/port by default
+        const explicit = (import.meta.env.VITE_WS_URL as string | undefined) || "";
+        const apiBase = String(apiClient.defaults.baseURL || "");
+        const derived = (() => {
+            try {
+                const u = new URL(apiBase);
+                u.protocol = u.protocol === "https:" ? "wss:" : "ws:";
+                u.pathname = "/ws";
+                u.search = "";
+                u.hash = "";
+                return u.toString();
+            } catch {
+                // If apiBase is relative or invalid, fall back to explicit default.
+                return "";
+            }
+        })();
+
+        const wsUrl = explicit
+            ? `${explicit.replace(/\/$/, "")}/ws`
+            : derived || 'ws://localhost:15674/ws';
         console.log('Initializing WebSocket client with URL:', wsUrl);
 
         this.client = new Client({

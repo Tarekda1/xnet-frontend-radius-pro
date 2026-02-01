@@ -29,7 +29,7 @@ export const apiClient = axios.create({
 
 apiClient.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('accessToken');
+    const token = localStorage.getItem('accessToken') ?? sessionStorage.getItem('accessToken');
     if (import.meta.env.DEV) console.log('Token:', token);
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
@@ -52,6 +52,9 @@ apiClient.interceptors.response.use(
         }
       } catch {}
       localStorage.removeItem('accessToken');
+      localStorage.removeItem('user');
+      sessionStorage.removeItem('accessToken');
+      sessionStorage.removeItem('user');
       window.location.href = '/login';
     }
     return Promise.reject(error);

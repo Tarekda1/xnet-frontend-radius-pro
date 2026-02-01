@@ -3,6 +3,9 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import './mobile-viewport.css'
 import App from './App.tsx'
+import { initTelemetry } from "@/lib/telemetry";
+
+initTelemetry();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

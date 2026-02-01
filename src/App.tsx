@@ -8,6 +8,7 @@ import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { canAny } from './lib/permissions';
+import { isFeatureEnabled } from "@/lib/featureFlags";
 import { Helmet } from 'react-helmet';
 import { Loader } from 'lucide-react';
 import { websocketService } from './services/websocket';
@@ -40,6 +41,7 @@ const NotFoundComponent = React.lazy(() => import('./pages/NotFound'));
 const ForbiddenComponent = React.lazy(() => import('./pages/Forbidden'));
 const Setting = React.lazy(() => import('./pages/Setting'));
 const About = React.lazy(() => import('./pages/About'));
+const CableVisionComponent = React.lazy(() => import('./pages/CableVision/index'));
 
 const ProtectedRoute: React.FC<{ element: React.ReactElement }> = ({ element }) => {
   const { isAuthenticated, user } = useAuth();
@@ -79,6 +81,11 @@ const ProtectedPermissionRoute: React.FC<{ element: React.ReactElement; anyOf: s
   return element;
 };
 
+const FeatureRoute: React.FC<{ enabled: boolean; element: React.ReactElement }> = ({ enabled, element }) => {
+  if (!enabled) return <Navigate to="/not-found" replace />;
+  return element;
+};
+
 const AppRoutes: React.FC = () => {
   return (
     <Router>
@@ -104,13 +111,59 @@ const AppRoutes: React.FC = () => {
                 <Route path="users/:username/sessions" element={<ProtectedPermissionRoute anyOf={['users.view','reseller.users.view']} element={<UserSessionsComponent />} />} />
                 <Route path="profiles/list" element={<ProtectedRoute element={<ProfilesComponent />} />} />
                 <Route path="/online-users" element={<ProtectedPermissionRoute anyOf={['users.online.view','reseller.users.view']} element={<OnlineUsersComponent />} />} />
-                <Route path="/invoice-upload" element={<ProtectedRoute element={<InvoiceUpload />} />} />
-                <Route path="/external-invoices" element={<ProtectedRoute element={<ExternalInvoicesComponent />} />} />
+                <Route
+                  path="/invoice-upload"
+                  element={
+                    <FeatureRoute
+                      enabled={isFeatureEnabled("invoice-upload")}
+                      element={<ProtectedRoute element={<InvoiceUpload />} />}
+                    />
+                  }
+                />
+                <Route
+                  path="/external-invoices"
+                  element={
+                    <FeatureRoute
+                      enabled={isFeatureEnabled("external-invoices")}
+                      element={<ProtectedRoute element={<ExternalInvoicesComponent />} />}
+                    />
+                  }
+                />
                 <Route path="/access" element={<ProtectedRoute element={<AccessComponent />} />} />
-                <Route path="/backups" element={<ProtectedPermissionRoute anyOf={['admin.access.manage']} element={<BackupsComponent />} />} />
-                <Route path="/analytics" element={<ProtectedRoute element={<AnalyticsComponent />} />} />
-                <Route path="/alerts" element={<ProtectedRoute element={<AlertsComponent />} />} />
-                <Route path="/collections" element={<ProtectedRoute element={<CollectionsComponent />} />} />
+                <Route
+                  path="/backups"
+                  element={
+                    <FeatureRoute
+                      enabled={isFeatureEnabled("backups")}
+                      element={<ProtectedPermissionRoute anyOf={['admin.access.manage']} element={<BackupsComponent />} />}
+                    />
+                  }
+                />
+                <Route
+                  path="/analytics"
+                  element={
+                    <FeatureRoute enabled={isFeatureEnabled("analytics")} element={<ProtectedRoute element={<AnalyticsComponent />} />} />
+                  }
+                />
+                <Route
+                  path="/alerts"
+                  element={
+                    <FeatureRoute enabled={isFeatureEnabled("alerts")} element={<ProtectedRoute element={<AlertsComponent />} />} />
+                  }
+                />
+                <Route
+                  path="/collections"
+                  element={
+                    <FeatureRoute
+                      enabled={isFeatureEnabled("collections")}
+                      element={<ProtectedRoute element={<CollectionsComponent />} />}
+                    />
+                  }
+                />
+                <Route
+                  path="/cable-vision"
+                  element={<ProtectedPermissionRoute anyOf={["cablevision.accounts.view", "cablevision.accounts.manage"]} element={<CableVisionComponent />} />}
+                />
                 <Route path="expenses" element={<ProtectedRoute element={<ExpensesComponent />} />} />
                 <Route path="/admin/resellers" element={<ProtectedRoute element={<ResellersComponent />} />} />
                 <Route path="*" element={<ProtectedRoute element={<NotFoundComponent />} />} />

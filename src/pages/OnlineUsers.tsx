@@ -2,7 +2,7 @@
 import { useMemo, useState, useCallback, useEffect } from "react";
 import SearchBar from "../components/SearchBar";
 import OnlineUsersTable from "../components/OnlineUsersTable";
-import { RefreshCw, Users, Clock } from "lucide-react";
+import { RefreshCw, Users, Clock, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import PageHeader from "@/components/PageHeader";
 import { websocketService } from "@/services/websocket";
@@ -13,11 +13,33 @@ import { MESSAGES } from "@/constants/messages";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { useProfiles } from "@/hooks/useProfiles";
 import { useOnlineUsers } from "@/hooks/useOnlineUsers";
 import { Line, LineChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from "recharts";
 import SavedViews from "@/components/SavedViews";
 import type { SavedViewState } from "@/lib/savedViews";
+import { useQuery } from "@tanstack/react-query";
+import { apiClient } from "@/api/client";
+
+type OnlineUsersMetrics = { totalOnlineUsers: number; totalActiveUsers: number };
+
+function StatCard(props: { label: string; value: string | number; sublabel?: string; icon?: React.ReactNode }) {
+  return (
+    <Card className="border bg-card/60">
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-xs text-muted-foreground">{props.label}</div>
+            <div className="text-2xl font-semibold tracking-tight truncate">{props.value}</div>
+            {props.sublabel ? <div className="text-xs text-muted-foreground">{props.sublabel}</div> : null}
+          </div>
+          {props.icon ? <div className="text-muted-foreground">{props.icon}</div> : null}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function OnlineUsersPage() {
   const [search, setSearch] = useState("");
@@ -25,12 +47,25 @@ export default function OnlineUsersPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [onlineCount, setOnlineCount] = useState(0);
   const [refreshToken, setRefreshToken] = useState(0);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date>(() => new Date());
 
   // Change profile modal
   const [profileUsername, setProfileUsername] = useState<string | null>(null);
   const [currentProfileName, setCurrentProfileName] = useState<string>("");
   const [selectedProfileId, setSelectedProfileId] = useState<string>("");
+  const [disconnectAfterProfileChange, setDisconnectAfterProfileChange] = useState(true);
   const profilesQuery = useProfiles();
+
+  const metricsQuery = useQuery({
+    queryKey: ["online-users-metrics"],
+    queryFn: async (): Promise<OnlineUsersMetrics> => {
+      const resp = await apiClient.get("/online-users-metrics");
+      return (resp.data?.data ?? { totalOnlineUsers: 0, totalActiveUsers: 0 }) as OnlineUsersMetrics;
+    },
+    // Keep it fresh but not chatty; table itself refreshes on demand.
+    refetchInterval: 15000,
+    staleTime: 10_000,
+  });
 
   // Live traffic modal
   const [trafficUsername, setTrafficUsername] = useState<string | null>(null);
@@ -64,22 +99,26 @@ export default function OnlineUsersPage() {
     setIsRefreshing(true);
     // Trigger table refetch + clear loading indicator after a short delay
     setRefreshToken((n) => n + 1);
+    setLastRefreshedAt(new Date());
+    metricsQuery.refetch().catch(() => null);
     setTimeout(() => {
       setIsRefreshing(false);
       notify.success(MESSAGES.onlineUsers.refreshedTitle, MESSAGES.onlineUsers.refreshedDescription);
     }, 500);
-  }, []);
+  }, [metricsQuery]);
 
   const openChangeProfile = useCallback((username: string, profileName?: string) => {
     setProfileUsername(username);
     setCurrentProfileName(String(profileName ?? ""));
     setSelectedProfileId("");
+    setDisconnectAfterProfileChange(true);
   }, []);
 
   const closeChangeProfile = useCallback(() => {
     setProfileUsername(null);
     setCurrentProfileName("");
     setSelectedProfileId("");
+    setDisconnectAfterProfileChange(true);
   }, []);
 
   // Auto-select the current profile when opening the dialog (match by profileName).
@@ -103,25 +142,44 @@ export default function OnlineUsersPage() {
     setTrafficSamples([]);
   }, []);
 
-  const changeProfileMutation = useOnlineUsers("", 1, 1, { enabled: false }).changeUserProfileMutation;
+  // Use the same backend action endpoints as the table actions (no auto-fetch).
+  const actions = useOnlineUsers("", 1, 1, { enabled: false });
+  const changeProfileMutation = actions.changeUserProfileMutation;
+  const disconnectUserSessionMutation = actions.disconnectUserSessionMutation;
 
   const canSubmitProfileChange = Boolean(profileUsername) && Boolean(selectedProfileId) && selectedProfileId !== "-1";
 
-  const submitProfileChange = useCallback(() => {
+  const submitProfileChange = useCallback(async () => {
     if (!profileUsername) return;
     const pid = Number(selectedProfileId);
     if (!Number.isFinite(pid) || pid <= 0) return;
 
-    changeProfileMutation.mutate(
-      { username: profileUsername, profileId: pid },
-      {
-        onSuccess: () => {
-          closeChangeProfile();
-          setRefreshToken((n) => n + 1);
-        },
+    try {
+      await changeProfileMutation.mutateAsync({ username: profileUsername, profileId: pid });
+
+      if (disconnectAfterProfileChange) {
+        try {
+          await disconnectUserSessionMutation.mutateAsync({ username: profileUsername });
+        } catch (e: any) {
+          // Profile change succeeded, disconnect failed: show a clear message.
+          notify.error("Profile updated", "Disconnect failed. User may need manual disconnect.");
+        }
       }
-    );
-  }, [profileUsername, selectedProfileId, changeProfileMutation, closeChangeProfile]);
+
+      closeChangeProfile();
+      setRefreshToken((n) => n + 1);
+    } catch (e: any) {
+      // Errors are already surfaced by the mutation's onError toast, but keep this safe.
+      notify.error("Action failed", e?.message || "Failed to change profile");
+    }
+  }, [
+    profileUsername,
+    selectedProfileId,
+    disconnectAfterProfileChange,
+    changeProfileMutation,
+    disconnectUserSessionMutation,
+    closeChangeProfile,
+  ]);
 
   useEffect(() => {
     // Simulate initial loading
@@ -236,16 +294,29 @@ export default function OnlineUsersPage() {
           }
         />
 
-        <Card className="p-4">
-          <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
-            <Skeleton className="h-10 w-full lg:max-w-xl" />
-            <div className="flex items-center gap-4 lg:border-l lg:border-border lg:pl-4">
-              <Skeleton className="h-16 w-32" />
-              <Skeleton className="h-16 w-32" />
-              <Skeleton className="h-16 w-32" />
-            </div>
-          </div>
-        </Card>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <Card className="p-0">
+            <CardContent className="p-4">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-8 w-20 mt-2" />
+              <Skeleton className="h-3 w-28 mt-2" />
+            </CardContent>
+          </Card>
+          <Card className="p-0">
+            <CardContent className="p-4">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-8 w-20 mt-2" />
+              <Skeleton className="h-3 w-28 mt-2" />
+            </CardContent>
+          </Card>
+          <Card className="p-0">
+            <CardContent className="p-4">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-8 w-32 mt-2" />
+              <Skeleton className="h-3 w-28 mt-2" />
+            </CardContent>
+          </Card>
+        </div>
 
         <Card className="border-none shadow-none">
           <CardContent className="px-0">
@@ -260,6 +331,10 @@ export default function OnlineUsersPage() {
       </div>
     );
   }
+
+  const totalOnline = Number(metricsQuery.data?.totalOnlineUsers ?? onlineCount) || 0;
+  const activeOnline = Number(metricsQuery.data?.totalActiveUsers ?? onlineCount) || 0;
+  const idleOnline = Math.max(totalOnline - activeOnline, 0);
 
   return (
     <div className="w-full py-6 space-y-6">
@@ -281,79 +356,60 @@ export default function OnlineUsersPage() {
         )}
       />
 
-      {/* Dashboard Controls Card */}
-      <Card className="p-4">
-        <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
-          {/* Search Section */}
-          <div className="flex-1 min-w-0 lg:max-w-xl">
-            <SearchBar 
-              currentSearchTerm={search} 
-              onSearch={handleSearch}
-              placeholder="Search by username, status, or profile..."
-              className="w-full"
-            />
-          </div>
-
-          <div className="flex items-center gap-2">
-            <SavedViews
-              storageKey="savedViews:liveSessions"
-              keys={sessionsSavedViewsKeys}
-              getState={getSessionsViewState}
-              applyState={applySessionsViewState}
-              compact
-              onSaved={() => notify.success("View saved")}
-              onDeleted={() => notify.success("View deleted")}
-            />
-          </div>
-
-          {/* Metrics Section */}
-          <div className="flex items-center gap-6 lg:border-l lg:border-border lg:pl-6">
-            {/* Status Indicators */}
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <div className="flex flex-col items-center">
-                  <span className="text-xs text-muted-foreground">Active</span>
-                  <div className="flex items-center gap-1.5">
-                    <div className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
-                    <span className="text-lg font-semibold text-blue-600">{onlineCount}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <div className="flex flex-col items-center">
-                  <span className="text-xs text-muted-foreground">Idle</span>
-                  <div className="flex items-center gap-1.5">
-                    <div className="h-2 w-2 rounded-full bg-yellow-500" />
-                    <span className="text-lg font-semibold text-yellow-600">0</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <div className="flex flex-col items-center">
-                  <span className="text-xs text-muted-foreground">Disconnected</span>
-                  <div className="flex items-center gap-1.5">
-                    <div className="h-2 w-2 rounded-full bg-red-500" />
-                    <span className="text-lg font-semibold text-red-600">0</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Last Updated */}
-            <div className="flex items-center gap-2">
-              <div className="flex flex-col items-center">
-                <span className="text-xs text-muted-foreground">Last Updated</span>
-                <div className="flex items-center gap-1.5">
-                  <Clock className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">{new Date().toLocaleTimeString()}</span>
-                </div>
-              </div>
-            </div>
-          </div>
+      {/* Summary + controls */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        <div className="lg:col-span-4">
+          <StatCard
+            label="Active"
+            value={activeOnline}
+            sublabel="Currently active sessions"
+            icon={<div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center"><Activity className="h-5 w-5" /></div>}
+          />
         </div>
-      </Card>
+        <div className="lg:col-span-4">
+          <StatCard
+            label="Total online"
+            value={totalOnline}
+            sublabel={idleOnline ? `${idleOnline} idle / stale` : "No idle sessions"}
+            icon={<div className="h-10 w-10 rounded-full bg-blue-500/10 flex items-center justify-center"><Users className="h-5 w-5 text-blue-600" /></div>}
+          />
+        </div>
+        <div className="lg:col-span-4">
+          <StatCard
+            label="Last refresh"
+            value={lastRefreshedAt.toLocaleTimeString()}
+            sublabel={metricsQuery.isFetching ? "Updating metrics…" : " "}
+            icon={<div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center"><Clock className="h-5 w-5 text-muted-foreground" /></div>}
+          />
+        </div>
+
+        <Card className="lg:col-span-12">
+          <CardContent className="p-4">
+            <div className="flex flex-col lg:flex-row gap-3 items-start lg:items-center justify-between">
+              <div className="flex-1 min-w-0 lg:max-w-xl">
+                <SearchBar 
+                  currentSearchTerm={search} 
+                  onSearch={handleSearch}
+                  placeholder="Search by username or full name…"
+                  className="w-full"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <SavedViews
+                  storageKey="savedViews:liveSessions"
+                  keys={sessionsSavedViewsKeys}
+                  getState={getSessionsViewState}
+                  applyState={applySessionsViewState}
+                  compact
+                  onSaved={() => notify.success("View saved")}
+                  onDeleted={() => notify.success("View deleted")}
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       <OnlineUsersTable 
         search={search} 
@@ -399,6 +455,20 @@ export default function OnlineUsersPage() {
               </Select>
             </div>
 
+            <div className="flex items-center justify-between rounded-lg border bg-muted/20 p-3">
+              <div className="space-y-0.5">
+                <div className="text-sm font-medium">Disconnect after change</div>
+                <div className="text-xs text-muted-foreground">
+                  Recommended so the user re-auths and the new profile applies immediately.
+                </div>
+              </div>
+              <Switch
+                checked={disconnectAfterProfileChange}
+                onCheckedChange={setDisconnectAfterProfileChange}
+                disabled={changeProfileMutation.isPending || disconnectUserSessionMutation.isPending}
+              />
+            </div>
+
             {(() => {
               const pid = Number(selectedProfileId);
               if (!Number.isFinite(pid) || pid <= 0) return null;
@@ -421,8 +491,19 @@ export default function OnlineUsersPage() {
             <Button variant="outline" onClick={closeChangeProfile}>
               Cancel
             </Button>
-            <Button onClick={submitProfileChange} disabled={!canSubmitProfileChange || changeProfileMutation.isPending}>
-              {changeProfileMutation.isPending ? "Saving..." : "Save"}
+            <Button
+              onClick={submitProfileChange}
+              disabled={
+                !canSubmitProfileChange ||
+                changeProfileMutation.isPending ||
+                disconnectUserSessionMutation.isPending
+              }
+            >
+              {changeProfileMutation.isPending
+                ? "Saving..."
+                : disconnectUserSessionMutation.isPending
+                  ? "Disconnecting..."
+                  : "Save"}
             </Button>
           </DialogFooter>
         </DialogContent>

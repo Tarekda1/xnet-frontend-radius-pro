@@ -3,25 +3,39 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, Edit, Trash2 } from 'lucide-react';
-import { User } from '../types/api';
-import  Loader  from '@/components/ui/loader';
+import Loader from '@/components/ui/loader';
 import { useNavigate } from "react-router-dom";
 import { Checkbox } from "@/components/ui/checkbox";
 
 interface UserCardProps {
-    user: User;
+    user: any;
     onEdit: () => void;
     onDelete: () => void;
-    onResetMAC: () => void;
-    onResetQuota: () => void;
-    isResettingMAC: boolean;
+    onResetMAC?: () => void;
+    onResetQuota?: () => void;
+    onResetMonthly?: () => void;
+    isResettingMAC?: boolean;
     isSelected?: boolean;
     onToggleSelected?: (selected: boolean) => void;
     canManageUsers?: boolean;
     manageUsersReason?: string;
+    canResetMac?: boolean;
 }
 
-const UserCard: React.FC<UserCardProps> = ({ user, onEdit, onDelete, onResetMAC, onResetQuota, isResettingMAC, isSelected, onToggleSelected, canManageUsers = true, manageUsersReason = "You don't have permission to manage users." }) => {
+const UserCard: React.FC<UserCardProps> = ({
+    user,
+    onEdit,
+    onDelete,
+    onResetMAC,
+    onResetQuota,
+    onResetMonthly,
+    isResettingMAC,
+    isSelected,
+    onToggleSelected,
+    canManageUsers = true,
+    manageUsersReason = "You don't have permission to manage users.",
+    canResetMac = true,
+}) => {
     const navigate = useNavigate();
     // const dailyUsagePercentage = user.profile.dailyQuota ? (user.profile.dailyUsage / user.profile.dailyQuota) * 100 : 0;
     // const monthlyUsagePercentage = user.profile.monthlyQuota ? (user.monthlyUsage / user.profile.monthlyQuota) * 100 : 0;
@@ -29,8 +43,8 @@ const UserCard: React.FC<UserCardProps> = ({ user, onEdit, onDelete, onResetMAC,
     return (
         <Card className="mb-4">
             <CardHeader>
-                <CardTitle className="flex justify-between items-center">
-                    <div className="flex items-center gap-2">
+                <CardTitle className="flex items-start justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-2">
                         <Checkbox
                             checked={Boolean(isSelected)}
                             onCheckedChange={(v) => onToggleSelected?.(Boolean(v))}
@@ -38,7 +52,7 @@ const UserCard: React.FC<UserCardProps> = ({ user, onEdit, onDelete, onResetMAC,
                         />
                     <button
                         type="button"
-                        className="text-left hover:underline"
+                        className="min-w-0 text-left hover:underline truncate"
                         onClick={() => navigate(`/users/${encodeURIComponent(user.username)}`)}
                         title="View user"
                     >
@@ -54,29 +68,64 @@ const UserCard: React.FC<UserCardProps> = ({ user, onEdit, onDelete, onResetMAC,
             <CardContent>
                 <div className="space-y-2">
                     <div>
-                        <span className="font-semibold">Profile:</span> {user.profile.profileName}
+                        <span className="font-semibold">Profile:</span>{" "}
+                        {user?.profile?.profileName ?? user?.profile_profile_name ?? user?.role ?? '—'}
                     </div>
                     <div>
-                        <span className="font-semibold">MAC Address:</span> {user.macAddress?.macAddress || 'Not set'}
+                        <span className="font-semibold">MAC Address:</span>{" "}
+                        {user?.macAddress?.macAddress ?? user?.session_mac_address ?? 'Not set'}
                     </div>
                     <div>
                         <span className="font-semibold">Last Active:</span>{" "}
-                        {user.lastTimeActive ? new Date(user.lastTimeActive).toLocaleString() : "—"}
+                        {user?.lastTimeActive
+                            ? new Date(user.lastTimeActive).toLocaleString()
+                            : user?.session_last_update
+                              ? new Date(user.session_last_update).toLocaleString()
+                              : "—"}
                     </div>
                 </div>
             </CardContent>
-            <CardFooter className="flex justify-between">
-                <Button variant="outline" size="sm" onClick={onEdit} disabled={!canManageUsers} title={!canManageUsers ? manageUsersReason : "Edit user"}>
+            <CardFooter className="grid grid-cols-2 gap-2">
+                <Button variant="outline" size="sm" className="w-full justify-center" onClick={onEdit} disabled={!canManageUsers} title={!canManageUsers ? manageUsersReason : "Edit user"}>
                     <Edit className="w-4 h-4 mr-2" /> Edit
                 </Button>
-                <Button variant="outline" size="sm" onClick={onResetMAC} disabled={isResettingMAC || !canManageUsers} title={!canManageUsers ? manageUsersReason : "Reset MAC"}>
-                    {isResettingMAC ? <Loader  /> : <RefreshCw className="w-4 h-4 mr-2" />}
-                    Reset MAC
-                </Button>
-                <Button variant="outline" size="sm" onClick={onResetQuota}>
-                    <RefreshCw className="w-4 h-4 mr-2" /> Reset Quota
-                </Button>
-                <Button variant="outline" size="sm" onClick={onDelete} disabled={!canManageUsers} title={!canManageUsers ? manageUsersReason : "Delete user"} className="text-red-600">
+                {onResetMAC ? (
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full justify-center"
+                        onClick={onResetMAC}
+                        disabled={Boolean(isResettingMAC) || !canManageUsers || !canResetMac}
+                        title={
+                            !canManageUsers
+                                ? manageUsersReason
+                                : !canResetMac
+                                  ? "No MAC is currently bound for this user."
+                                  : "Reset MAC"
+                        }
+                    >
+                        {isResettingMAC ? <Loader /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                        Reset MAC
+                    </Button>
+                ) : null}
+                {onResetQuota ? (
+                    <Button variant="outline" size="sm" className="w-full justify-center" onClick={onResetQuota} disabled={!canManageUsers} title={!canManageUsers ? manageUsersReason : "Reset daily quota"}>
+                        <RefreshCw className="w-4 h-4 mr-2" /> Reset Quota
+                    </Button>
+                ) : null}
+                {onResetMonthly ? (
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="col-span-2 w-full justify-center"
+                        onClick={onResetMonthly}
+                        disabled={!canManageUsers}
+                        title={!canManageUsers ? manageUsersReason : "Reset Monthly Traffic"}
+                    >
+                        <RefreshCw className="w-4 h-4 mr-2" /> Reset Monthly
+                    </Button>
+                ) : null}
+                <Button variant="outline" size="sm" className="w-full justify-center text-red-600" onClick={onDelete} disabled={!canManageUsers} title={!canManageUsers ? manageUsersReason : "Delete user"}>
                     <Trash2 className="w-4 h-4 mr-2" /> Delete
                 </Button>
             </CardFooter>

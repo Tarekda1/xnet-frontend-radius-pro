@@ -4,6 +4,8 @@ export interface User {
   profileId: number;
   isFallback: number;
   isMonthlyExceeded: number;
+  isDailyExceeded?: boolean;
+  isMonthlyExceededComputed?: boolean;
   quotaResetDay: number;
   accountStatus: string;
   macAddress: {
@@ -95,6 +97,49 @@ export interface Nas {
   description: string;
   status: 'active' | 'down';
 }
+
+export type CableVisionInvoice = {
+  id: number;
+  accountId: number;
+  profileId: number | null;
+  amount: number;
+  status: "paid" | "unpaid" | "pending";
+  billingMonth: string; // YYYY-MM-01
+  createdAt: string;
+  paidAt: string | null;
+  paymentMethod: "cash" | "pos" | "transfer" | "other" | null;
+  collectedBy: string | null;
+  collectedAt: string | null;
+  cashReconciled: boolean;
+  reconciledBy: string | null;
+  reconciledAt: string | null;
+};
+
+export type CableVisionProfile = {
+  id: number;
+  accountId: number;
+  profileIndex: number; // 1..5
+  profileName: string;
+  assignedTo: string | null;
+  deviceId: string | null;
+  monthlyFee: number;
+  status: "active" | "inactive";
+  currentInvoice?: CableVisionInvoice | null;
+};
+
+export type CableVisionAccount = {
+  id: number;
+  accountNumber: string;
+  fullName: string;
+  phoneNumber: string | null;
+  email: string | null;
+  address: string | null;
+  notes: string | null;
+  status: "active" | "suspended" | "cancelled";
+  createdAt: string;
+  updatedAt: string;
+  profiles?: CableVisionProfile[];
+};
 
 export interface UsersApiResponse {
   success: boolean;

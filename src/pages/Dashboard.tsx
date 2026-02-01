@@ -45,6 +45,7 @@ import { can, canAny } from '@/lib/permissions';
 import { fetchResellerMe } from '@/api/resellers';
 import { apiClient } from '@/api/client';
 import { Link } from "react-router-dom";
+import { QuotaExceededSummaryAlert } from "@/components/ui/Alert";
 
 type AuditLogRow = {
   id: number;
@@ -54,8 +55,53 @@ type AuditLogRow = {
   timestamp: string;
 };
 
+function formatAuditTitle(action: string, meta: any): { title: string; detail?: string } {
+  const a = String(action || "");
+  const m = meta ?? {};
+
+  const pretty =
+    a === "users.resetMac"
+      ? "Reset MAC"
+      : a === "users.resetDailyQuota"
+        ? "Reset daily quota"
+        : a === "users.resetMonthlyQuota"
+          ? "Reset monthly traffic"
+          : a === "users.bulk.resetMac"
+            ? "Bulk reset MAC"
+            : a === "users.bulk.setStatus"
+              ? "Bulk set user status"
+              : a === "users.update"
+                ? "Update user"
+                : a === "users.create"
+                  ? "Create user"
+                  : a === "users.delete"
+                    ? "Delete user"
+                    : a || "Activity";
+
+  // Optional detail for common actions
+  if (a === "users.update") {
+    const ch = (m as any)?.changed ?? {};
+    const status = ch?.accountStatus;
+    if (status?.from && status?.to && status.from !== status.to) {
+      return { title: status.to === "suspended" ? "Suspend user" : status.to === "active" ? "Activate user" : pretty, detail: `${status.from} → ${status.to}` };
+    }
+    const prof = ch?.profileId;
+    if (prof?.from && prof?.to && prof.from !== prof.to) {
+      return { title: "Change profile", detail: `#${prof.from} → #${prof.to}` };
+    }
+  }
+
+  if (a === "users.bulk.setStatus") {
+    const s = String((m as any)?.accountStatus ?? "");
+    if (s) return { title: s === "suspended" ? "Bulk suspend users" : s === "active" ? "Bulk activate users" : pretty, detail: s };
+  }
+
+  return { title: pretty };
+}
+
 const Dashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
+  const [showQuotaExceeded, setShowQuotaExceeded] = useState(true);
   const { user } = useAuth();
   const isReseller = user?.role === 'reseller';
   const canSeeOnline = can(user, 'users.online.view');
@@ -66,6 +112,7 @@ const Dashboard: React.FC = () => {
   const canSeeInvoiceCounts = can(user, 'dashboard.widget.invoiceCounts');
   const canSeeCollections = can(user, 'billing.collections.view');
   const canSeeAudit = canAny(user, ['users.view', 'reseller.users.view']);
+  const canSeeQuotaExceeded = canAny(user, ['users.view', 'reseller.users.view']);
   
   const { data: alerts, isLoading: alertsLoading } = useAlerts();
   const onlineMetrics = useOnlineMetrics();
@@ -83,6 +130,20 @@ const Dashboard: React.FC = () => {
     refetchInterval: 30000,
   });
 
+  const quotaExceededQuery = useQuery({
+    queryKey: ["users", "quota-exceeded"],
+    queryFn: async () => {
+      const resp = await apiClient.get("/radius/users/quota-exceeded");
+      return resp?.data?.data as {
+        totalUsers: number;
+        monthlyCount: number;
+        dailyCount: number;
+      };
+    },
+    enabled: Boolean(canSeeQuotaExceeded) && !isLoading,
+    refetchInterval: 60000,
+  });
+
   const recentAudit = useMemo(() => {
     const rows = recentAuditQuery.data ?? [];
     return rows.map((e) => {
@@ -92,7 +153,8 @@ const Dashboard: React.FC = () => {
       const primaryTarget = targets[0] ?? null;
       const action = String(e.message ?? "").replace(/^audit\./, "") || "—";
       const ts = e.timestamp ? new Date(e.timestamp) : null;
-      return { id: e.id, actor, targets, primaryTarget, action, ts };
+      const fmt = formatAuditTitle(action, meta);
+      return { id: e.id, actor, targets, primaryTarget, action, title: fmt.title, detail: fmt.detail, ts };
     });
   }, [recentAuditQuery.data]);
 
@@ -105,6 +167,7 @@ const Dashboard: React.FC = () => {
   const totalActiveUsers = isReseller ? (resellerOnlineCount ?? 0) : onlineMetrics.totalActiveUsers;
 
   const now = new Date();
+  const todayLabel = now.toISOString().slice(0, 10); // YYYY-MM-DD
   const thisMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const prevMonthKey = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
@@ -197,7 +260,7 @@ const Dashboard: React.FC = () => {
       </div>
 
       {/* System Health Skeleton */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+      <div className="grid w-full min-w-0 gap-4 md:grid-cols-2 lg:grid-cols-7">
         <Card className="md:col-span-4">
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -254,56 +317,67 @@ const Dashboard: React.FC = () => {
   );
 
   return (
-    <div className="w-full space-y-6 p-y-8 animate-in fade-in-50">
+    <div className="w-full space-y-6 px-4 py-6 sm:px-0 animate-in fade-in-50">
       <PageHeader
         title="Dashboard"
         subtitle="Monitor your system's performance and user activity."
         icon={Activity}
         actions={(
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="w-fit text-black" onClick={handleRefresh} disabled={isLoading}>
-              <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-              Refresh Data
-            </Button>
-            {canSeeAnalytics ? (
-              <Button variant="outline" size="sm" className="text-black" asChild>
-                <a href="/analytics">
-                  <LineChart className="mr-2 h-4 w-4" />
-                  View Analytics
-                </a>
+          <div className="flex w-full flex-col gap-2 md:w-auto">
+            <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-end">
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full justify-center text-black sm:w-auto"
+                onClick={handleRefresh}
+                disabled={isLoading}
+              >
+                <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+                Refresh Data
               </Button>
-            ) : null}
-            <Button variant="outline" size="icon" className="text-black">
-              <Settings className="h-4 w-4" />
-            </Button>
-            {canSeeAlerts ? (
-              <Button variant="outline" size="icon" className="text-black">
-                <Bell className="h-4 w-4" />
+              {canSeeAnalytics ? (
+                <Button variant="outline" size="sm" className="w-full justify-center text-black sm:w-auto" asChild>
+                  <a href="/analytics">
+                    <LineChart className="mr-2 h-4 w-4" />
+                    View Analytics
+                  </a>
+                </Button>
+              ) : null}
+            </div>
+
+            <div className="flex w-full justify-center gap-2 sm:justify-end">
+              <Button variant="outline" size="icon" className="text-black !h-9 !w-9 !px-0">
+                <Settings className="h-4 w-4" />
               </Button>
-            ) : null}
+              {canSeeAlerts ? (
+                <Button variant="outline" size="icon" className="text-black !h-9 !w-9 !px-0">
+                  <Bell className="h-4 w-4" />
+                </Button>
+              ) : null}
+            </div>
           </div>
         )}
       />
 
-      <div className="flex flex-wrap gap-2">
+      <div className="grid grid-cols-1 items-center gap-2 sm:grid-cols-2 lg:flex lg:flex-wrap">
         {((!isReseller && canSeeOnline) || isReseller) ? (
-          <Button variant="outline" size="sm" className="text-black" asChild>
+          <Button variant="outline" size="sm" className="w-full text-black lg:w-auto" asChild>
             <Link to="/online-users">Open Live Sessions</Link>
           </Button>
         ) : null}
         {canAny(user, ["users.view", "reseller.users.view"]) ? (
-          <Button variant="outline" size="sm" className="text-black" asChild>
+          <Button variant="outline" size="sm" className="w-full text-black lg:w-auto" asChild>
             <Link to="/users/list">Open Users</Link>
           </Button>
         ) : null}
         {can(user, "radius.profiles.view") ? (
-          <Button variant="outline" size="sm" className="text-black" asChild>
+          <Button variant="outline" size="sm" className="w-full text-black lg:w-auto sm:col-span-2 lg:col-span-1" asChild>
             <Link to="/profiles/list">Open Profiles</Link>
           </Button>
         ) : null}
-        <div className="ml-auto text-xs text-muted-foreground flex items-center gap-1">
-          Tip: Press <span className="font-mono rounded border px-1.5 py-0.5 bg-white">Ctrl</span>+
-          <span className="font-mono rounded border px-1.5 py-0.5 bg-white">K</span> to search commands
+        <div className="hidden md:flex md:ml-auto text-xs text-muted-foreground items-center gap-1">
+          Tip: Press <span className="font-mono rounded border px-1.5 py-0.5 bg-background">Ctrl</span>+
+          <span className="font-mono rounded border px-1.5 py-0.5 bg-background">K</span> to search commands
         </div>
       </div>
 
@@ -311,6 +385,20 @@ const Dashboard: React.FC = () => {
         <LoadingSkeleton />
       ) : (
         <>
+          {canSeeQuotaExceeded && showQuotaExceeded ? (
+            (quotaExceededQuery.data?.monthlyCount || 0) + (quotaExceededQuery.data?.dailyCount || 0) > 0 ? (
+              <QuotaExceededSummaryAlert
+                monthLabel={thisMonthKey}
+                dayLabel={todayLabel}
+                monthlyCount={quotaExceededQuery.data?.monthlyCount ?? 0}
+                dailyCount={quotaExceededQuery.data?.dailyCount ?? 0}
+                totalUsers={quotaExceededQuery.data?.totalUsers}
+                onClose={() => setShowQuotaExceeded(false)}
+                className="rounded-md"
+              />
+            ) : null
+          ) : null}
+
           {/* Stats Grid */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             {/* Reseller balance */}
@@ -494,17 +582,17 @@ const Dashboard: React.FC = () => {
           </div>
 
           {/* System Stats and Activity */}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+          <div className="grid w-full min-w-0 gap-4 md:grid-cols-2 lg:grid-cols-7">
             {/* System Health */}
-            <Card className="md:col-span-4 hover:shadow-lg transition-shadow">
+            <Card className="w-full min-w-0 md:col-span-4 hover:shadow-lg transition-shadow">
               <CardHeader>
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <CardTitle>System Health</CardTitle>
                     <CardDescription>Real-time system metrics and performance indicators</CardDescription>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="flex items-center gap-1">
+                  <div className="flex items-center justify-between gap-2 sm:justify-end">
+                    <Badge variant="outline" className="hidden sm:inline-flex items-center gap-1">
                       <Activity className="h-3 w-3 text-green-500" />
                       All Systems Operational
                     </Badge>
@@ -602,9 +690,9 @@ const Dashboard: React.FC = () => {
 
             {/* Recent Activity */}
             {canSeeAudit ? (
-              <Card className="md:col-span-3 hover:shadow-lg transition-shadow">
+              <Card className="w-full min-w-0 md:col-span-3 hover:shadow-lg transition-shadow">
                 <CardHeader>
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <CardTitle>Recent Activity</CardTitle>
                       <CardDescription>Latest admin and reseller actions</CardDescription>
@@ -614,7 +702,7 @@ const Dashboard: React.FC = () => {
                       size="sm"
                       onClick={() => recentAuditQuery.refetch()}
                       disabled={recentAuditQuery.isFetching}
-                      className="text-black"
+                      className="w-full justify-center text-black sm:w-auto"
                     >
                       <RefreshCw className={`mr-2 h-4 w-4 ${recentAuditQuery.isFetching ? "animate-spin" : ""}`} />
                       Refresh
@@ -646,7 +734,7 @@ const Dashboard: React.FC = () => {
                             <UserIcon className="h-4 w-4 text-slate-600" />
                           </div>
                           <div className="min-w-0 flex-1">
-                            <div className="text-sm font-medium truncate">{e.action}</div>
+                            <div className="text-sm font-medium truncate">{e.title}</div>
                             <div className="text-xs text-muted-foreground truncate">
                               Actor: {e.actor}
                               {e.primaryTarget ? (
@@ -656,6 +744,12 @@ const Dashboard: React.FC = () => {
                                   <a className="underline" href={`/users/${encodeURIComponent(String(e.primaryTarget))}`}>
                                     {String(e.primaryTarget)}
                                   </a>
+                                </>
+                              ) : null}
+                              {e.detail ? (
+                                <>
+                                  {" • "}
+                                  {e.detail}
                                 </>
                               ) : null}
                             </div>
@@ -673,17 +767,17 @@ const Dashboard: React.FC = () => {
             ) : null}
 
             {/* Bandwidth Widget */}
-            <div className="col-span-full lg:col-span-3">
+            <div className="col-span-full w-full min-w-0 lg:col-span-3">
               <BandwidthWidget />
             </div>
 
             {/* Analytics Widget */}
-            <div className="col-span-full lg:col-span-2">
+            <div className="col-span-full w-full min-w-0 lg:col-span-2">
               {canSeeAnalytics ? <AnalyticsWidget /> : null}
             </div>
 
             {/* Alert Notifications */}
-            <div className="col-span-full lg:col-span-1">
+            <div className="col-span-full w-full min-w-0 lg:col-span-1">
               {canSeeAlerts ? <AlertNotification maxAlerts={5} /> : null}
             </div>
           </div>

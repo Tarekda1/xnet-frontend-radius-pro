@@ -22,6 +22,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/context/AuthContext";
 import { can } from "@/lib/permissions";
+import { isFeatureEnabled } from "@/lib/featureFlags";
 
 type Props = {
   invoice: ExternalInvoice;
@@ -37,6 +38,7 @@ const ExternalInvoiceDetailView: React.FC<Props> = ({
   const { user } = useAuth();
   const canPay = can(user, "billing.externalInvoices.pay");
   const canUnpay = can(user, "billing.externalInvoices.unpay");
+  const canSendReminder = isFeatureEnabled("whatsapp-remind");
 
   const [isEditing, setIsEditing] = useState(false);
   const [editedInvoice, setEditedInvoice] = useState<ExternalInvoice>({
@@ -196,7 +198,13 @@ const ExternalInvoiceDetailView: React.FC<Props> = ({
                 </Button>
               ) : null
             )}
-            <Button size="sm" variant="ghost" onClick={() => sendReminderMutation.mutate(editedInvoice.id)}>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => sendReminderMutation.mutate(editedInvoice.id)}
+              disabled={!canSendReminder}
+              title={!canSendReminder ? "Reminder feature is disabled" : "Send WhatsApp reminder"}
+            >
               Send Reminder
             </Button>
             {isEditing ? (
