@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useReducer, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import PageHeader from "@/components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -55,10 +55,13 @@ import { apiClient } from "@/api/client";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { downloadTextFile, parseCsv, toCsv } from "@/lib/csv";
+import { parseCsv } from "@/lib/csv";
 import { useAuth } from "@/context/AuthContext";
 import { canAny } from "@/lib/permissions";
 import { useOnlineUsers } from "@/hooks/useOnlineUsers";
+import { usersPageInitialState, usersPageReducer } from "./usersPageReducer";
+import { useSearchParams, useNavigate } from "react-router-dom";
+import SavedViews from "@/components/SavedViews";
 
 type AuditLogRow = {
     id: number;
@@ -112,6 +115,13 @@ function formatAuditTitle(action: string, meta: any): { title: string; detail?: 
 
     return { title: pretty };
 }
+
+const MetricItemSkeleton = () => (
+    <div className="flex flex-col items-center p-2 sm:p-3">
+        <Skeleton className="h-3 w-12 mb-1.5" />
+        <Skeleton className="h-5 w-14" />
+    </div>
+);
 
 const MetricItem = ({ 
     label, 
@@ -338,12 +348,14 @@ const BulkActions = ({
     onSelectAll, 
     allUsers,
     profiles,
+    isBulkActionInProgress = false,
 }: { 
     selectedUsers: Set<number>;
     onBulkAction: (action: string) => void;
     onSelectAll: (selected: boolean) => void;
     allUsers: User[];
     profiles: { id?: number; profileName: string }[];
+    isBulkActionInProgress?: boolean;
 }) => {
     const isAllSelected = selectedUsers.size === allUsers.length;
     const [profileId, setProfileId] = useState<string>("");
@@ -372,7 +384,7 @@ const BulkActions = ({
                             variant="outline"
                             size="sm"
                             onClick={() => onBulkAction('suspend')}
-                            disabled={!canManageUsers}
+                            disabled={!canManageUsers || isBulkActionInProgress}
                             title={!canManageUsers ? manageUsersReason : "Suspend selected users"}
                             className="bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100 hover:border-orange-300 transition-all duration-300 hover:scale-105"
                         >
@@ -383,7 +395,7 @@ const BulkActions = ({
                             variant="outline"
                             size="sm"
                             onClick={() => onBulkAction('activate')}
-                            disabled={!canManageUsers}
+                            disabled={!canManageUsers || isBulkActionInProgress}
                             title={!canManageUsers ? manageUsersReason : "Activate selected users"}
                             className="bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100 hover:border-emerald-300 transition-all duration-300 hover:scale-105"
                         >
@@ -403,7 +415,7 @@ const BulkActions = ({
                             variant="outline"
                             size="sm"
                             onClick={() => onBulkAction('reset-mac')}
-                            disabled={!canManageUsers}
+                            disabled={!canManageUsers || isBulkActionInProgress}
                             title={!canManageUsers ? manageUsersReason : "Reset MAC for selected users"}
                             className="bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100 hover:border-purple-300 transition-all duration-300 hover:scale-105"
                         >
@@ -427,7 +439,7 @@ const BulkActions = ({
                             <Button
                                 variant="outline"
                                 size="sm"
-                                disabled={!profileId || !canManageUsers}
+                                disabled={!profileId || !canManageUsers || isBulkActionInProgress}
                                 onClick={() => onBulkAction(`assign-profile:${profileId}`)}
                                 title={!canManageUsers ? manageUsersReason : !profileId ? "Select a profile first" : "Assign profile"}
                                 className="bg-white/80 border-gray-200 text-gray-800 hover:bg-white transition-all duration-300 hover:scale-105"
@@ -439,7 +451,7 @@ const BulkActions = ({
                             variant="outline"
                             size="sm"
                             onClick={() => onBulkAction('delete')}
-                            disabled={!canManageUsers}
+                            disabled={!canManageUsers || isBulkActionInProgress}
                             title={!canManageUsers ? manageUsersReason : "Delete selected users"}
                             className="bg-red-50 border-red-200 text-red-700 hover:bg-red-100 hover:border-red-300 transition-all duration-300 hover:scale-105"
                         >
@@ -454,25 +466,37 @@ const BulkActions = ({
 };
 
 const UsersPage: React.FC = () => {
+    const [state, dispatch] = useReducer(usersPageReducer, usersPageInitialState);
+    const {
+        editingUser,
+        pageSize,
+        isRefreshing,
+        statusFilter,
+        selectedUsers,
+        viewMode,
+        advancedFilters,
+        isImportOpen,
+        importFileName,
+        importRows,
+        isImporting,
+        isExportOpen,
+        exportAllUsers,
+        exportStatus,
+        isExporting,
+        confirmAction,
+        isBulkActionInProgress,
+    } = state;
+
+    const [searchParams, setSearchParams] = useSearchParams();
+    const navigate = useNavigate();
+    const savedViewsKeys = useMemo(() => ["q", "status", "profile", "quotaExceeded", "hasMacAddress", "hasContactInfo", "ps", "view", "p"], []);
+
     const { user: authUser } = useAuth();
     const canSeeAudit = useMemo(() => canAny(authUser, ["users.view", "reseller.users.view"]), [authUser]);
     const canSeeLiveSessions = useMemo(
         () => canAny(authUser, ["users.online.view", "reseller.users.view"]),
         [authUser]
     );
-    const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
-    const [editingUser, setEditingUser] = useState<User | null>(null);
-    const [pageSize, setPageSize] = useState(50);
-    const [isRefreshing, setIsRefreshing] = useState(false);
-    const [statusFilter, setStatusFilter] = useState<string>('');
-    const [selectedUsers, setSelectedUsers] = useState<Set<number>>(new Set());
-    const [viewMode, setViewMode] = useState<'table' | 'cards' | 'analytics'>('table');
-    const [advancedFilters, setAdvancedFilters] = useState({
-        profile: 'all',
-        quotaExceeded: false,
-        hasMacAddress: false,
-        hasContactInfo: false
-    });
     const {
         data,
         error,
@@ -486,10 +510,6 @@ const UsersPage: React.FC = () => {
         resetMacAddressMutation
     } = useUsers(1, pageSize);
     const profilesQuery = useProfiles();
-    const [isImportOpen, setIsImportOpen] = useState(false);
-    const [importFileName, setImportFileName] = useState<string>("");
-    const [importRows, setImportRows] = useState<Array<{ raw: Record<string, string>; errors: string[] }>>([]);
-    const [isImporting, setIsImporting] = useState(false);
 
     // Backend sometimes returns either:
     // - { users, totalPages, ... } (normal list/search)
@@ -529,14 +549,45 @@ const UsersPage: React.FC = () => {
     }, [serverUsersBase, canSeeLiveSessions, liveOnlineQuery.data, liveOnlineSet]);
 
     const isSearching = Boolean(searchQuery?.trim());
-    const [confirmAction, setConfirmAction] = useState<
-        | null
-        | { kind: 'delete-user'; username: string }
-        | { kind: 'reset-mac'; username: string }
-        | { kind: 'reset-quota'; username: string }
-        | { kind: 'reset-monthly-quota'; username: string }
-        | { kind: 'bulk'; action: 'suspend' | 'activate' | 'delete' | 'reset-mac' | 'assign-profile'; usernames: string[]; profileId?: number; profileName?: string }
-    >(null);
+
+    // URL sync: initialize from URL on mount
+    useEffect(() => {
+        const q = searchParams.get("q") ?? "";
+        const status = searchParams.get("status") ?? "";
+        const profile = searchParams.get("profile") ?? "all";
+        const quotaExceeded = searchParams.get("quotaExceeded") === "true";
+        const hasMacAddress = searchParams.get("hasMacAddress") === "true";
+        const hasContactInfo = searchParams.get("hasContactInfo") === "true";
+        const ps = parseInt(searchParams.get("ps") ?? "", 10);
+        const view = (searchParams.get("view") ?? "table") as "table" | "cards" | "analytics";
+        const p = parseInt(searchParams.get("p") ?? "", 10);
+        if (q) setSearchQuery(q);
+        if (status) dispatch({ type: "SET_STATUS_FILTER", payload: status });
+        if (profile !== "all" || quotaExceeded || hasMacAddress || hasContactInfo) {
+            dispatch({ type: "SET_ADVANCED_FILTERS", payload: { profile, quotaExceeded, hasMacAddress, hasContactInfo } });
+        }
+        if (Number.isFinite(ps) && ps > 0) dispatch({ type: "SET_PAGE_SIZE", payload: ps });
+        if (["table", "cards", "analytics"].includes(view)) dispatch({ type: "SET_VIEW_MODE", payload: view });
+        if (Number.isFinite(p) && p > 0) setCurrentPage(p);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // URL sync: persist state to URL
+    useEffect(() => {
+        setSearchParams((prev) => {
+            const next = new URLSearchParams(prev);
+            if (searchQuery) next.set("q", searchQuery); else next.delete("q");
+            if (statusFilter) next.set("status", statusFilter); else next.delete("status");
+            if (advancedFilters.profile !== "all") next.set("profile", advancedFilters.profile); else next.delete("profile");
+            if (advancedFilters.quotaExceeded) next.set("quotaExceeded", "true"); else next.delete("quotaExceeded");
+            if (advancedFilters.hasMacAddress) next.set("hasMacAddress", "true"); else next.delete("hasMacAddress");
+            if (advancedFilters.hasContactInfo) next.set("hasContactInfo", "true"); else next.delete("hasContactInfo");
+            next.set("ps", String(pageSize));
+            next.set("view", viewMode);
+            next.set("p", String(currentPage));
+            return next;
+        }, { replace: true } as any);
+    }, [searchQuery, statusFilter, advancedFilters, pageSize, viewMode, currentPage, setSearchParams]);
 
     // Enhanced filtering with advanced filters
     const filteredUsers = React.useMemo(() => {
@@ -626,63 +677,64 @@ const UsersPage: React.FC = () => {
 
     const canManageUsers = useMemo(() => canAny(authUser, ["users.view", "reseller.users.manage"]), [authUser]);
     const manageUsersReason = "You don't have permission to manage users.";
+    const canResetDailyQuota = useMemo(() => canAny(authUser, ["users.resetDailyQuota", "reseller.users.manage"]), [authUser]);
+    const canResetMonthlyQuota = useMemo(() => canAny(authUser, ["users.resetMonthlyQuota", "reseller.users.manage"]), [authUser]);
 
     const handleRefresh = useCallback(() => {
-        setIsRefreshing(true);
+        dispatch({ type: "SET_IS_REFRESHING", payload: true });
         refetch().finally(() => {
             setTimeout(() => {
-                setIsRefreshing(false);
+                dispatch({ type: "SET_IS_REFRESHING", payload: false });
                 notify.success(MESSAGES.users.refreshedTitle, MESSAGES.users.refreshedDescription);
             }, 1000);
         });
     }, [refetch]);
 
     const handleAddUser = useCallback(() => {
-        setEditingUser(null);
-        setIsAddUserModalOpen(true);
-    }, []);
+        navigate("/users/new");
+    }, [navigate]);
 
     const handleUserAdded = useCallback(() => {
         refetch();
-        setIsAddUserModalOpen(false);
-        setEditingUser(null);
+        dispatch({ type: "SET_ADD_USER_MODAL_OPEN", payload: false });
+        dispatch({ type: "SET_EDITING_USER", payload: null });
     }, [refetch]);
 
     const handleCloseModal = useCallback(() => {
-        setIsAddUserModalOpen(false);
-        setEditingUser(null);
+        dispatch({ type: "SET_ADD_USER_MODAL_OPEN", payload: false });
+        dispatch({ type: "SET_EDITING_USER", payload: null });
     }, []);
 
     const handleQuickFilter = useCallback((filter: string) => {
         switch (filter) {
             case 'all':
-                setStatusFilter('');
+                dispatch({ type: "SET_STATUS_FILTER", payload: '' });
                 break;
             case 'suspended':
-                setStatusFilter('suspended');
+                dispatch({ type: "SET_STATUS_FILTER", payload: 'suspended' });
                 break;
             case 'online':
-                setStatusFilter('online');
+                dispatch({ type: "SET_STATUS_FILTER", payload: 'online' });
                 break;
             case 'offline':
-                setStatusFilter('offline');
+                dispatch({ type: "SET_STATUS_FILTER", payload: 'offline' });
                 break;
             default:
-                setStatusFilter('');
+                dispatch({ type: "SET_STATUS_FILTER", payload: '' });
         }
     }, []);
 
     const handleAction = useCallback((action: string, user: User) => {
         const actions = {
             edit: () => {
-                setEditingUser(user);
-                setIsAddUserModalOpen(true);
+                dispatch({ type: "SET_EDITING_USER", payload: user });
+                dispatch({ type: "SET_ADD_USER_MODAL_OPEN", payload: true });
             },
-            delete: () => setConfirmAction({ kind: 'delete-user', username: user.username }),
-            'reset-mac': () => setConfirmAction({ kind: 'reset-mac', username: user.username }),
+            delete: () => dispatch({ type: "SET_CONFIRM_ACTION", payload: { kind: 'delete-user', username: user.username } }),
+            'reset-mac': () => dispatch({ type: "SET_CONFIRM_ACTION", payload: { kind: 'reset-mac', username: user.username } }),
             // Not wired in Users module yet (Live Sessions has it); keep consistent UX.
-            'reset-quota': () => setConfirmAction({ kind: 'reset-quota', username: user.username }),
-            'reset-monthly': () => setConfirmAction({ kind: 'reset-monthly-quota', username: user.username }),
+            'reset-quota': () => dispatch({ type: "SET_CONFIRM_ACTION", payload: { kind: 'reset-quota', username: user.username } }),
+            'reset-monthly': () => dispatch({ type: "SET_CONFIRM_ACTION", payload: { kind: 'reset-monthly-quota', username: user.username } }),
         };
 
         const actionFunction = actions[action as keyof typeof actions];
@@ -694,42 +746,84 @@ const UsersPage: React.FC = () => {
     }, [deleteUserMutation, resetMacAddressMutation]);
 
     const handlePageSizeChange = useCallback((newSize: number) => {
-        setPageSize(newSize);
+        dispatch({ type: "SET_PAGE_SIZE", payload: newSize });
         setCurrentPage(1); // Reset to first page when changing page size
     }, [setCurrentPage]);
 
-    const handleExportUsers = useCallback(() => {
-        // Export the current filtered view (CSV)
-        const exportableUsers = filteredUsers;
-        if (!exportableUsers.length) {
-            notify.error(MESSAGES.users.exportEmptyTitle, MESSAGES.users.exportEmptyDescription);
-            return;
+    const fetchAllUsersForExport = useCallback(async (): Promise<User[]> => {
+        const pageSize = 500;
+        let page = 1;
+        let totalPages = 1;
+        const all: User[] = [];
+
+        while (page <= totalPages) {
+            const resp = await apiClient.get("/radius/users", {
+                params: { page, pageSize },
+            });
+            const payload = resp?.data?.data;
+            const users = (payload?.users ?? []) as User[];
+            all.push(...users);
+            totalPages = Number(payload?.totalPages ?? 1);
+            page += 1;
         }
 
-        const rows = exportableUsers.map((u) => ({
-            username: u.username ?? "",
-            fullName: u.userDetails?.fullName ?? "",
-            phoneNumber: u.userDetails?.phoneNumber ?? "",
-            email: u.userDetails?.email ?? "",
-            profile: u.profile?.profileName ?? "",
-            accountStatus: u.accountStatus ?? "",
-            isOnline: u.isOnline ? "true" : "false",
-            macAddress: u.macAddress?.macAddress ?? "",
-            lastTimeActive: u.lastTimeActive ?? "",
-        }));
-        const cols = ["username", "fullName", "phoneNumber", "email", "profile", "accountStatus", "isOnline", "macAddress", "lastTimeActive"];
-        const csv = toCsv(rows, cols);
+        return all;
+    }, []);
 
-        const date = new Date().toISOString().split('T')[0];
-        const filterSuffix = statusFilter ? `_${statusFilter}` : '';
-        const filename = `users${filterSuffix}_${date}.csv`;
-        downloadTextFile(filename, csv, "text/csv;charset=utf-8");
-        notify.success(MESSAGES.users.exportSuccessTitle, `${exportableUsers.length} users exported to ${filename}`);
-    }, [filteredUsers, statusFilter]);
+    const executeExportUsers = useCallback(async () => {
+        dispatch({ type: "SET_IS_EXPORTING", payload: true });
+        try {
+            const sourceUsers = exportAllUsers ? await fetchAllUsersForExport() : filteredUsers;
+            const exportableUsers = sourceUsers.filter((u) => {
+                if (exportStatus === "all") return true;
+                return String(u.accountStatus ?? "").toLowerCase() === exportStatus;
+            });
+
+            if (!exportableUsers.length) {
+                notify.error(MESSAGES.users.exportEmptyTitle, MESSAGES.users.exportEmptyDescription);
+                return;
+            }
+
+            const xlsx = await import("xlsx");
+            const cols = ["username", "fullName", "phoneNumber", "email", "profile", "accountStatus", "isOnline", "macAddress", "lastTimeActive"] as const;
+            const aoa = [
+                [...cols],
+                ...exportableUsers.map((u) => ([
+                    u.username ?? "",
+                    u.userDetails?.fullName ?? "",
+                    u.userDetails?.phoneNumber ?? "",
+                    u.userDetails?.email ?? "",
+                    u.profile?.profileName ?? "",
+                    u.accountStatus ?? "",
+                    u.isOnline ? "true" : "false",
+                    u.macAddress?.macAddress ?? "",
+                    u.lastTimeActive ?? "",
+                ])),
+            ];
+
+            const ws = xlsx.utils.aoa_to_sheet(aoa);
+            const wb = xlsx.utils.book_new();
+            xlsx.utils.book_append_sheet(wb, ws, "Users");
+
+            const date = new Date().toISOString().split("T")[0];
+            const scopeSuffix = exportAllUsers ? "_all" : "_current";
+            const statusSuffix = exportStatus === "all" ? "_status-all" : `_status-${exportStatus}`;
+            const filename = `users${scopeSuffix}${statusSuffix}_${date}.xlsx`;
+            xlsx.writeFile(wb, filename);
+
+            notify.success(MESSAGES.users.exportSuccessTitle, `${exportableUsers.length} users exported to ${filename}`);
+            dispatch({ type: "SET_EXPORT_OPEN", payload: false });
+        } catch (e) {
+            console.error(e);
+            notify.error("Export failed", "Could not generate Excel file.");
+        } finally {
+            dispatch({ type: "SET_IS_EXPORTING", payload: false });
+        }
+    }, [exportAllUsers, exportStatus, fetchAllUsersForExport, filteredUsers]);
 
     const handleImportFile = useCallback(async (file: File | null) => {
-        setImportRows([]);
-        setImportFileName(file?.name ?? "");
+        dispatch({ type: "SET_IMPORT_ROWS", payload: [] });
+        dispatch({ type: "SET_IMPORT_FILE_NAME", payload: file?.name ?? "" });
         if (!file) return;
 
         const text = await file.text();
@@ -774,7 +868,7 @@ const UsersPage: React.FC = () => {
             out.push({ raw, errors });
         }
 
-        setImportRows(out);
+        dispatch({ type: "SET_IMPORT_ROWS", payload: out });
     }, []);
 
     const runImport = useCallback(async () => {
@@ -784,7 +878,7 @@ const UsersPage: React.FC = () => {
             return;
         }
 
-        setIsImporting(true);
+        dispatch({ type: "SET_IS_IMPORTING", payload: true });
         try {
             const resp = await apiClient.post("/radius/users/bulk/create", {
                 users: valid.map((r) => ({
@@ -812,31 +906,28 @@ const UsersPage: React.FC = () => {
             } else {
                 notify.success("Import complete", `${created} created, ${failed} failed.`);
             }
-            setIsImportOpen(false);
-            setImportRows([]);
-            setImportFileName("");
+            dispatch({ type: "SET_IMPORT_OPEN", payload: false });
+            dispatch({ type: "RESET_IMPORT_STATE" });
         } finally {
-            setIsImporting(false);
+            dispatch({ type: "SET_IS_IMPORTING", payload: false });
         }
     }, [importRows, refetch]);
 
     // New handlers for enhanced features
     const handleSelectAll = useCallback((selected: boolean) => {
         if (selected) {
-            setSelectedUsers(new Set(filteredUsers.map(u => u.id)));
+            dispatch({ type: "SET_SELECTED_USERS", payload: new Set(filteredUsers.map(u => u.id)) });
         } else {
-            setSelectedUsers(new Set());
+            dispatch({ type: "SET_SELECTED_USERS", payload: new Set() });
         }
     }, [filteredUsers]);
 
     const handleToggleSelected = useCallback((userId: number, selected: boolean) => {
-        setSelectedUsers((prev) => {
-            const next = new Set(prev);
-            if (selected) next.add(userId);
-            else next.delete(userId);
-            return next;
-        });
-    }, []);
+        const next = new Set(selectedUsers);
+        if (selected) next.add(userId);
+        else next.delete(userId);
+        dispatch({ type: "SET_SELECTED_USERS", payload: next });
+    }, [selectedUsers]);
 
     const handleBulkAction = useCallback((action: string) => {
         const selectedUserList = filteredUsers.filter(u => selectedUsers.has(u.id));
@@ -844,37 +935,37 @@ const UsersPage: React.FC = () => {
         
         switch (action) {
             case 'suspend':
-                setConfirmAction({ kind: 'bulk', action: 'suspend', usernames });
+                dispatch({ type: "SET_CONFIRM_ACTION", payload: { kind: 'bulk', action: 'suspend', usernames } });
                 break;
             case 'activate':
-                setConfirmAction({ kind: 'bulk', action: 'activate', usernames });
+                dispatch({ type: "SET_CONFIRM_ACTION", payload: { kind: 'bulk', action: 'activate', usernames } });
                 break;
             case 'export':
-                handleExportUsers();
+                dispatch({ type: "SET_EXPORT_OPEN", payload: true });
                 break;
             case 'reset-mac':
-                setConfirmAction({ kind: 'bulk', action: 'reset-mac', usernames });
+                dispatch({ type: "SET_CONFIRM_ACTION", payload: { kind: 'bulk', action: 'reset-mac', usernames } });
                 break;
             case 'delete':
-                setConfirmAction({ kind: 'bulk', action: 'delete', usernames });
+                dispatch({ type: "SET_CONFIRM_ACTION", payload: { kind: 'bulk', action: 'delete', usernames } });
                 break;
             default: {
                 if (action.startsWith('assign-profile:')) {
                     const idStr = action.split(':')[1];
                     const pid = Number(idStr);
                     const p = (profilesQuery.data?.data ?? []).find((x: any) => Number(x.id) === pid);
-                    setConfirmAction({ kind: 'bulk', action: 'assign-profile', usernames, profileId: pid, profileName: p?.profileName });
+                    dispatch({ type: "SET_CONFIRM_ACTION", payload: { kind: 'bulk', action: 'assign-profile', usernames, profileId: pid, profileName: p?.profileName } });
                 }
             }
         }
-    }, [selectedUsers, filteredUsers, handleExportUsers]);
+    }, [selectedUsers, filteredUsers, profilesQuery.data?.data]);
 
     return (
         <>
         <ActionConfirmDialog
             open={Boolean(confirmAction)}
             onOpenChange={(open) => {
-                if (!open) setConfirmAction(null);
+                if (!open) dispatch({ type: "SET_CONFIRM_ACTION", payload: null });
             }}
             title={
                 confirmAction?.kind === 'delete-user'
@@ -922,7 +1013,8 @@ const UsersPage: React.FC = () => {
             }
             onConfirm={async () => {
                 if (!confirmAction) return;
-
+                dispatch({ type: "SET_BULK_ACTION_IN_PROGRESS", payload: true });
+                try {
                 if (confirmAction.kind === 'delete-user') {
                     await deleteUserMutation.mutateAsync(confirmAction.username);
                     await refetch();
@@ -959,7 +1051,7 @@ const UsersPage: React.FC = () => {
                             });
                             const updated = resp?.data?.data?.updated ?? usernames.length;
                             await refetch();
-                            setSelectedUsers(new Set());
+                            dispatch({ type: "SET_SELECTED_USERS", payload: new Set() });
                             notify.success("Bulk action", `${updated} users set to ${accountStatus}.`);
                             return;
                         }
@@ -971,7 +1063,7 @@ const UsersPage: React.FC = () => {
                             });
                             const deleted = resp?.data?.data?.deleted ?? resp?.data?.data?.willDelete ?? 0;
                             await refetch();
-                            setSelectedUsers(new Set());
+                            dispatch({ type: "SET_SELECTED_USERS", payload: new Set() });
                             notify.success("Bulk action", `MAC reset for ${deleted} users.`);
                             return;
                         }
@@ -989,7 +1081,7 @@ const UsersPage: React.FC = () => {
                             });
                             const updated = resp?.data?.data?.updated ?? usernames.length;
                             await refetch();
-                            setSelectedUsers(new Set());
+                            dispatch({ type: "SET_SELECTED_USERS", payload: new Set() });
                             notify.success("Bulk action", `${updated} users assigned profile ${confirmAction.profileName ?? profileId}.`);
                             return;
                         }
@@ -1001,13 +1093,16 @@ const UsersPage: React.FC = () => {
                             });
                             const deleted = resp?.data?.data?.deleted ?? 0;
                             await refetch();
-                            setSelectedUsers(new Set());
+                            dispatch({ type: "SET_SELECTED_USERS", payload: new Set() });
                             notify.success("Bulk action", `${deleted} users deleted.`);
                             return;
                         }
                     } catch (e: any) {
                         notify.error("Bulk action failed", e?.response?.data?.message || e?.message || "Request failed");
                     }
+                }
+                } finally {
+                    dispatch({ type: "SET_BULK_ACTION_IN_PROGRESS", payload: false });
                 }
             }}
         />
@@ -1071,7 +1166,7 @@ const UsersPage: React.FC = () => {
                     <div className="flex w-full flex-col gap-3 md:w-auto md:flex-row md:items-center md:justify-end">
                         <div className="flex items-center gap-2">
                             <Label className="hidden sm:inline text-sm font-medium">View:</Label>
-                            <Select value={viewMode} onValueChange={(value: 'table' | 'cards' | 'analytics') => setViewMode(value)}>
+                            <Select value={viewMode} onValueChange={(value: 'table' | 'cards' | 'analytics') => dispatch({ type: "SET_VIEW_MODE", payload: value })}>
                                 <SelectTrigger className="w-full sm:w-[140px]">
                                     <SelectValue />
                                 </SelectTrigger>
@@ -1107,6 +1202,50 @@ const UsersPage: React.FC = () => {
                                 </SelectContent>
                             </Select>
                         </div>
+                        <div className="hidden md:flex items-center gap-2">
+                            <SavedViews
+                                storageKey="users.views"
+                                keys={savedViewsKeys}
+                                getState={() => ({
+                                    q: searchQuery || "",
+                                    status: statusFilter || "",
+                                    profile: advancedFilters.profile || "",
+                                    quotaExceeded: advancedFilters.quotaExceeded ? "true" : "",
+                                    hasMacAddress: advancedFilters.hasMacAddress ? "true" : "",
+                                    hasContactInfo: advancedFilters.hasContactInfo ? "true" : "",
+                                    ps: String(pageSize),
+                                    view: viewMode,
+                                    p: String(currentPage),
+                                })}
+                                applyState={(s) => {
+                                    if (s.q !== undefined) setSearchQuery(s.q || "");
+                                    if (s.status !== undefined) dispatch({ type: "SET_STATUS_FILTER", payload: s.status || "" });
+                                    if (s.profile !== undefined) dispatch({ type: "SET_ADVANCED_FILTERS", payload: { ...advancedFilters, profile: s.profile || "all" } });
+                                    if (s.quotaExceeded !== undefined) dispatch({ type: "SET_ADVANCED_FILTERS", payload: { ...advancedFilters, quotaExceeded: s.quotaExceeded === "true" } });
+                                    if (s.hasMacAddress !== undefined) dispatch({ type: "SET_ADVANCED_FILTERS", payload: { ...advancedFilters, hasMacAddress: s.hasMacAddress === "true" } });
+                                    if (s.hasContactInfo !== undefined) dispatch({ type: "SET_ADVANCED_FILTERS", payload: { ...advancedFilters, hasContactInfo: s.hasContactInfo === "true" } });
+                                    if (s.ps) { const n = parseInt(s.ps, 10); if (Number.isFinite(n)) dispatch({ type: "SET_PAGE_SIZE", payload: n }); }
+                                    if (s.view && ["table", "cards", "analytics"].includes(s.view)) dispatch({ type: "SET_VIEW_MODE", payload: s.view as "table" | "cards" | "analytics" });
+                                    if (s.p) { const n = parseInt(s.p, 10); if (Number.isFinite(n) && n > 0) setCurrentPage(n); }
+                                    setSearchParams((prev) => {
+                                        const next = new URLSearchParams(prev);
+                                        if (s.q) next.set("q", s.q); else next.delete("q");
+                                        if (s.status) next.set("status", s.status); else next.delete("status");
+                                        if (s.profile) next.set("profile", s.profile); else next.delete("profile");
+                                        if (s.quotaExceeded) next.set("quotaExceeded", s.quotaExceeded); else next.delete("quotaExceeded");
+                                        if (s.hasMacAddress) next.set("hasMacAddress", s.hasMacAddress); else next.delete("hasMacAddress");
+                                        if (s.hasContactInfo) next.set("hasContactInfo", s.hasContactInfo); else next.delete("hasContactInfo");
+                                        if (s.ps) next.set("ps", s.ps); else next.delete("ps");
+                                        if (s.view) next.set("view", s.view); else next.delete("view");
+                                        if (s.p) next.set("p", s.p); else next.delete("p");
+                                        return next;
+                                    }, { replace: true } as any);
+                                    refetch();
+                                }}
+                                onSaved={(name) => notify.success("View saved", `Saved "${name}".`)}
+                                onDeleted={(name) => notify.success("View deleted", `Deleted "${name}".`)}
+                            />
+                        </div>
                     </div>
                 )}
                 actions={(
@@ -1115,11 +1254,11 @@ const UsersPage: React.FC = () => {
                             <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
                             {isRefreshing ? 'Refreshing...' : 'Refresh'}
                         </Button>
-                        <Button variant="outline" onClick={handleExportUsers} disabled={filteredUsers.length === 0} className="w-full justify-center sm:w-auto">
+                        <Button variant="outline" onClick={() => dispatch({ type: "SET_EXPORT_OPEN", payload: true })} className="w-full justify-center sm:w-auto">
                             <Download className="h-4 w-4 mr-2" />
-                            Export
+                            Export Excel
                         </Button>
-                        <Button variant="outline" onClick={() => setIsImportOpen(true)} disabled={!canManageUsers} title={!canManageUsers ? manageUsersReason : "Import CSV"} className="w-full justify-center sm:w-auto">
+                        <Button variant="outline" onClick={() => dispatch({ type: "SET_IMPORT_OPEN", payload: true })} disabled={!canManageUsers} title={!canManageUsers ? manageUsersReason : "Import CSV"} className="w-full justify-center sm:w-auto">
                             <Upload className="h-4 w-4 mr-2" />
                             Import CSV
                         </Button>
@@ -1156,7 +1295,7 @@ const UsersPage: React.FC = () => {
                                 </div>
                                 <Select 
                                     value={advancedFilters.profile} 
-                                    onValueChange={(value) => setAdvancedFilters(prev => ({ ...prev, profile: value }))}
+                                    onValueChange={(value) => dispatch({ type: "SET_ADVANCED_FILTERS", payload: { ...advancedFilters, profile: value } })}
                                 >
                                     <SelectTrigger className="col-span-2 w-full sm:w-[140px] bg-white/80 border-gray-200/60">
                                         <SelectValue placeholder="Profile" />
@@ -1173,7 +1312,7 @@ const UsersPage: React.FC = () => {
                                         id="quotaExceeded"
                                         checked={advancedFilters.quotaExceeded}
                                         onCheckedChange={(checked) => 
-                                            setAdvancedFilters(prev => ({ ...prev, quotaExceeded: !!checked }))
+                                            dispatch({ type: "SET_ADVANCED_FILTERS", payload: { ...advancedFilters, quotaExceeded: !!checked } })
                                         }
                                         className="data-[state=checked]:bg-orange-600 data-[state=checked]:border-orange-600"
                                     />
@@ -1184,7 +1323,7 @@ const UsersPage: React.FC = () => {
                                         id="hasMacAddress"
                                         checked={advancedFilters.hasMacAddress}
                                         onCheckedChange={(checked) => 
-                                            setAdvancedFilters(prev => ({ ...prev, hasMacAddress: !!checked }))
+                                            dispatch({ type: "SET_ADVANCED_FILTERS", payload: { ...advancedFilters, hasMacAddress: !!checked } })
                                         }
                                         className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
                                     />
@@ -1195,7 +1334,7 @@ const UsersPage: React.FC = () => {
                                         id="hasContactInfo"
                                         checked={advancedFilters.hasContactInfo}
                                         onCheckedChange={(checked) => 
-                                            setAdvancedFilters(prev => ({ ...prev, hasContactInfo: !!checked }))
+                                            dispatch({ type: "SET_ADVANCED_FILTERS", payload: { ...advancedFilters, hasContactInfo: !!checked } })
                                         }
                                         className="data-[state=checked]:bg-purple-600 data-[state=checked]:border-purple-600"
                                     />
@@ -1207,43 +1346,78 @@ const UsersPage: React.FC = () => {
 
                         {/* Compact Metrics Section */}
                         <div className="grid w-full grid-cols-3 gap-2 lg:w-auto lg:flex lg:items-center lg:gap-4 lg:border-l lg:border-gray-200/60 lg:pl-4">
-                            <MetricItem
-                                label="Total"
-                                value={metrics.total}
-                                icon={UsersIcon}
-                                color="text-blue-600"
-                                tooltipText={`Total number of users: ${metrics.total}`}
-                                gradient={true}
-                                iconOnly={false}
-                            />
-                            <MetricItem
-                                label="Online"
-                                value={metrics.online}
-                                icon={Wifi}
-                                color="text-blue-600"
-                                onClick={() => handleQuickFilter('online')}
-                                showDot={true}
-                                tooltipText={`Online sessions: ${metrics.online} (${metrics.total ? Math.round((metrics.online / metrics.total) * 100) : 0}%)`}
-                                gradient={true}
-                                iconOnly={false}
-                            />
-                            <MetricItem
-                                label="Suspended"
-                                value={metrics.suspended}
-                                icon={UserX}
-                                color="text-red-600"
-                                onClick={() => handleQuickFilter('suspended')}
-                                tooltipText={`Suspended users: ${metrics.suspended} (${metrics.total ? Math.round((metrics.suspended / metrics.total) * 100) : 0}%)`}
-                                showDot={metrics.suspended > 0}
-                                gradient={true}
-                                iconOnly={false}
-                            />
+                            {isLoading ? (
+                                <>
+                                    <MetricItemSkeleton />
+                                    <MetricItemSkeleton />
+                                    <MetricItemSkeleton />
+                                </>
+                            ) : (
+                                <>
+                                    <MetricItem
+                                        label="Total"
+                                        value={metrics.total}
+                                        icon={UsersIcon}
+                                        color="text-blue-600"
+                                        tooltipText={`Total number of users: ${metrics.total}. Click to clear filters.`}
+                                        onClick={() => { setSearchQuery(""); dispatch({ type: "SET_STATUS_FILTER", payload: "" }); dispatch({ type: "SET_ADVANCED_FILTERS", payload: { profile: "all", quotaExceeded: false, hasMacAddress: false, hasContactInfo: false } }); setCurrentPage(1); }}
+                                        gradient={true}
+                                        iconOnly={false}
+                                    />
+                                    <MetricItem
+                                        label="Online"
+                                        value={metrics.online}
+                                        icon={Wifi}
+                                        color="text-blue-600"
+                                        onClick={() => handleQuickFilter('online')}
+                                        showDot={true}
+                                        tooltipText={`Online sessions: ${metrics.online} (${metrics.total ? Math.round((metrics.online / metrics.total) * 100) : 0}%). Click to filter.`}
+                                        gradient={true}
+                                        iconOnly={false}
+                                    />
+                                    <MetricItem
+                                        label="Suspended"
+                                        value={metrics.suspended}
+                                        icon={UserX}
+                                        color="text-red-600"
+                                        onClick={() => handleQuickFilter('suspended')}
+                                        tooltipText={`Suspended users: ${metrics.suspended} (${metrics.total ? Math.round((metrics.suspended / metrics.total) * 100) : 0}%). Click to filter.`}
+                                        showDot={metrics.suspended > 0}
+                                        gradient={true}
+                                        iconOnly={false}
+                                    />
+                                </>
+                            )}
                         </div>
                     </div>
 
                     
                 </CardContent>
             </Card>
+
+            {/* Clear filters CTA when no results */}
+            {filteredUsers.length === 0 && !isLoading && (searchQuery || statusFilter || advancedFilters.profile !== "all" || advancedFilters.quotaExceeded || advancedFilters.hasMacAddress || advancedFilters.hasContactInfo) && (
+                <Card className="border-amber-200 bg-amber-50/50">
+                    <CardContent className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4">
+                        <p className="text-sm text-amber-800">
+                            No users match your current filters. Clear filters to see all users.
+                        </p>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="border-amber-300 text-amber-800 hover:bg-amber-100"
+                            onClick={() => {
+                                setSearchQuery("");
+                                dispatch({ type: "SET_STATUS_FILTER", payload: "" });
+                                dispatch({ type: "SET_ADVANCED_FILTERS", payload: { profile: "all", quotaExceeded: false, hasMacAddress: false, hasContactInfo: false } });
+                                setCurrentPage(1);
+                            }}
+                        >
+                            Clear all filters
+                        </Button>
+                    </CardContent>
+                </Card>
+            )}
 
             {/* Bulk Actions */}
             {selectedUsers.size > 0 && (
@@ -1253,6 +1427,7 @@ const UsersPage: React.FC = () => {
                     onSelectAll={handleSelectAll}
                     allUsers={filteredUsers}
                     profiles={profilesQuery.data?.data ?? []}
+                    isBulkActionInProgress={isBulkActionInProgress}
                 />
             )}
 
@@ -1363,13 +1538,15 @@ const UsersPage: React.FC = () => {
                     onToggleSelectAll={handleSelectAll}
                     canManageUsers={canManageUsers}
                     manageUsersReason={manageUsersReason}
+                    canResetDailyQuota={canResetDailyQuota}
+                    canResetMonthlyQuota={canResetMonthlyQuota}
                 />
             )}
 
-            {/* Add/Edit User Modal */}
-            {(isAddUserModalOpen || editingUser) && (
+            {/* Edit User Modal (new user goes to /users/new page) */}
+            {editingUser && (
                 <AddUserModal
-                    isOpen={isAddUserModalOpen || !!editingUser}
+                    isOpen={!!editingUser}
                     onClose={handleCloseModal}
                     onUserAdded={handleUserAdded}
                     editingUser={editingUser}
@@ -1377,7 +1554,7 @@ const UsersPage: React.FC = () => {
             )}
 
             {/* CSV Import dialog */}
-            <Dialog open={isImportOpen} onOpenChange={(open) => (isImporting ? null : setIsImportOpen(open))}>
+            <Dialog open={isImportOpen} onOpenChange={(open) => (isImporting ? null : dispatch({ type: "SET_IMPORT_OPEN", payload: open }))}>
                 <DialogContent className="sm:max-w-[920px]">
                     <DialogHeader>
                         <DialogTitle>Import Users (CSV)</DialogTitle>
@@ -1388,6 +1565,27 @@ const UsersPage: React.FC = () => {
                             Required columns: <span className="font-mono">username,password,profileId</span>. Optional:{" "}
                             <span className="font-mono">accountStatus,fullName,phoneNumber,email,address</span>.
                         </div>
+
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                                const headers = "username,password,profileId,accountStatus,fullName,phoneNumber,email,address";
+                                const example = "user1,password123,1,active,John Doe,+1234567890,john@example.com,123 Main St";
+                                const csv = headers + "\n" + example;
+                                const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement("a");
+                                a.href = url;
+                                a.download = "users_import_template.csv";
+                                a.click();
+                                URL.revokeObjectURL(url);
+                                notify.success("Template downloaded", "Save the file and fill in your user data.");
+                            }}
+                        >
+                            <Download className="h-4 w-4 mr-2" />
+                            Download template
+                        </Button>
 
                         <Input
                             type="file"
@@ -1448,7 +1646,7 @@ const UsersPage: React.FC = () => {
                     </div>
 
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsImportOpen(false)} disabled={isImporting}>
+                        <Button variant="outline" onClick={() => dispatch({ type: "SET_IMPORT_OPEN", payload: false })} disabled={isImporting}>
                             Close
                         </Button>
                         <Button
@@ -1456,6 +1654,49 @@ const UsersPage: React.FC = () => {
                             disabled={isImporting || importRows.filter((r) => r.errors.length === 0).length === 0}
                         >
                             {isImporting ? "Importing..." : "Create valid users"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Export options dialog */}
+            <Dialog open={isExportOpen} onOpenChange={(open) => (isExporting ? null : dispatch({ type: "SET_EXPORT_OPEN", payload: open }))}>
+                <DialogContent className="sm:max-w-[520px]">
+                    <DialogHeader>
+                        <DialogTitle>Export Users</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                        <div className="flex items-center gap-2">
+                            <Checkbox
+                                id="export-all-users"
+                                checked={exportAllUsers}
+                                onCheckedChange={(checked) => dispatch({ type: "SET_EXPORT_ALL_USERS", payload: Boolean(checked) })}
+                            />
+                            <Label htmlFor="export-all-users">Export all users (all pages)</Label>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Status filter</Label>
+                            <Select value={exportStatus} onValueChange={(v: "all" | "active" | "suspended") => dispatch({ type: "SET_EXPORT_STATUS", payload: v })}>
+                                <SelectTrigger>
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All</SelectItem>
+                                    <SelectItem value="active">Active only</SelectItem>
+                                    <SelectItem value="suspended">Suspended only</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                            Scope: {exportAllUsers ? "All users from server" : "Current filtered view"}
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => dispatch({ type: "SET_EXPORT_OPEN", payload: false })} disabled={isExporting}>
+                            Cancel
+                        </Button>
+                        <Button onClick={() => void executeExportUsers()} disabled={isExporting}>
+                            {isExporting ? "Exporting..." : "Export"}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

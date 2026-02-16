@@ -21,6 +21,7 @@ import SavedViews from "@/components/SavedViews";
 import type { SavedViewState } from "@/lib/savedViews";
 import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "@/api/client";
+import { useSearchParams } from "react-router-dom";
 
 type OnlineUsersMetrics = { totalOnlineUsers: number; totalActiveUsers: number };
 
@@ -42,7 +43,9 @@ function StatCard(props: { label: string; value: string | number; sublabel?: str
 }
 
 export default function OnlineUsersPage() {
-  const [search, setSearch] = useState("");
+  const [searchParams] = useSearchParams();
+  const initialSearchFromUrl = useMemo(() => String(searchParams.get("search") ?? "").trim(), [searchParams]);
+  const [search, setSearch] = useState(initialSearchFromUrl);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [onlineCount, setOnlineCount] = useState(0);
@@ -88,6 +91,10 @@ export default function OnlineUsersPage() {
   const handleSearch = useCallback((term: string) => {
     setSearch(term);
   }, []);
+
+  useEffect(() => {
+    setSearch(initialSearchFromUrl);
+  }, [initialSearchFromUrl]);
 
   const sessionsSavedViewsKeys = useMemo(() => ["search"], []);
   const getSessionsViewState = useCallback((): SavedViewState => ({ search: String(search ?? "") }), [search]);

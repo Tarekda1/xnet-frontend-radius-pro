@@ -138,6 +138,30 @@ const profileBadge = (p: string) => {
     );
 };
 
+const toInt = (value: unknown) => {
+    const n = typeof value === "number" ? value : parseInt(String(value ?? "0"), 10);
+    return Number.isFinite(n) ? n : 0;
+};
+
+const isTruthyFallback = (value: unknown) => {
+    if (typeof value === "boolean") return value;
+    if (typeof value === "number") return value === 1;
+    const s = String(value ?? "").trim().toLowerCase();
+    return s === "1" || s === "true" || s === "yes";
+};
+
+// In some cases fallback profile/quota state appears before is_fallback is consistently reflected.
+// Derive FUP status from multiple signals so UI matches effective behavior.
+const isFupUser = (u: OnlineUser) => {
+    const byFlag = isTruthyFallback((u as any).is_fallback);
+    const byProfile = String(u.profile_profile_name ?? "").toLowerCase().includes("fallback");
+    const dailyQuota = toInt(u.profile_daily_quota);
+    const monthlyQuota = toInt(u.profile_monthly_quota);
+    const dailyExceeded = dailyQuota > 0 && toInt(u.real_time_data_usage) >= dailyQuota;
+    const monthlyExceeded = monthlyQuota > 0 && toInt(u.monthly_usage) >= monthlyQuota;
+    return byFlag || byProfile || dailyExceeded || monthlyExceeded;
+};
+
 /* small reusable bar */
 const UsageBar: React.FC<{ used: string; total: string; type: 'daily' | 'monthly' }> = ({
     used,
@@ -209,10 +233,12 @@ const MobileCard: React.FC<{
     user: OnlineUser;
     onAction: (a: string, u: string) => void;
     canManageRadiusUsers: boolean;
+    canResetDailyQuota: boolean;
+    canResetMonthlyQuota: boolean;
     canDisconnect: boolean;
     manageReason: string;
     disconnectReason: string;
-}> = React.memo(({ user, onAction, canManageRadiusUsers, canDisconnect, manageReason, disconnectReason }) => (
+}> = React.memo(({ user, onAction, canManageRadiusUsers, canResetDailyQuota, canResetMonthlyQuota, canDisconnect, manageReason, disconnectReason }) => (
     <Card className="overflow-hidden border border-border/50 hover:border-border transition-colors">
         <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
@@ -269,8 +295,8 @@ const MobileCard: React.FC<{
                         { label: "View Traffic", icon: Activity, onClick: () => onAction("view-traffic", user.session_username) },
                         { label: "Disconnect", icon: Power, onClick: () => onAction("disconnect", user.session_username), tone: "destructive" as const, disabled: !canDisconnect, disabledReason: disconnectReason },
                         { label: "Reset MAC", icon: RefreshCw, onClick: () => onAction("reset-mac", user.session_username), disabled: !canManageRadiusUsers, disabledReason: manageReason },
-                        { label: "Reset Quota", icon: RotateCw, onClick: () => onAction("reset-quota", user.session_username), disabled: !canManageRadiusUsers, disabledReason: manageReason },
-                        { label: "Reset Monthly", icon: RotateCw, onClick: () => onAction("reset-monthly", user.session_username), disabled: !canManageRadiusUsers, disabledReason: manageReason },
+                        { label: "Reset Quota", icon: RotateCw, onClick: () => onAction("reset-quota", user.session_username), disabled: !canResetDailyQuota, disabledReason: !canResetDailyQuota ? "You don't have permission to reset daily quota." : undefined },
+                        { label: "Reset Monthly", icon: RotateCw, onClick: () => onAction("reset-monthly", user.session_username), disabled: !canResetMonthlyQuota, disabledReason: !canResetMonthlyQuota ? "You don't have permission to reset monthly quota." : undefined },
                         { label: "Change Profile", icon: Settings, onClick: () => onAction("change-profile", user.session_username), disabled: !canManageRadiusUsers, disabledReason: manageReason },
                     ]}
                 />
@@ -284,6 +310,8 @@ const TableRows = function TableRows({
     users,
     onAction,
     canManageRadiusUsers,
+    canResetDailyQuota,
+    canResetMonthlyQuota,
     canDisconnect,
     manageReason,
     disconnectReason,
@@ -291,6 +319,8 @@ const TableRows = function TableRows({
     users: OnlineUser[];
     onAction: (a: string, u: string) => void;
     canManageRadiusUsers: boolean;
+    canResetDailyQuota: boolean;
+    canResetMonthlyQuota: boolean;
     canDisconnect: boolean;
     manageReason: string;
     disconnectReason: string;
@@ -304,7 +334,7 @@ const TableRows = function TableRows({
                         "hover:bg-muted/50 transition-colors",
                         u.session_status === 'active' && "bg-white/50",
                         u.session_status === 'idle' && "bg-yellow-50/50",
-                        u.is_fallback && "bg-purple-50/50 border-l-4 border-l-purple-500"
+                        isFupUser(u) && "bg-purple-50/50 border-l-4 border-l-purple-500"
                     )}
                 >
                     <TableCell className={cn(profileClass(u.profile_profile_name), "p-4")}>
@@ -336,18 +366,18 @@ const TableRows = function TableRows({
                         <div className="flex items-center gap-1.5">
                             <HardDrive className={cn(
                                 "h-3.5 w-3.5",
-                                u.is_fallback ? "text-purple-600" : "text-green-600"
+                                isFupUser(u) ? "text-purple-600" : "text-green-600"
                             )} />
                             <Badge 
                                 variant="outline" 
                                 className={cn(
                                     "text-sm",
-                                    u.is_fallback 
+                                    isFupUser(u) 
                                         ? "bg-purple-100 text-purple-700 border-purple-200" 
                                         : "bg-green-100 text-green-700 border-green-200"
                                 )}
                             >
-                                {u.is_fallback ? "Yes" : "No"}
+                                {isFupUser(u) ? "Yes" : "No"}
                             </Badge>
                         </div>
                     </TableCell>
@@ -383,8 +413,8 @@ const TableRows = function TableRows({
                                 { label: "View Traffic", icon: Activity, onClick: () => onAction("view-traffic", u.session_username) },
                                 { label: "Disconnect", icon: Power, onClick: () => onAction("disconnect", u.session_username), tone: "destructive" as const, disabled: !canDisconnect, disabledReason: disconnectReason },
                                 { label: "Reset MAC", icon: RefreshCw, onClick: () => onAction("reset-mac", u.session_username), disabled: !canManageRadiusUsers, disabledReason: manageReason },
-                                { label: "Reset Quota", icon: RotateCw, onClick: () => onAction("reset-quota", u.session_username), disabled: !canManageRadiusUsers, disabledReason: manageReason },
-                                { label: "Reset Monthly", icon: RotateCw, onClick: () => onAction("reset-monthly", u.session_username), disabled: !canManageRadiusUsers, disabledReason: manageReason },
+                                { label: "Reset Quota", icon: RotateCw, onClick: () => onAction("reset-quota", u.session_username), disabled: !canResetDailyQuota, disabledReason: !canResetDailyQuota ? "You don't have permission to reset daily quota." : undefined },
+                                { label: "Reset Monthly", icon: RotateCw, onClick: () => onAction("reset-monthly", u.session_username), disabled: !canResetMonthlyQuota, disabledReason: !canResetMonthlyQuota ? "You don't have permission to reset monthly quota." : undefined },
                                 { label: "Change Profile", icon: Settings, onClick: () => onAction("change-profile", u.session_username), disabled: !canManageRadiusUsers, disabledReason: manageReason },
                             ]}
                         />
@@ -399,10 +429,12 @@ const DesktopTable: React.FC<{
     users: OnlineUser[];
     onAction: (a: string, u: string) => void;
     canManageRadiusUsers: boolean;
+    canResetDailyQuota: boolean;
+    canResetMonthlyQuota: boolean;
     canDisconnect: boolean;
     manageReason: string;
     disconnectReason: string;
-}> = React.memo(({ users, onAction, canManageRadiusUsers, canDisconnect, manageReason, disconnectReason }) => (
+}> = React.memo(({ users, onAction, canManageRadiusUsers, canResetDailyQuota, canResetMonthlyQuota, canDisconnect, manageReason, disconnectReason }) => (
     <Card className="overflow-hidden border border-border/50">
         <div className="overflow-auto max-h-[70vh]">
         <Table>
@@ -425,6 +457,8 @@ const DesktopTable: React.FC<{
                     users={users}
                     onAction={onAction}
                     canManageRadiusUsers={canManageRadiusUsers}
+                    canResetDailyQuota={canResetDailyQuota}
+                    canResetMonthlyQuota={canResetMonthlyQuota}
                     canDisconnect={canDisconnect}
                     manageReason={manageReason}
                     disconnectReason={disconnectReason}
@@ -455,6 +489,8 @@ const OnlineUsersTable: React.FC<Props> = ({
 }) => {
     const { user: authUser } = useAuth();
     const canManageRadiusUsers = useMemo(() => canAny(authUser, ["users.view", "reseller.users.manage"]), [authUser]);
+    const canResetDailyQuota = useMemo(() => canAny(authUser, ["users.resetDailyQuota", "reseller.users.manage"]), [authUser]);
+    const canResetMonthlyQuota = useMemo(() => canAny(authUser, ["users.resetMonthlyQuota", "reseller.users.manage"]), [authUser]);
     const canDisconnect = useMemo(() => canAny(authUser, ["users.online.view", "reseller.users.manage"]), [authUser]);
     const manageReason = "You don't have permission to manage users.";
     const disconnectReason = "You don't have permission to disconnect sessions.";
@@ -590,7 +626,7 @@ const OnlineUsersTable: React.FC<Props> = ({
             out = out.filter((u) => String(u.session_status || "").toLowerCase() === statusFilter);
         }
         if (fupOnly) {
-            out = out.filter((u) => Boolean(u.is_fallback));
+            out = out.filter((u) => isFupUser(u));
         }
 
         const num = (s: any) => {
@@ -845,6 +881,8 @@ const OnlineUsersTable: React.FC<Props> = ({
                     users={displayRows}
                     onAction={onAction}
                     canManageRadiusUsers={canManageRadiusUsers}
+                    canResetDailyQuota={canResetDailyQuota}
+                    canResetMonthlyQuota={canResetMonthlyQuota}
                     canDisconnect={canDisconnect}
                     manageReason={manageReason}
                     disconnectReason={disconnectReason}
@@ -859,6 +897,8 @@ const OnlineUsersTable: React.FC<Props> = ({
                         user={u}
                         onAction={onAction}
                         canManageRadiusUsers={canManageRadiusUsers}
+                        canResetDailyQuota={canResetDailyQuota}
+                        canResetMonthlyQuota={canResetMonthlyQuota}
                         canDisconnect={canDisconnect}
                         manageReason={manageReason}
                         disconnectReason={disconnectReason}

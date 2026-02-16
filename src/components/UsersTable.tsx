@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Edit, Trash2, ArrowUpDown, ChevronDown, ChevronUp, Mail, Phone, MapPin } from 'lucide-react';
+import { RefreshCw, Edit, Trash2, ArrowUpDown, ChevronDown, ChevronUp, Mail, Phone, MapPin, Copy, User as UserIcon, ExternalLink } from 'lucide-react';
 import { User } from '../types/api';
 import { UseMutationResult } from '@tanstack/react-query';
 import UserCard from './UserCard';
@@ -16,6 +16,7 @@ import TablePager from "@/components/TablePager";
 import TableRowActions from "@/components/TableRowActions";
 import { useNavigate } from "react-router-dom";
 import { Checkbox } from "@/components/ui/checkbox";
+import { notify } from "@/lib/notify";
 
 interface UsersTableProps {
     users: User[];
@@ -34,6 +35,8 @@ interface UsersTableProps {
     onPageSizeChange?: (size: number) => void;
     canManageUsers?: boolean;
     manageUsersReason?: string;
+    canResetDailyQuota?: boolean;
+    canResetMonthlyQuota?: boolean;
 }
 
 const getProfileBadge = (profileName: string) => {
@@ -57,7 +60,9 @@ const UserRow: React.FC<{
     onToggleSelected?: (userId: number, selected: boolean) => void;
     canManageUsers?: boolean;
     manageUsersReason?: string;
-}> = ({ user, onAction, index, isSelected, onToggleSelected, canManageUsers = true, manageUsersReason = "You don't have permission to manage users." }) => {
+    canResetDailyQuota?: boolean;
+    canResetMonthlyQuota?: boolean;
+}> = ({ user, onAction, index, isSelected, onToggleSelected, canManageUsers = true, manageUsersReason = "You don't have permission to manage users.", canResetDailyQuota = true, canResetMonthlyQuota = true }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const navigate = useNavigate();
 
@@ -201,14 +206,44 @@ const UserRow: React.FC<{
                     <TableRowActions
                         actions={[
                             {
+                                label: "Open user",
+                                icon: ExternalLink,
+                                onClick: () => navigate(`/users/${encodeURIComponent(user.username)}`),
+                            },
+                            {
+                                label: "Copy Username",
+                                icon: UserIcon,
+                                onClick: () => {
+                                    navigator.clipboard.writeText(user.username).then(
+                                        () => notify.success("Copied", "Username copied to clipboard"),
+                                        () => notify.error("Copy failed", "Could not copy to clipboard")
+                                    );
+                                },
+                            },
+                            {
+                                label: "Copy MAC",
+                                icon: Copy,
+                                onClick: () => {
+                                    const mac = user.macAddress?.macAddress || "";
+                                    if (mac) {
+                                        navigator.clipboard.writeText(mac).then(
+                                            () => notify.success("Copied", "MAC address copied to clipboard"),
+                                            () => notify.error("Copy failed", "Could not copy to clipboard")
+                                        );
+                                    }
+                                },
+                                disabled: !user.macAddress?.macAddress,
+                                disabledReason: "No MAC bound for this user",
+                            },
+                            {
                                 label: "Reset MAC",
                                 icon: RefreshCw,
                                 onClick: () => onAction("reset-mac", user),
                                 disabled: !canManageUsers || !user.macAddress?.macAddress,
                                 disabledReason: !canManageUsers ? manageUsersReason : "No MAC is currently bound for this user.",
                             },
-                            { label: "Reset Quota", icon: RefreshCw, onClick: () => onAction("reset-quota", user), disabled: !canManageUsers, disabledReason: manageUsersReason },
-                            { label: "Reset Monthly", icon: RefreshCw, onClick: () => onAction("reset-monthly", user), disabled: !canManageUsers, disabledReason: manageUsersReason },
+                            { label: "Reset Quota", icon: RefreshCw, onClick: () => onAction("reset-quota", user), disabled: !canResetDailyQuota, disabledReason: !canResetDailyQuota ? "You don't have permission to reset daily quota." : undefined },
+                            { label: "Reset Monthly", icon: RefreshCw, onClick: () => onAction("reset-monthly", user), disabled: !canResetMonthlyQuota, disabledReason: !canResetMonthlyQuota ? "You don't have permission to reset monthly quota." : undefined },
                             { label: "Edit", icon: Edit, onClick: () => onAction("edit", user), disabled: !canManageUsers, disabledReason: manageUsersReason },
                             { label: "Delete", icon: Trash2, onClick: () => onAction("delete", user), tone: "destructive", disabled: !canManageUsers, disabledReason: manageUsersReason },
                         ]}
@@ -299,6 +334,8 @@ const UsersTable: React.FC<UsersTableProps> = ({
     onPageSizeChange,
     canManageUsers = true,
     manageUsersReason = "You don't have permission to manage users.",
+    canResetDailyQuota = true,
+    canResetMonthlyQuota = true,
 }) => {
     const [sorting, setSorting] = useState<SortingState>([]);
     const pageSizes = [10, 20, 50, 100,200,500];
@@ -459,6 +496,8 @@ const UsersTable: React.FC<UsersTableProps> = ({
                                         onToggleSelected={onToggleSelected}
                                         canManageUsers={canManageUsers}
                                         manageUsersReason={manageUsersReason}
+                                        canResetDailyQuota={canResetDailyQuota}
+                                        canResetMonthlyQuota={canResetMonthlyQuota}
                                     />
                                 ))}
                             </TableBody>
@@ -490,6 +529,8 @@ const UsersTable: React.FC<UsersTableProps> = ({
                         canManageUsers={canManageUsers}
                         manageUsersReason={manageUsersReason}
                         canResetMac={Boolean(user.macAddress?.macAddress)}
+                        canResetDailyQuota={canResetDailyQuota}
+                        canResetMonthlyQuota={canResetMonthlyQuota}
                     />
                 ))}
             </div>

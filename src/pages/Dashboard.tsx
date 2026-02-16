@@ -4,6 +4,8 @@ import PageHeader from "@/components/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useExpenseMonthlyTotals } from '@/hooks/useExpenses';
 import { useAuthMetrics } from "@/hooks/useAuthMetrics";
@@ -26,7 +28,8 @@ import {
   LineChart,
   Receipt,
   Clock,
-  User as UserIcon
+  User as UserIcon,
+  Server
 } from 'lucide-react';
 import {
   Tooltip,
@@ -46,6 +49,10 @@ import { fetchResellerMe } from '@/api/resellers';
 import { apiClient } from '@/api/client';
 import { Link } from "react-router-dom";
 import { QuotaExceededSummaryAlert } from "@/components/ui/Alert";
+import useNas from "@/hooks/useNas";
+import { useOnlineUsers } from "@/hooks/useOnlineUsers";
+import { Line as RechartsLine, LineChart as RechartsLineChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from "recharts";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 type AuditLogRow = {
   id: number;
@@ -53,6 +60,13 @@ type AuditLogRow = {
   message: string;
   meta: any;
   timestamp: string;
+};
+type NocHealthSample = {
+  key: string;
+  time: string;
+  dbLatencyMs: number;
+  serverProcessingMs: number;
+  clientRttMs: number;
 };
 
 function formatAuditTitle(action: string, meta: any): { title: string; detail?: string } {
@@ -102,6 +116,16 @@ function formatAuditTitle(action: string, meta: any): { title: string; detail?: 
 const Dashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [showQuotaExceeded, setShowQuotaExceeded] = useState(true);
+  const [selectedRejectBucket, setSelectedRejectBucket] = useState<string | null>(null);
+  const [rejectTrendWindowHours, setRejectTrendWindowHours] = useState<6 | 12 | 24>(24);
+  const [nocHealthTrend, setNocHealthTrend] = useState<NocHealthSample[]>([]);
+  const [rejectAlertThreshold, setRejectAlertThreshold] = useState<number>(() => {
+    const raw = localStorage.getItem("dashboard.noc.rejectAlertThreshold");
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) return 15;
+    return Math.min(Math.max(Math.round(parsed), 1), 100);
+  });
+  const [rejectAlertMutedUntil, setRejectAlertMutedUntil] = useState<number>(0);
   const { user } = useAuth();
   const isReseller = user?.role === 'reseller';
   const canSeeOnline = can(user, 'users.online.view');
@@ -118,6 +142,53 @@ const Dashboard: React.FC = () => {
   const onlineMetrics = useOnlineMetrics();
   const expenseMonthlyTotals = useExpenseMonthlyTotals();
   const authMetrics = useAuthMetrics(86400);
+  const nasQuery = useNas(1, 1);
+  const onlineWatchlistQuery = useOnlineUsers("", 1, 5, {
+    enabled: (!isReseller && canSeeOnline) || isReseller,
+    refetchInterval: 15000,
+  });
+  const nocSnapshotQuery = useQuery({
+    queryKey: ["noc-snapshot"],
+    queryFn: async () => {
+      const resp = await apiClient.get("/noc-snapshot");
+      return (resp?.data?.data ?? {
+        generatedAt: null,
+        authRejectTrend: [],
+        topNasBySessions: [],
+      }) as {
+        generatedAt: string | null;
+        authRejectTrend: Array<{ bucket: string; attempts: number; rejected: number; rejectRate: number }>;
+        topNasBySessions: Array<{ nasIp: string; nasLabel: string; sessions: number }>;
+      };
+    },
+    enabled: (!isReseller && canSeeOnline) || isReseller,
+    refetchInterval: 30000,
+  });
+  const nocHealthQuery = useQuery({
+    queryKey: ["noc-health"],
+    queryFn: async () => {
+      const started = performance.now();
+      const resp = await apiClient.get("/noc-health");
+      const clientRttMs = Math.max(0, Math.round(performance.now() - started));
+      const payload = (resp?.data?.data ?? {
+        generatedAt: null,
+        dbLatencyMs: 0,
+        serverProcessingMs: 0,
+        activeSessions: 0,
+      }) as {
+        generatedAt: string | null;
+        dbLatencyMs: number;
+        serverProcessingMs: number;
+        activeSessions: number;
+      };
+      return {
+        ...payload,
+        clientRttMs,
+      };
+    },
+    enabled: (!isReseller && canSeeOnline) || isReseller,
+    refetchInterval: 30000,
+  });
 
   const recentAuditQuery = useQuery({
     queryKey: ["audit", "recent"],
@@ -158,6 +229,118 @@ const Dashboard: React.FC = () => {
     });
   }, [recentAuditQuery.data]);
 
+  const authAttempts = authMetrics.data?.current.attempts ?? 0;
+  const authAccepted = authMetrics.data?.current.accepted ?? 0;
+  const authRejected = authMetrics.data?.current.rejected ?? 0;
+  const authSuccessRate = authAttempts > 0 ? (authAccepted / authAttempts) * 100 : 0;
+  const authRejectRate = authAttempts > 0 ? (authRejected / authAttempts) * 100 : 0;
+  const authHealthLabel =
+    authRejectRate <= 5 ? "Healthy" : authRejectRate <= 15 ? "Warning" : "Critical";
+  const authHealthBadgeClass =
+    authHealthLabel === "Healthy"
+      ? "text-green-700 bg-green-50 border-green-200"
+      : authHealthLabel === "Warning"
+        ? "text-amber-700 bg-amber-50 border-amber-200"
+        : "text-red-700 bg-red-50 border-red-200";
+  const isRejectThresholdBreached = authAttempts >= 20 && authRejectRate >= rejectAlertThreshold;
+  const isRejectAlertMuted = Date.now() < rejectAlertMutedUntil;
+  const showRejectThresholdAlert = isRejectThresholdBreached && !isRejectAlertMuted;
+  const totalNas = nasQuery.data?.data?.totalEntries ?? 0;
+  const watchlistRows = onlineWatchlistQuery.data?.data ?? [];
+  const rejectTrendData = (nocSnapshotQuery.data?.authRejectTrend ?? []).map((r) => ({
+    bucket: r.bucket,
+    time: String(r.bucket || "").slice(11, 16),
+    attempts: Number(r.attempts ?? 0),
+    rejected: Number(r.rejected ?? 0),
+    rejectRate: Number(r.rejectRate ?? 0),
+  }));
+  const rejectTrendDisplayData = useMemo(() => {
+    if (!rejectTrendData.length) return [];
+    if (rejectTrendWindowHours >= 24) return rejectTrendData;
+    const last = rejectTrendData[rejectTrendData.length - 1];
+    const lastAt = new Date(String(last.bucket || "").replace(" ", "T"));
+    if (!Number.isFinite(lastAt.getTime())) return rejectTrendData;
+    const from = new Date(lastAt.getTime() - rejectTrendWindowHours * 60 * 60 * 1000);
+    return rejectTrendData.filter((d) => {
+      const t = new Date(String(d.bucket || "").replace(" ", "T"));
+      return Number.isFinite(t.getTime()) && t >= from;
+    });
+  }, [rejectTrendData, rejectTrendWindowHours]);
+  const rejectWindowStats = useMemo(() => {
+    const attempts = rejectTrendDisplayData.reduce((acc, d) => acc + Number(d.attempts || 0), 0);
+    const rejected = rejectTrendDisplayData.reduce((acc, d) => acc + Number(d.rejected || 0), 0);
+    const avgRate = attempts > 0 ? (rejected / attempts) * 100 : 0;
+    return { attempts, rejected, avgRate };
+  }, [rejectTrendDisplayData]);
+  const topNasBySessions = nocSnapshotQuery.data?.topNasBySessions ?? [];
+  const nocHealth = nocHealthQuery.data ?? {
+    generatedAt: null,
+    dbLatencyMs: 0,
+    serverProcessingMs: 0,
+    activeSessions: 0,
+    clientRttMs: 0,
+  };
+  const healthState = nocHealthQuery.isError
+    ? "Down"
+    : nocHealth.dbLatencyMs <= 120 && nocHealth.serverProcessingMs <= 200 && nocHealth.clientRttMs <= 800
+      ? "Healthy"
+      : nocHealth.dbLatencyMs <= 400 && nocHealth.serverProcessingMs <= 800 && nocHealth.clientRttMs <= 2000
+        ? "Warning"
+        : "Critical";
+  const healthBadgeClass =
+    healthState === "Healthy"
+      ? "text-green-700 bg-green-50 border-green-200"
+      : healthState === "Warning"
+        ? "text-amber-700 bg-amber-50 border-amber-200"
+        : "text-red-700 bg-red-50 border-red-200";
+  const degradedHealthSamples = useMemo(() => {
+    return nocHealthTrend.filter(
+      (s) => s.dbLatencyMs > 400 || s.serverProcessingMs > 800 || s.clientRttMs > 2000
+    ).length;
+  }, [nocHealthTrend]);
+  const selectedRange = useMemo(() => {
+    if (!selectedRejectBucket) return null;
+    const from = new Date(String(selectedRejectBucket).replace(" ", "T"));
+    if (!Number.isFinite(from.getTime())) return null;
+    const to = new Date(from.getTime() + 60 * 60 * 1000);
+    return { from, to };
+  }, [selectedRejectBucket]);
+  const authFailuresPageHref = useMemo(() => {
+    if (!selectedRange) return "/auth-failures";
+    const params = new URLSearchParams({
+      from: selectedRange.from.toISOString().slice(0, 16),
+      to: selectedRange.to.toISOString().slice(0, 16),
+    });
+    return `/auth-failures?${params.toString()}`;
+  }, [selectedRange]);
+  const authFailuresLastHourHref = useMemo(() => {
+    const now = new Date();
+    const from = new Date(now.getTime() - 60 * 60 * 1000);
+    const params = new URLSearchParams({
+      from: from.toISOString().slice(0, 16),
+      to: now.toISOString().slice(0, 16),
+      status: "rejected",
+    });
+    return `/auth-failures?${params.toString()}`;
+  }, []);
+  const authFailuresQuery = useQuery({
+    queryKey: ["auth-failures", selectedRejectBucket],
+    queryFn: async () => {
+      if (!selectedRange) return { rows: [] as Array<{ id: number; timestamp: string; username: string | null; nasIp: string | null; macAddress: string | null; status: string | null }> };
+      const resp = await apiClient.get("/auth-failures", {
+        params: {
+          from: selectedRange.from.toISOString(),
+          to: selectedRange.to.toISOString(),
+          limit: 300,
+        },
+      });
+      return (resp?.data?.data ?? { rows: [] }) as {
+        rows: Array<{ id: number; timestamp: string; username: string | null; nasIp: string | null; macAddress: string | null; status: string | null }>;
+      };
+    },
+    enabled: Boolean(selectedRange),
+  });
+
   // Extract data from hooks
   const [resellerBalance, setResellerBalance] = useState<number | null>(null);
   const [resellerUserCount, setResellerUserCount] = useState<number | null>(null);
@@ -187,6 +370,30 @@ const Dashboard: React.FC = () => {
 
     return () => clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    const value = Math.min(Math.max(Math.round(Number(rejectAlertThreshold) || 15), 1), 100);
+    localStorage.setItem("dashboard.noc.rejectAlertThreshold", String(value));
+  }, [rejectAlertThreshold]);
+
+  useEffect(() => {
+    if (!nocHealth.generatedAt) return;
+    const generatedAt = nocHealth.generatedAt;
+    const key = `${generatedAt}-${nocHealth.dbLatencyMs}-${nocHealth.serverProcessingMs}-${nocHealth.clientRttMs}`;
+    setNocHealthTrend((prev) => {
+      if (prev.some((p) => p.key === key)) return prev;
+      const t = new Date(generatedAt);
+      const time = Number.isFinite(t.getTime()) ? t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "--:--";
+      const next: NocHealthSample = {
+        key,
+        time,
+        dbLatencyMs: Number(nocHealth.dbLatencyMs ?? 0),
+        serverProcessingMs: Number(nocHealth.serverProcessingMs ?? 0),
+        clientRttMs: Number(nocHealth.clientRttMs ?? 0),
+      };
+      return [...prev.slice(-23), next];
+    });
+  }, [nocHealth.generatedAt, nocHealth.dbLatencyMs, nocHealth.serverProcessingMs, nocHealth.clientRttMs]);
 
   // Reseller dashboard data: balance + scoped counts
   useEffect(() => {
@@ -580,6 +787,348 @@ const Dashboard: React.FC = () => {
             </Card>
             ) : null}
           </div>
+
+          {/* NOC Snapshot */}
+          {((!isReseller && canSeeOnline) || isReseller) ? (
+            <div className="grid gap-4 lg:grid-cols-7">
+              <Card className="lg:col-span-4 hover:shadow-lg transition-shadow">
+                <CardHeader>
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <CardTitle>NOC Snapshot (24h)</CardTitle>
+                      <CardDescription>Core operations indicators for authentication and service quality</CardDescription>
+                    </div>
+                    <Badge variant="outline" className={authHealthBadgeClass}>
+                      {authHealthLabel}
+                    </Badge>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border p-2.5">
+                    <div className="text-xs text-muted-foreground">Reject alert threshold</div>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={rejectAlertThreshold}
+                      onChange={(e) => {
+                        const next = Number(e.target.value);
+                        if (!Number.isFinite(next)) return;
+                        setRejectAlertThreshold(Math.min(Math.max(Math.round(next), 1), 100));
+                      }}
+                      className="h-8 w-24"
+                    />
+                    <span className="text-xs text-muted-foreground">%</span>
+                    {isRejectThresholdBreached ? (
+                      <Badge variant="destructive">Threshold breached</Badge>
+                    ) : (
+                      <Badge variant="secondary">Within threshold</Badge>
+                    )}
+                  </div>
+                  {showRejectThresholdAlert ? (
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-200 bg-red-50 p-3">
+                      <div className="text-sm text-red-700">
+                        Reject rate is <span className="font-semibold">{authRejectRate.toFixed(1)}%</span> (threshold {rejectAlertThreshold}%).
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button variant="outline" size="sm" asChild>
+                          <Link to={authFailuresLastHourHref}>Open failed auths</Link>
+                        </Button>
+                        <Button variant="destructive" size="sm" onClick={() => setRejectAlertMutedUntil(Date.now() + 30 * 60 * 1000)}>
+                          Mute 30m
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-lg border p-3">
+                      <div className="text-xs text-muted-foreground">Auth Success Rate</div>
+                      <div className="mt-1 text-2xl font-semibold text-green-600">{authSuccessRate.toFixed(1)}%</div>
+                      <div className="mt-1 text-xs text-muted-foreground">{authAccepted} accepted of {authAttempts} attempts</div>
+                    </div>
+                    <div className="rounded-lg border p-3">
+                      <div className="text-xs text-muted-foreground">Auth Reject Rate</div>
+                      <div className="mt-1 text-2xl font-semibold text-red-600">{authRejectRate.toFixed(1)}%</div>
+                      <div className="mt-1 text-xs text-muted-foreground">{authRejected} rejected requests</div>
+                    </div>
+                    <div className="rounded-lg border p-3">
+                      <div className="text-xs text-muted-foreground">Users in FUP</div>
+                      <div className="mt-1 text-2xl font-semibold text-amber-600">
+                        {(quotaExceededQuery.data?.dailyCount ?? 0) + (quotaExceededQuery.data?.monthlyCount ?? 0)}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {quotaExceededQuery.data?.dailyCount ?? 0} daily / {quotaExceededQuery.data?.monthlyCount ?? 0} monthly
+                      </div>
+                    </div>
+                    <div className="rounded-lg border p-3">
+                      <div className="text-xs text-muted-foreground">NAS Devices</div>
+                      <div className="mt-1 text-2xl font-semibold text-blue-600">{totalNas}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">Configured NAS entries</div>
+                    </div>
+                  </div>
+                  <div className="mt-4 rounded-lg border p-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <div className="text-xs text-muted-foreground">Reject Rate Trend</div>
+                      <div className="flex items-center gap-2">
+                        <div className="text-xs text-muted-foreground">
+                          {rejectTrendDisplayData.length ? `${rejectTrendDisplayData.length} points` : "No data"}
+                        </div>
+                        <Select
+                          value={String(rejectTrendWindowHours)}
+                          onValueChange={(v) => {
+                            const n = Number(v);
+                            if (n === 6 || n === 12 || n === 24) setRejectTrendWindowHours(n);
+                          }}
+                        >
+                          <SelectTrigger className="h-7 w-[92px] text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent align="end">
+                            <SelectItem value="6">Last 6h</SelectItem>
+                            <SelectItem value="12">Last 12h</SelectItem>
+                            <SelectItem value="24">Last 24h</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="mb-2 grid grid-cols-3 gap-2 text-[11px]">
+                      <div className="rounded border p-1.5">
+                        <div className="text-muted-foreground">Attempts</div>
+                        <div className="font-semibold">{rejectWindowStats.attempts}</div>
+                      </div>
+                      <div className="rounded border p-1.5">
+                        <div className="text-muted-foreground">Rejected</div>
+                        <div className="font-semibold">{rejectWindowStats.rejected}</div>
+                      </div>
+                      <div className="rounded border p-1.5">
+                        <div className="text-muted-foreground">Avg reject</div>
+                        <div className="font-semibold">{rejectWindowStats.avgRate.toFixed(1)}%</div>
+                      </div>
+                    </div>
+                    <div className="h-28 w-full">
+                      {rejectTrendDisplayData.length ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <RechartsLineChart data={rejectTrendDisplayData} margin={{ left: 0, right: 0, top: 8, bottom: 0 }}>
+                            <XAxis dataKey="time" tick={{ fontSize: 10 }} minTickGap={20} />
+                            <YAxis tick={{ fontSize: 10 }} width={28} domain={[0, 100]} />
+                            <RechartsTooltip
+                              formatter={(value: number, _name: string, item: any) => {
+                                const attempts = Number(item?.payload?.attempts ?? 0);
+                                const rejected = Number(item?.payload?.rejected ?? 0);
+                                return [`${Number(value).toFixed(1)}%`, `Reject rate (${rejected}/${attempts})`];
+                              }}
+                            />
+                            <RechartsLine
+                              type="monotone"
+                              dataKey="rejectRate"
+                              stroke="#dc2626"
+                              strokeWidth={2}
+                              dot={{ r: 2 }}
+                              activeDot={{
+                                r: 5,
+                                onClick: (_event: any, payload: any) => {
+                                  const bucket = payload?.payload?.bucket;
+                                  if (bucket) setSelectedRejectBucket(String(bucket));
+                                },
+                                style: { cursor: "pointer" },
+                              }}
+                            />
+                          </RechartsLineChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                          Not enough auth history yet
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="lg:col-span-3 hover:shadow-lg transition-shadow">
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle>Live Session Watchlist</CardTitle>
+                      <CardDescription>Latest active sessions for quick triage</CardDescription>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onlineWatchlistQuery.refetch()}
+                      disabled={onlineWatchlistQuery.isFetching}
+                    >
+                      <RefreshCw className={`mr-2 h-4 w-4 ${onlineWatchlistQuery.isFetching ? "animate-spin" : ""}`} />
+                      Refresh
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {onlineWatchlistQuery.isLoading ? (
+                    <div className="space-y-2">
+                      {[...Array(5)].map((_, idx) => (
+                        <Skeleton key={idx} className="h-10 w-full" />
+                      ))}
+                    </div>
+                  ) : watchlistRows.length === 0 ? (
+                    <div className="text-sm text-muted-foreground">No live sessions available.</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {watchlistRows.map((row) => (
+                        <div key={`${row.session_username}-${row.session_mac_address}`} className="flex items-center justify-between rounded-lg border p-2.5">
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-medium">{row.session_username}</div>
+                            <div className="truncate text-xs text-muted-foreground">{row.profile_profile_name || "No profile"}</div>
+                          </div>
+                          <Badge variant={row.is_fallback ? "destructive" : "secondary"}>
+                            {row.is_fallback ? "FUP" : "Normal"}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="my-3 border-t" />
+                  <div className="mb-3 rounded-lg border p-3">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <div className="text-sm font-medium">API Health</div>
+                      <Badge variant="outline" className={healthBadgeClass}>{healthState}</Badge>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="rounded border p-2">
+                        <div className="text-muted-foreground">DB latency</div>
+                        <div className="font-semibold">{Math.round(Number(nocHealth.dbLatencyMs ?? 0))} ms</div>
+                      </div>
+                      <div className="rounded border p-2">
+                        <div className="text-muted-foreground">Server processing</div>
+                        <div className="font-semibold">{Math.round(Number(nocHealth.serverProcessingMs ?? 0))} ms</div>
+                      </div>
+                      <div className="rounded border p-2">
+                        <div className="text-muted-foreground">Client RTT</div>
+                        <div className="font-semibold">{Math.round(Number(nocHealth.clientRttMs ?? 0))} ms</div>
+                      </div>
+                      <div className="rounded border p-2">
+                        <div className="text-muted-foreground">Active sessions</div>
+                        <div className="font-semibold">{Number(nocHealth.activeSessions ?? 0)}</div>
+                      </div>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
+                      <div className="inline-flex items-center gap-1">
+                        <Server className="h-3.5 w-3.5" />
+                        {nocHealthQuery.isFetching ? "Refreshing..." : "Auto-refresh 30s"}
+                      </div>
+                      <div>
+                        {nocHealth.generatedAt ? `Updated ${new Date(nocHealth.generatedAt).toLocaleTimeString()}` : "No sample yet"}
+                      </div>
+                    </div>
+                    <div className="mt-3 rounded border p-2">
+                      <div className="mb-1 flex items-center justify-between text-[11px] text-muted-foreground">
+                        <span>Latency trend ({nocHealthTrend.length} samples)</span>
+                        <span>{degradedHealthSamples} degraded</span>
+                      </div>
+                      <div className="h-20 w-full">
+                        {nocHealthTrend.length ? (
+                          <ResponsiveContainer width="100%" height="100%">
+                            <RechartsLineChart data={nocHealthTrend} margin={{ left: 0, right: 0, top: 4, bottom: 0 }}>
+                              <XAxis dataKey="time" tick={{ fontSize: 10 }} minTickGap={16} />
+                              <YAxis tick={{ fontSize: 10 }} width={26} />
+                              <RechartsTooltip />
+                              <RechartsLine type="monotone" dataKey="dbLatencyMs" stroke="#8b5cf6" strokeWidth={1.5} dot={false} />
+                              <RechartsLine type="monotone" dataKey="serverProcessingMs" stroke="#0284c7" strokeWidth={1.5} dot={false} />
+                              <RechartsLine type="monotone" dataKey="clientRttMs" stroke="#dc2626" strokeWidth={1.5} dot={false} />
+                            </RechartsLineChart>
+                          </ResponsiveContainer>
+                        ) : (
+                          <div className="flex h-full items-center justify-center text-[11px] text-muted-foreground">Collecting samples...</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mb-2 flex items-center justify-between">
+                    <div className="text-sm font-medium">Top NAS by Active Sessions</div>
+                    <Button variant="ghost" size="sm" onClick={() => nocSnapshotQuery.refetch()} disabled={nocSnapshotQuery.isFetching}>
+                      <RefreshCw className={`mr-2 h-4 w-4 ${nocSnapshotQuery.isFetching ? "animate-spin" : ""}`} />
+                      Refresh
+                    </Button>
+                  </div>
+                  {!topNasBySessions.length ? (
+                    <div className="text-sm text-muted-foreground">No NAS session data available.</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {topNasBySessions.map((nas) => (
+                        <Link
+                          key={`${nas.nasIp}-${nas.nasLabel}`}
+                          to={`/online-users?search=${encodeURIComponent(nas.nasIp)}`}
+                          className="block rounded-lg border p-2.5 hover:bg-slate-50 transition-colors"
+                          title="Open live sessions filtered by this NAS"
+                        >
+                          <div className="flex items-center justify-between">
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-medium">{nas.nasLabel || nas.nasIp}</div>
+                            <div className="truncate text-xs text-muted-foreground">{nas.nasIp}</div>
+                          </div>
+                          <Badge variant="secondary">{nas.sessions} sessions</Badge>
+                          </div>
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          ) : null}
+
+          {/* Reject-rate drilldown dialog */}
+          <Dialog open={Boolean(selectedRejectBucket)} onOpenChange={(open) => (open ? null : setSelectedRejectBucket(null))}>
+            <DialogContent className="max-w-4xl">
+              <DialogHeader>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <DialogTitle>
+                    Failed Auth Attempts
+                    {selectedRange ? ` (${selectedRange.from.toLocaleString()} - ${selectedRange.to.toLocaleTimeString()})` : ""}
+                  </DialogTitle>
+                  <Button asChild variant="outline" size="sm">
+                    <Link to={authFailuresPageHref}>Open full page</Link>
+                  </Button>
+                </div>
+              </DialogHeader>
+              {authFailuresQuery.isLoading ? (
+                <div className="space-y-2">
+                  {[...Array(6)].map((_, i) => (
+                    <Skeleton key={i} className="h-9 w-full" />
+                  ))}
+                </div>
+              ) : !authFailuresQuery.data?.rows?.length ? (
+                <div className="text-sm text-muted-foreground">No failed auth rows found for this hour.</div>
+              ) : (
+                <div className="max-h-[420px] overflow-auto rounded-md border">
+                  <table className="w-full text-sm">
+                    <thead className="sticky top-0 bg-muted/80 backdrop-blur">
+                      <tr className="text-left">
+                        <th className="px-3 py-2">Time</th>
+                        <th className="px-3 py-2">User</th>
+                        <th className="px-3 py-2">Status</th>
+                        <th className="px-3 py-2">NAS</th>
+                        <th className="px-3 py-2">MAC</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {authFailuresQuery.data.rows.map((r) => (
+                        <tr key={String(r.id)} className="border-t">
+                          <td className="px-3 py-2 whitespace-nowrap">{r.timestamp ? new Date(r.timestamp).toLocaleString() : "-"}</td>
+                          <td className="px-3 py-2">{r.username || "-"}</td>
+                          <td className="px-3 py-2">
+                            <Badge variant="destructive">{r.status || "failed"}</Badge>
+                          </td>
+                          <td className="px-3 py-2">{r.nasIp || "-"}</td>
+                          <td className="px-3 py-2">{r.macAddress || "-"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
 
           {/* System Stats and Activity */}
           <div className="grid w-full min-w-0 gap-4 md:grid-cols-2 lg:grid-cols-7">

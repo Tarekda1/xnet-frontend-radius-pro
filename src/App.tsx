@@ -22,7 +22,9 @@ const UsersComponent = React.lazy(() => import('./pages/Users'));
 const ProfilesComponent = React.lazy(() => import('./pages/Profiles'));
 const OnlineUsersComponent = React.lazy(() => import('./pages/OnlineUsers'));
 const UserSessionsComponent = React.lazy(() => import('./pages/UserSessions'));
+const AuthFailuresComponent = React.lazy(() => import('./pages/AuthFailures'));
 const UserDetailComponent = React.lazy(() => import('./pages/UserDetail'));
+const AddUserComponent = React.lazy(() => import('./pages/AddUser'));
 const NasComponent = React.lazy(() => import('./pages/Nas'));
 const Login = React.lazy(() => import('./pages/Login'));
 const AuthUsers = React.lazy(() => import('./pages/AuthUsers'));
@@ -107,10 +109,12 @@ const AppRoutes: React.FC = () => {
                 <Route path="invoices" element={<ProtectedRoute element={<InvoicesComponent />} />} />
                 <Route path="nas" element={<ProtectedRoute element={<NasComponent />} />} />
                 <Route path="users/list" element={<ProtectedPermissionRoute anyOf={['users.view','reseller.users.view']} element={<UsersComponent />} />} />
+                <Route path="users/new" element={<ProtectedPermissionRoute anyOf={['users.view','reseller.users.manage']} element={<AddUserComponent />} />} />
                 <Route path="users/:username" element={<ProtectedPermissionRoute anyOf={['users.view','reseller.users.view']} element={<UserDetailComponent />} />} />
                 <Route path="users/:username/sessions" element={<ProtectedPermissionRoute anyOf={['users.view','reseller.users.view']} element={<UserSessionsComponent />} />} />
                 <Route path="profiles/list" element={<ProtectedRoute element={<ProfilesComponent />} />} />
                 <Route path="/online-users" element={<ProtectedPermissionRoute anyOf={['users.online.view','reseller.users.view']} element={<OnlineUsersComponent />} />} />
+                <Route path="/auth-failures" element={<ProtectedPermissionRoute anyOf={['users.online.view','reseller.users.view']} element={<AuthFailuresComponent />} />} />
                 <Route
                   path="/invoice-upload"
                   element={

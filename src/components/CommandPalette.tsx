@@ -31,6 +31,7 @@ export default function CommandPalette() {
     const items: CommandItem[] = [
       { id: "nav.dashboard", label: "Go to Dashboard", href: "/dashboard", keywords: ["home"] },
       { id: "nav.liveSessions", label: "Go to Live Sessions", href: "/online-users", requiresAnyPerms: ["users.online.view", "reseller.users.view"] },
+      { id: "nav.authFailures", label: "Go to Auth Failures", href: "/auth-failures", requiresAnyPerms: ["users.online.view", "reseller.users.view"] },
       { id: "nav.users", label: "Go to Users", href: "/users/list", requiresAnyPerms: ["users.view", "reseller.users.view"] },
       { id: "nav.profiles", label: "Go to Profiles", href: "/profiles/list", requiresPerm: "radius.profiles.view" },
       { id: "nav.nas", label: "Go to NAS", href: "/nas", requiresPerm: "radius.nas.view" },

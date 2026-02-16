@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { format } from "date-fns";
-import { CalendarIcon } from "lucide-react";
+import { CalendarIcon, Copy, User } from "lucide-react";
 
 import {
   Dialog,
@@ -23,6 +23,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/context/AuthContext";
 import { can } from "@/lib/permissions";
 import { isFeatureEnabled } from "@/lib/featureFlags";
+import { notify } from "@/lib/notify";
 
 type Props = {
   invoice: ExternalInvoice;
@@ -71,6 +72,13 @@ const ExternalInvoiceDetailView: React.FC<Props> = ({
     setEditedInvoice((prev: any) => ({ ...prev, status: value }));
   };
 
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text).then(
+      () => notify.success("Copied", `${label} copied to clipboard`),
+      () => notify.error("Copy failed", "Could not copy to clipboard")
+    );
+  };
+
   const renderField = (key: string, value: any) => (
     <div key={key} className="mb-4">
       <Label htmlFor={key} className="block mb-2 capitalize">
@@ -86,6 +94,7 @@ const ExternalInvoiceDetailView: React.FC<Props> = ({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="paid">Paid</SelectItem>
+            <SelectItem value="pending">Pending</SelectItem>
             <SelectItem value="unpaid">Unpaid</SelectItem>
           </SelectContent>
         </Select>
@@ -184,7 +193,25 @@ const ExternalInvoiceDetailView: React.FC<Props> = ({
           <DialogHeader>
             <DialogTitle>External Invoice Details</DialogTitle>
           </DialogHeader>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => copyToClipboard(String(editedInvoice.id), "Invoice ID")}
+              title="Copy Invoice ID"
+            >
+              <Copy className="h-4 w-4 mr-1" />
+              Copy ID
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => copyToClipboard(editedInvoice.username, "Username")}
+              title="Copy Username"
+            >
+              <User className="h-4 w-4 mr-1" />
+              Copy User
+            </Button>
             {editedInvoice.status !== "paid" ? (
               canPay ? (
                 <Button variant="outline" size="sm" onClick={markPaidLocal}>
@@ -222,11 +249,10 @@ const ExternalInvoiceDetailView: React.FC<Props> = ({
         {/* Body with tabs - scrolls within the dialog */}
         <div className="p-4 flex-1 overflow-y-auto overflow-x-auto">
           <Tabs defaultValue="overview" className="w-full">
-            <TabsList className="grid grid-cols-4 w-full mb-4">
+            <TabsList className="grid grid-cols-3 w-full mb-4">
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="payments">Payments</TabsTrigger>
               <TabsTrigger value="history">History</TabsTrigger>
-              <TabsTrigger value="attachments">Attachments</TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview" className="space-y-4">
@@ -275,9 +301,6 @@ const ExternalInvoiceDetailView: React.FC<Props> = ({
               </div>
             </TabsContent>
 
-            <TabsContent value="attachments" className="space-y-3">
-              <div className="text-sm text-muted-foreground">Attachments feature coming soon.</div>
-            </TabsContent>
           </Tabs>
         </div>
       </DialogContent>

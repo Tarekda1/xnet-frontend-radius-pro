@@ -85,7 +85,10 @@ export function parseCsv(text: string): string[][] {
 }
 
 export function downloadTextFile(filename: string, content: string, mime = "text/plain;charset=utf-8"): void {
-  const blob = new Blob([content], { type: mime });
+  // Excel on Windows often mis-detects UTF-8 CSV unless a BOM is present.
+  const needsUtf8Bom = /text\/csv/i.test(mime);
+  const blobParts = needsUtf8Bom ? ["\uFEFF", content] : [content];
+  const blob = new Blob(blobParts, { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

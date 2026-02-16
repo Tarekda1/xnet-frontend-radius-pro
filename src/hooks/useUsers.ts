@@ -16,7 +16,12 @@ interface UserMutationData {
   username: string;
   password: string;
   profileId: number;
-  accountStatus?:AccountStatus;
+  accountStatus?: AccountStatus;
+  quotaResetDay?: number;
+  fullName?: string;
+  address?: string;
+  phoneNumber?: string;
+  email?: string;
 }
 
 // const fetchUsers = async (page: number, pageSize: number): Promise<UsersApiResponse> => {

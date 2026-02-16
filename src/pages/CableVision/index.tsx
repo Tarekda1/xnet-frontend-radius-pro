@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, RefreshCw, Tv } from "lucide-react";
+import { Pencil, Plus, RefreshCw, Trash2, Tv } from "lucide-react";
 import { useCableVisionAccounts } from "@/hooks/useCableVision";
 import { useAuth } from "@/context/AuthContext";
 import { can } from "@/lib/permissions";
@@ -18,6 +18,7 @@ import { cableVisionPageReducer, initialCableVisionPageState } from "./reducer";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { notify } from "@/lib/notify";
+import ActionConfirmDialog from "@/components/ActionConfirmDialog";
 
 function statusBadgeClass(status: string) {
   const s = String(status || "").toLowerCase();
@@ -47,8 +48,11 @@ export default function CableVisionPage() {
     setBillingMonth,
     billingMonthYmd,
     createAccountMutation,
+    updateAccountMutation,
+    deleteAccountMutation,
     createProfileMutation,
     updateProfileMutation,
+    deleteProfileMutation,
     generateMonthlyInvoicesMutation,
     payInvoiceMutation,
     unpayInvoiceMutation,
@@ -263,6 +267,43 @@ export default function CableVisionPage() {
                                 >
                                   {T.table.addProfile}
                                 </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={!canManage}
+                                  onClick={() =>
+                                    dispatch({
+                                      type: "openEditAccount",
+                                      account: {
+                                        accountId: a.id,
+                                        accountNumber: a.accountNumber,
+                                        fullName: a.fullName,
+                                        phone: a.phoneNumber || null,
+                                        email: a.email || null,
+                                      },
+                                    })
+                                  }
+                                  title={!canManage ? T.table.addProfileNoPerm : T.table.editAccount}
+                                >
+                                  <Pencil className="h-4 w-4 mr-2" />
+                                  {T.table.editAccount}
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-red-600 hover:text-red-700"
+                                  disabled={!canManage}
+                                  onClick={() =>
+                                    dispatch({
+                                      type: "openDeleteAccount",
+                                      account: { accountId: a.id, accountNumber: a.accountNumber, fullName: a.fullName },
+                                    })
+                                  }
+                                  title={!canManage ? T.table.addProfileNoPerm : T.table.deleteAccount}
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  {T.table.deleteAccount}
+                                </Button>
                               </div>
                             </TableCell>
                           </TableRow>
@@ -365,6 +406,22 @@ export default function CableVisionPage() {
                                                       }
                                                     >
                                                       {T.table.edit}
+                                                    </Button>
+                                                    <Button
+                                                      size="sm"
+                                                      variant="outline"
+                                                      className="text-red-600 hover:text-red-700"
+                                                      disabled={!canManage}
+                                                      title={!canManage ? T.table.addProfileNoPerm : T.table.delete}
+                                                      onClick={() =>
+                                                        dispatch({
+                                                          type: "openDeleteProfile",
+                                                          profile: { profileId: p.id, profileName: p.profileName },
+                                                        })
+                                                      }
+                                                    >
+                                                      <Trash2 className="h-4 w-4 mr-2" />
+                                                      {T.table.delete}
                                                     </Button>
 
                                                     {canGenerateThis ? (
@@ -543,6 +600,85 @@ export default function CableVisionPage() {
           </DialogContent>
         </Dialog>
 
+        {/* Edit Account dialog */}
+        <Dialog open={state.isEditAccountOpen} onOpenChange={(open) => (open ? null : dispatch({ type: "closeEditAccount" }))}>
+          <DialogContent className="sm:max-w-[520px]">
+            <DialogHeader>
+              <DialogTitle>{T.dialogs.editAccountTitle}</DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <div className="text-sm font-medium">{T.dialogs.accountNumberLabel}</div>
+                <Input
+                  value={state.editAccount.accountNumber}
+                  onChange={(e) => dispatch({ type: "setEditAccountField", field: "accountNumber", value: e.target.value })}
+                  placeholder={T.dialogs.accountNumberPlaceholder}
+                />
+              </div>
+              <div className="space-y-1">
+                <div className="text-sm font-medium">{T.dialogs.customerNameLabel}</div>
+                <Input
+                  value={state.editAccount.fullName}
+                  onChange={(e) => dispatch({ type: "setEditAccountField", field: "fullName", value: e.target.value })}
+                  placeholder={T.dialogs.customerNamePlaceholder}
+                />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <div className="text-sm font-medium">{T.dialogs.phoneLabel}</div>
+                  <Input
+                    value={state.editAccount.phone}
+                    onChange={(e) => dispatch({ type: "setEditAccountField", field: "phone", value: e.target.value })}
+                    placeholder={T.dialogs.phonePlaceholder}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <div className="text-sm font-medium">{T.dialogs.emailLabel}</div>
+                  <Input
+                    value={state.editAccount.email}
+                    onChange={(e) => dispatch({ type: "setEditAccountField", field: "email", value: e.target.value })}
+                    placeholder={T.dialogs.emailPlaceholder}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => dispatch({ type: "closeEditAccount" })}>
+                {T.dialogs.cancel}
+              </Button>
+              <Button
+                disabled={
+                  updateAccountMutation.isPending ||
+                  !canManage ||
+                  !state.editAccount.accountId ||
+                  !state.editAccount.accountNumber.trim() ||
+                  !state.editAccount.fullName.trim()
+                }
+                onClick={() => {
+                  const id = state.editAccount.accountId;
+                  if (!id) return;
+                  const phone = state.editAccount.phone.trim();
+                  const email = state.editAccount.email.trim();
+                  updateAccountMutation.mutate(
+                    {
+                      accountId: id,
+                      accountNumber: state.editAccount.accountNumber.trim(),
+                      fullName: state.editAccount.fullName.trim(),
+                      phoneNumber: phone ? phone : null,
+                      email: email ? email : null,
+                    },
+                    { onSuccess: () => dispatch({ type: "closeEditAccount" }) }
+                  );
+                }}
+              >
+                {T.dialogs.save}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         {/* Add Profile dialog */}
         <Dialog open={state.isAddProfileOpen} onOpenChange={(open) => (open ? null : dispatch({ type: "closeAddProfile" }))}>
           <DialogContent className="sm:max-w-[520px]">
@@ -705,6 +841,40 @@ export default function CableVisionPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        <ActionConfirmDialog
+          open={state.isDeleteAccountOpen}
+          onOpenChange={(open) => {
+            if (!open) dispatch({ type: "closeDeleteAccount" });
+          }}
+          title={`Delete ${state.deleteAccount.accountNumber || "account"}?`}
+          description={`This will permanently delete the account for "${state.deleteAccount.fullName || "—"}" and may remove related profiles/invoices. This cannot be undone.`}
+          confirmText="Delete"
+          confirmTone="destructive"
+          isConfirming={deleteAccountMutation.isPending}
+          onConfirm={async () => {
+            const id = state.deleteAccount.accountId;
+            if (!id) return;
+            await deleteAccountMutation.mutateAsync({ accountId: id });
+          }}
+        />
+
+        <ActionConfirmDialog
+          open={state.isDeleteProfileOpen}
+          onOpenChange={(open) => {
+            if (!open) dispatch({ type: "closeDeleteProfile" });
+          }}
+          title={`Delete "${state.deleteProfile.profileName || "profile"}"?`}
+          description="This will permanently delete the profile/device slot. This cannot be undone."
+          confirmText="Delete"
+          confirmTone="destructive"
+          isConfirming={deleteProfileMutation.isPending}
+          onConfirm={async () => {
+            const id = state.deleteProfile.profileId;
+            if (!id) return;
+            await deleteProfileMutation.mutateAsync({ profileId: id });
+          }}
+        />
       </div>
     </QueryState>
   );

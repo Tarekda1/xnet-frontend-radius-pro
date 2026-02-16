@@ -74,6 +74,47 @@ export function useCableVisionAccounts(options?: { initialPage?: number; pageSiz
     },
   });
 
+  const updateAccountMutation = useMutation({
+    mutationFn: async (input: {
+      accountId: number;
+      accountNumber?: string;
+      fullName?: string;
+      phoneNumber?: string | null;
+      email?: string | null;
+      address?: string | null;
+    }) => {
+      const resp = await apiClient.put(`/cable-vision/accounts/${input.accountId}`, {
+        accountNumber: input.accountNumber,
+        fullName: input.fullName,
+        phoneNumber: typeof input.phoneNumber === "undefined" ? undefined : input.phoneNumber,
+        email: typeof input.email === "undefined" ? undefined : input.email,
+        address: typeof input.address === "undefined" ? undefined : input.address,
+      });
+      return resp.data as ApiResponse<CableVisionAccount>;
+    },
+    onSuccess: () => {
+      notify.success("Saved", "Cable Vision account updated.");
+      queryClient.invalidateQueries({ queryKey: ["cableVision", "accounts"] });
+    },
+    onError: (e: any) => {
+      notify.error("Save failed", e?.response?.data?.message || e?.message || "Failed to update account");
+    },
+  });
+
+  const deleteAccountMutation = useMutation({
+    mutationFn: async (vars: { accountId: number }) => {
+      const resp = await apiClient.delete(`/cable-vision/accounts/${vars.accountId}`);
+      return resp.data as ApiResponse<CableVisionAccount>;
+    },
+    onSuccess: () => {
+      notify.success("Deleted", "Cable Vision account deleted.");
+      queryClient.invalidateQueries({ queryKey: ["cableVision", "accounts"] });
+    },
+    onError: (e: any) => {
+      notify.error("Delete failed", e?.response?.data?.message || e?.message || "Failed to delete account");
+    },
+  });
+
   const createProfileMutation = useMutation({
     mutationFn: async (vars: {
       accountId: number;
@@ -123,6 +164,20 @@ export function useCableVisionAccounts(options?: { initialPage?: number; pageSiz
     },
     onError: (e: any) => {
       notify.error("Save failed", e?.response?.data?.message || e?.message || "Failed to update profile");
+    },
+  });
+
+  const deleteProfileMutation = useMutation({
+    mutationFn: async (vars: { profileId: number }) => {
+      const resp = await apiClient.delete(`/cable-vision/profiles/${vars.profileId}`);
+      return resp.data as ApiResponse<CableVisionProfile>;
+    },
+    onSuccess: () => {
+      notify.success("Deleted", "Profile deleted.");
+      queryClient.invalidateQueries({ queryKey: ["cableVision", "accounts"] });
+    },
+    onError: (e: any) => {
+      notify.error("Delete failed", e?.response?.data?.message || e?.message || "Failed to delete profile");
     },
   });
 
@@ -186,8 +241,11 @@ export function useCableVisionAccounts(options?: { initialPage?: number; pageSiz
     setBillingMonth,
     billingMonthYmd,
     createAccountMutation,
+    updateAccountMutation,
+    deleteAccountMutation,
     createProfileMutation,
     updateProfileMutation,
+    deleteProfileMutation,
     generateMonthlyInvoicesMutation,
     payInvoiceMutation,
     unpayInvoiceMutation,

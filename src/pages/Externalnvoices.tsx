@@ -14,10 +14,12 @@ import {
   Calendar,
   AlertCircle,
   Clock as ClockIcon,
-  FileCheck
+  FileCheck,
+  Download,
+  Loader2
 } from "lucide-react";
 import { useExternalInvoices } from "@/hooks/useExternalInvoices";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 /* removed DateRange import - not used after quick preset approach */
 import { RowSelectionState } from "@tanstack/react-table";
 import {
@@ -39,9 +41,19 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useAuth } from "@/context/AuthContext";
 import { can } from "@/lib/permissions";
+import { isFeatureEnabled } from "@/lib/featureFlags";
 import { notify } from "@/lib/notify";
 import { MESSAGES } from "@/constants/messages";
+import { apiClient } from "@/api/client";
 import SavedViews from "@/components/SavedViews";
+import { Skeleton } from "@/components/ui/skeleton";
+
+const MetricItemSkeleton = () => (
+  <div className="flex flex-col items-center">
+    <Skeleton className="h-3 w-12 mb-1.5" />
+    <Skeleton className="h-5 w-14" />
+  </div>
+);
 
 const MetricItem = ({ 
   label, 
@@ -92,6 +104,7 @@ export default function ExternalInvoicesPage() {
   const { user } = useAuth();
   const canViewTotals = can(user, 'billing.externalInvoices.viewTotals');
   const canPayExternalInvoices = can(user, 'billing.externalInvoices.pay');
+  const canUploadInvoice = can(user, 'billing.invoiceUpload.create') && isFeatureEnabled('invoice-upload');
 
   const [searchTerm, setSearchTerm] = useState("");
   const [searchInput, setSearchInput] = useState("");
@@ -102,6 +115,8 @@ export default function ExternalInvoicesPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [isConfirmBulkPaidOpen, setIsConfirmBulkPaidOpen] = useState(false);
   const [isConfirmBulkDeleteOpen, setIsConfirmBulkDeleteOpen] = useState(false);
+  const [isExportingAll, setIsExportingAll] = useState(false);
+  const [isBulkPaidInProgress, setIsBulkPaidInProgress] = useState(false);
   const [isDateFilterOpen, setIsDateFilterOpen] = useState(false);
   const [draftDateRange, setDraftDateRange] = useState<any>(undefined);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -196,14 +211,17 @@ export default function ExternalInvoicesPage() {
     }
   }, [searchParams]);
 
+  // Map 'overdue' to 'unpaid' for API (backend stores paid/unpaid/pending only)
+  const apiStatus = searchParams.get('status') === 'overdue' ? 'unpaid' : (searchParams.get('status') || undefined);
+
   // Get quick stats for header
-  const { data: statsData, refetch, setInvoiceAsPaidMutation, bulkDeleteInvoicesMutation } = useExternalInvoices({ 
+  const { data: statsData, isLoading: isStatsLoading, refetch, setInvoiceAsPaidMutation, bulkDeleteInvoicesMutation } = useExternalInvoices({ 
     initialPage: 1, 
     pageSize: 1,
     search: searchTerm,
     from: searchParams.get('from') || undefined,
     to: searchParams.get('to') || undefined,
-    status: searchParams.get('status') || undefined,
+    status: apiStatus,
   });
 
   // Get the full data for table with pagination
@@ -213,7 +231,7 @@ export default function ExternalInvoicesPage() {
     search: searchTerm,
     from: searchParams.get('from') || undefined,
     to: searchParams.get('to') || undefined,
-    status: searchParams.get('status') || undefined,
+    status: apiStatus,
   });
 
   const handleSearch = useCallback((term: string) => {
@@ -334,20 +352,26 @@ export default function ExternalInvoicesPage() {
       .filter((n) => Number.isFinite(n) && n > 0);
   }, [rowSelection]);
 
-  const handleBulkPaid = useCallback(() => {
-    if (!canPayExternalInvoices) return;
-    selectedIds.forEach((id) => {
-      if (id) {
-        setInvoiceAsPaidMutation.mutate({ invoiceId: id, silent: true }, { 
-          onSuccess: () => {
-            refetch();
-            setRowSelection({});
-          }
-        });
-      }
-    });
-    notify.success(MESSAGES.externalInvoices.markingPaidTitle, `${selectedIds.length} invoice(s) queued.`);
-  }, [selectedIds, setInvoiceAsPaidMutation, refetch]);
+  const handleBulkPaid = useCallback(async () => {
+    if (!canPayExternalInvoices || selectedIds.length === 0) return;
+    setIsBulkPaidInProgress(true);
+    try {
+      await Promise.all(
+        selectedIds
+          .filter((id) => id)
+          .map((id) =>
+            setInvoiceAsPaidMutation.mutateAsync({ invoiceId: id, silent: true })
+          )
+      );
+      refetch();
+      setRowSelection({});
+      notify.success(MESSAGES.externalInvoices.markingPaidTitle, `${selectedIds.length} invoice(s) marked as paid.`);
+    } catch (e: unknown) {
+      notify.error("Action failed", e instanceof Error ? e.message : "Some invoices could not be marked as paid.");
+    } finally {
+      setIsBulkPaidInProgress(false);
+    }
+  }, [selectedIds, setInvoiceAsPaidMutation, refetch, canPayExternalInvoices]);
 
   const handleExportSelected = useCallback(async () => {
     const selectedRows = (allData?.data?.data ?? []).filter((inv: any) => selectedIds.includes(inv.id)) as any[];
@@ -359,6 +383,54 @@ export default function ExternalInvoicesPage() {
     xlsx.writeFile(wb, "external_invoices_selected.xlsx");
     notify.success(MESSAGES.externalInvoices.exportedTitle, `${selectedRows.length} selected invoice(s) exported.`);
   }, [selectedIds, allData]);
+
+  const handleExportAll = useCallback(async () => {
+    setIsExportingAll(true);
+    try {
+      const exportPageSize = 500;
+      const params = new URLSearchParams();
+      params.set("page", "1");
+      params.set("limit", String(exportPageSize));
+      if (searchTerm) params.set("search", searchTerm);
+      const from = searchParams.get("from");
+      const to = searchParams.get("to");
+      if (from) params.set("from", from);
+      if (to) params.set("to", to);
+      if (apiStatus && apiStatus !== "all") params.set("status", apiStatus);
+      const sortParam = searchParams.get("sort") || "";
+      const [sortBy, sortDir] = sortParam.split(":");
+      if (sortBy) params.set("sortBy", sortBy);
+      if (sortDir) params.set("sortDir", sortDir);
+
+      const first = await apiClient.get(`/invoices/external?${params.toString()}`);
+      const payload = first?.data?.data ?? first?.data;
+      const allRows: any[] = [...(payload?.data ?? [])];
+      const totalPages = payload?.totalPages ?? 1;
+
+      for (let p = 2; p <= totalPages; p++) {
+        params.set("page", String(p));
+        const next = await apiClient.get(`/invoices/external?${params.toString()}`);
+        const nextPayload = next?.data?.data ?? next?.data;
+        if (nextPayload?.data?.length) allRows.push(...nextPayload.data);
+      }
+
+      if (!allRows.length) {
+        notify.error("Export failed", "No invoices to export.");
+        return;
+      }
+
+      const xlsx = await import("xlsx");
+      const ws = xlsx.utils.json_to_sheet(allRows);
+      const wb = xlsx.utils.book_new();
+      xlsx.utils.book_append_sheet(wb, ws, "External Invoices");
+      xlsx.writeFile(wb, `external_invoices_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      notify.success(MESSAGES.externalInvoices.exportedTitle, `${allRows.length} invoice(s) exported.`);
+    } catch (e: unknown) {
+      notify.error("Export failed", e instanceof Error ? e.message : "Could not export invoices.");
+    } finally {
+      setIsExportingAll(false);
+    }
+  }, [searchTerm, searchParams, apiStatus]);
 
   const handleBulkDelete = useCallback(async () => {
     if (selectedIds.length === 0) return;
@@ -406,6 +478,7 @@ export default function ExternalInvoicesPage() {
                   <SelectItem value="all">All</SelectItem>
                   <SelectItem value="pending">Pending</SelectItem>
                   <SelectItem value="paid">Paid</SelectItem>
+                  <SelectItem value="overdue">Overdue</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -448,6 +521,18 @@ export default function ExternalInvoicesPage() {
               >
                 {searchParams.get('status') === 'paid' && <CheckCircle className="h-3 w-3 mr-1" />}
                 Paid ({metrics?.totalPaid ?? 0})
+              </Button>
+              <Button
+                variant={searchParams.get('status') === 'overdue' ? 'default' : 'secondary'}
+                size="sm"
+                onClick={() => handleQuickFilter('overdue')}
+                className={
+                  (searchParams.get('status') === 'overdue' ? 'text-white ' : 'text-foreground ') +
+                  (searchParams.get('status') === 'overdue' ? 'ring-2 ring-primary/40' : '')
+                }
+              >
+                {searchParams.get('status') === 'overdue' && <AlertCircle className="h-3 w-3 mr-1" />}
+                Overdue ({metrics?.totalUnpaid ?? 0})
               </Button>
             </div>
 
@@ -502,10 +587,27 @@ export default function ExternalInvoicesPage() {
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Refresh
               </Button>
-              <Button onClick={() => {}} className="w-full sm:w-auto">
-                <Plus className="h-4 w-4 mr-2" />
-                New Invoice
+              <Button
+                variant="outline"
+                onClick={handleExportAll}
+                disabled={isExportingAll || isStatsLoading}
+                className="w-full sm:w-auto"
+              >
+                {isExportingAll ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4 mr-2" />
+                )}
+                {isExportingAll ? "Exporting..." : "Export All"}
               </Button>
+              {canUploadInvoice && (
+                <Button asChild className="w-full sm:w-auto">
+                  <Link to="/invoice-upload">
+                    <Plus className="h-4 w-4 mr-2" />
+                    New Invoice
+                  </Link>
+                </Button>
+              )}
             </div>
           </div>
         )}
@@ -537,89 +639,111 @@ export default function ExternalInvoicesPage() {
 
           {/* Metrics Section */}
           <div className="flex items-center gap-3 lg:gap-4 lg:border-l lg:border-border lg:pl-4 overflow-x-auto w-full lg:w-auto">
-            {/* Amount Stats */}
-            {canViewTotals ? (
-              <div className="flex items-center gap-3">
-                <MetricItem
-                  label="Total Amount"
-                  value={metrics?.totalAmount?.toLocaleString() ?? 0}
-                  icon={DollarSign}
-                  color="text-primary"
-                  tooltipText={`Total value of all invoices: $${metrics?.totalAmount?.toLocaleString() ?? 0}`}
-                  suffix="$"
-                />
-                <MetricItem
-                  label="Average"
-                  value={metrics?.totalAmount && metrics?.totalInvoices 
-                    ? Math.round(metrics.totalAmount / metrics.totalInvoices).toLocaleString() 
-                    : '0'}
-                  icon={TrendingUp}
-                  color="text-violet-600"
-                  tooltipText="Average invoice amount"
-                  suffix="$"
-                />
-              </div>
-            ) : null}
+            {isStatsLoading ? (
+              <>
+                {canViewTotals && (
+                  <div className="flex items-center gap-3">
+                    <MetricItemSkeleton />
+                    <MetricItemSkeleton />
+                  </div>
+                )}
+                <div className="flex items-center gap-3">
+                  <MetricItemSkeleton />
+                  <MetricItemSkeleton />
+                </div>
+                <div className="flex items-center gap-3">
+                  <MetricItemSkeleton />
+                  <MetricItemSkeleton />
+                </div>
+                <MetricItemSkeleton />
+              </>
+            ) : (
+              <>
+                {/* Amount Stats */}
+                {canViewTotals ? (
+                  <div className="flex items-center gap-3">
+                    <MetricItem
+                      label="Total Amount"
+                      value={metrics?.totalAmount?.toLocaleString() ?? 0}
+                      icon={DollarSign}
+                      color="text-primary"
+                      tooltipText={`Total value of all invoices: $${metrics?.totalAmount?.toLocaleString() ?? 0}`}
+                      suffix="$"
+                    />
+                    <MetricItem
+                      label="Average"
+                      value={metrics?.totalAmount && metrics?.totalInvoices 
+                        ? Math.round(metrics.totalAmount / metrics.totalInvoices).toLocaleString() 
+                        : '0'}
+                      icon={TrendingUp}
+                      color="text-violet-600"
+                      tooltipText="Average invoice amount"
+                      suffix="$"
+                    />
+                  </div>
+                ) : null}
 
-            {/* Status Stats */}
-            <div className="flex items-center gap-3">
-              <MetricItem
-                label="Paid"
-                value={`${metrics?.totalPaid ?? 0} (${metrics?.totalPaid && metrics?.totalInvoices 
-                  ? Math.round((metrics.totalPaid / metrics.totalInvoices) * 100) 
-                  : 0}%)`}
-                icon={CheckCircle}
-                color="text-green-600"
-                onClick={() => handleQuickFilter('paid')}
-                tooltipText="Click to filter paid invoices"
-              />
-              <MetricItem
-                label="Pending"
-                value={`${metrics?.totalPending ?? 0} (${metrics?.totalPending && metrics?.totalInvoices 
-                  ? Math.round((metrics.totalPending / metrics.totalInvoices) * 100) 
-                  : 0}%)`}
-                icon={ClockIcon}
-                color="text-orange-600"
-                onClick={() => handleQuickFilter('pending')}
-                tooltipText="Click to filter pending invoices"
-              />
-            </div>
+                {/* Status Stats */}
+                <div className="flex items-center gap-3">
+                  <MetricItem
+                    label="Paid"
+                    value={`${metrics?.totalPaid ?? 0} (${metrics?.totalPaid && metrics?.totalInvoices 
+                      ? Math.round((metrics.totalPaid / metrics.totalInvoices) * 100) 
+                      : 0}%)`}
+                    icon={CheckCircle}
+                    color="text-green-600"
+                    onClick={() => handleQuickFilter('paid')}
+                    tooltipText="Click to filter paid invoices"
+                  />
+                  <MetricItem
+                    label="Pending"
+                    value={`${metrics?.totalPending ?? 0} (${metrics?.totalPending && metrics?.totalInvoices 
+                      ? Math.round((metrics.totalPending / metrics.totalInvoices) * 100) 
+                      : 0}%)`}
+                    icon={ClockIcon}
+                    color="text-orange-600"
+                    onClick={() => handleQuickFilter('pending')}
+                    tooltipText="Click to filter pending invoices"
+                  />
+                </div>
 
-            {/* Additional Stats */}
-            <div className="flex items-center gap-3">
-              <MetricItem
-                label="Unpaid"
-                value={`${metrics?.totalUnpaid ?? 0} (${metrics?.totalUnpaid && metrics?.totalInvoices 
-                  ? Math.round((metrics.totalUnpaid / metrics.totalInvoices) * 100) 
-                  : 0}%)`}
-                icon={AlertCircle}
-                color="text-yellow-600"
-                onClick={() => handleQuickFilter('overdue')}
-                tooltipText="Click to filter unpaid invoices"
-              />
-              <MetricItem
-                label="Selected"
-                value={`${selectedCount}${selectedCount > 0 ? ` (${Math.round((selectedCount / (metrics?.totalInvoices ?? 1)) * 100)}%)` : ''}`}
-                icon={CheckCircle}
-                color={selectedCount > 0 ? "text-blue-600" : "text-gray-400"}
-                tooltipText={selectedCount > 0 
-                  ? `${selectedCount} invoices selected - Click to mark as paid` 
-                  : "No invoices selected"}
-                onClick={(selectedCount > 0 && canPayExternalInvoices) ? () => setIsConfirmBulkPaidOpen(true) : undefined}
-                showDot={selectedCount > 0}
-              />
-            </div>
+                {/* Additional Stats */}
+                <div className="flex items-center gap-3">
+                  <MetricItem
+                    label="Unpaid"
+                    value={`${metrics?.totalUnpaid ?? 0} (${metrics?.totalUnpaid && metrics?.totalInvoices 
+                      ? Math.round((metrics.totalUnpaid / metrics.totalInvoices) * 100) 
+                      : 0}%)`}
+                    icon={AlertCircle}
+                    color="text-yellow-600"
+                    onClick={() => handleQuickFilter('overdue')}
+                    tooltipText="Click to filter unpaid invoices"
+                  />
+                  <MetricItem
+                    label="Selected"
+                    value={`${selectedCount}${selectedCount > 0 ? ` (${Math.round((selectedCount / (metrics?.totalInvoices ?? 1)) * 100)}%)` : ''}`}
+                    icon={CheckCircle}
+                    color={selectedCount > 0 ? "text-blue-600" : "text-gray-400"}
+                    tooltipText={selectedCount > 0 
+                      ? `${selectedCount} invoices selected - Click to mark as paid` 
+                      : "No invoices selected"}
+                    onClick={(selectedCount > 0 && canPayExternalInvoices) ? () => setIsConfirmBulkPaidOpen(true) : undefined}
+                    showDot={selectedCount > 0}
+                  />
+                </div>
 
-            {/* Total Count */}
-            <div className="flex items-center gap-3">
-              <MetricItem
-                label="Total"
-                value={metrics?.totalInvoices ?? 0}
-                icon={FileCheck}
-                color="text-blue-600"
-                tooltipText={`Total number of invoices: ${metrics?.totalInvoices ?? 0}`}
-              />
-            </div>
+                {/* Total Count */}
+                <div className="flex items-center gap-3">
+                  <MetricItem
+                    label="Total"
+                    value={metrics?.totalInvoices ?? 0}
+                    icon={FileCheck}
+                    color="text-blue-600"
+                    tooltipText={`Total number of invoices: ${metrics?.totalInvoices ?? 0}`}
+                  />
+                </div>
+              </>
+            )}
           </div>
         </div>
       </Card>
@@ -805,18 +929,32 @@ export default function ExternalInvoicesPage() {
             </div>
             <div className="flex items-center gap-2">
               {canPayExternalInvoices ? (
-                <Button variant="default" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => setIsConfirmBulkPaidOpen(true)}>
-                  <CheckCircle className="h-4 w-4 mr-2" /> Mark Paid
+                <Button
+                  variant="default"
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                  onClick={() => setIsConfirmBulkPaidOpen(true)}
+                  disabled={isBulkPaidInProgress}
+                >
+                  {isBulkPaidInProgress ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                  )}
+                  {isBulkPaidInProgress ? "Marking..." : "Mark Paid"}
                 </Button>
               ) : null}
               <Button
                 variant="destructive"
                 onClick={() => setIsConfirmBulkDeleteOpen(true)}
-                disabled={bulkDeleteInvoicesMutation.isPending}
+                disabled={bulkDeleteInvoicesMutation.isPending || isBulkPaidInProgress}
               >
                 Delete
               </Button>
-              <Button variant="outline" onClick={handleExportSelected}>
+              <Button
+                variant="outline"
+                onClick={handleExportSelected}
+                disabled={isExportingAll}
+              >
                 <FileText className="h-4 w-4 mr-2" /> Export Selected
               </Button>
               <Button variant="ghost" onClick={() => setRowSelection({})}>
@@ -853,11 +991,12 @@ export default function ExternalInvoicesPage() {
           <DialogFooter>
             <Button variant="ghost" onClick={() => setIsConfirmBulkPaidOpen(false)}>Cancel</Button>
             <Button 
-              onClick={() => {
+              onClick={async () => {
                 setIsConfirmBulkPaidOpen(false);
-                handleBulkPaid();
+                setIsBulkPaidInProgress(true);
+                await handleBulkPaid();
               }}
-              disabled={!canPayExternalInvoices}
+              disabled={!canPayExternalInvoices || isBulkPaidInProgress}
               className="bg-green-600 hover:bg-green-700 text-white"
             >
               Confirm

@@ -257,6 +257,7 @@ const Sidebar: React.FC = () => {
     const usersItems = [
       { to: '/users/list', label: 'Users', icon: FaUsers, perms: ['users.view', 'reseller.users.view'], navPerm: "ui.sidebar.users.list.show" },
       { to: '/online-users', label: 'Live Sessions', icon: FaUserClock, perms: ['users.online.view', 'reseller.users.view'], navPerm: "ui.sidebar.users.online.show" },
+      { to: '/auth-failures', label: 'Auth Failures', icon: FaBell, perms: ['users.online.view', 'reseller.users.view'] },
       { to: '/profiles/list', label: 'Profile Plans', icon: FaCreditCard, perms: ['radius.profiles.view'], navPerm: "ui.sidebar.users.profiles.show" },
     ] as const;
 

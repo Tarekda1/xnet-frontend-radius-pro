@@ -28,6 +28,8 @@ export const CABLE_VISION_TEXT = {
     hide: "Hide",
     addProfile: "Add profile",
     addProfileNoPerm: "You don't have permission to manage accounts.",
+    editAccount: "Edit account",
+    deleteAccount: "Delete account",
     profilesSection: "Profiles",
     slot: "Slot",
     profile: "Profile",
@@ -44,6 +46,7 @@ export const CABLE_VISION_TEXT = {
     markUnpaid: "Mark unpaid",
     markUnpaidNoPerm: "You don't have permission to unpay invoices.",
     edit: "Edit",
+    delete: "Delete",
   },
 
   dialogs: {
@@ -72,6 +75,8 @@ export const CABLE_VISION_TEXT = {
 
     editProfileTitle: "Edit profile/device",
     save: "Save",
+
+    editAccountTitle: "Edit Cable Vision account",
   },
 } as const;
 

@@ -20,6 +20,8 @@ interface UserCardProps {
     canManageUsers?: boolean;
     manageUsersReason?: string;
     canResetMac?: boolean;
+    canResetDailyQuota?: boolean;
+    canResetMonthlyQuota?: boolean;
 }
 
 const UserCard: React.FC<UserCardProps> = ({
@@ -35,6 +37,8 @@ const UserCard: React.FC<UserCardProps> = ({
     canManageUsers = true,
     manageUsersReason = "You don't have permission to manage users.",
     canResetMac = true,
+    canResetDailyQuota = true,
+    canResetMonthlyQuota = true,
 }) => {
     const navigate = useNavigate();
     // const dailyUsagePercentage = user.profile.dailyQuota ? (user.profile.dailyUsage / user.profile.dailyQuota) * 100 : 0;
@@ -109,7 +113,7 @@ const UserCard: React.FC<UserCardProps> = ({
                     </Button>
                 ) : null}
                 {onResetQuota ? (
-                    <Button variant="outline" size="sm" className="w-full justify-center" onClick={onResetQuota} disabled={!canManageUsers} title={!canManageUsers ? manageUsersReason : "Reset daily quota"}>
+                    <Button variant="outline" size="sm" className="w-full justify-center" onClick={onResetQuota} disabled={!canResetDailyQuota} title={!canResetDailyQuota ? "You don't have permission to reset daily quota." : "Reset daily quota"}>
                         <RefreshCw className="w-4 h-4 mr-2" /> Reset Quota
                     </Button>
                 ) : null}
@@ -119,8 +123,8 @@ const UserCard: React.FC<UserCardProps> = ({
                         size="sm"
                         className="col-span-2 w-full justify-center"
                         onClick={onResetMonthly}
-                        disabled={!canManageUsers}
-                        title={!canManageUsers ? manageUsersReason : "Reset Monthly Traffic"}
+                        disabled={!canResetMonthlyQuota}
+                        title={!canResetMonthlyQuota ? "You don't have permission to reset monthly quota." : "Reset Monthly Traffic"}
                     >
                         <RefreshCw className="w-4 h-4 mr-2" /> Reset Monthly
                     </Button>

@@ -8,6 +8,7 @@ export interface Profile {
   profileName: string;
   dailyQuota: string;
   monthlyQuota: string;
+  price?: number | null;
   nightStart?: string;
   nightEnd?: string;
   speedDown?: number;

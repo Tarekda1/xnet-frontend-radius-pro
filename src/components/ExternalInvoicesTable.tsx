@@ -76,7 +76,7 @@ const ExternalInvoicesTable: React.FC<Props> = ({
         search,
         from: searchParams.get('from') || undefined,
         to: searchParams.get('to') || undefined,
-        status: searchParams.get('status') || undefined,
+        status: (searchParams.get('status') === 'overdue' ? 'unpaid' : searchParams.get('status')) || undefined,
         sortBy: (searchParams.get('sort') || '').split(':')[0] || undefined,
         sortDir: ((searchParams.get('sort') || '').split(':')[1] as 'asc' | 'desc') || undefined,
     });
@@ -180,8 +180,9 @@ const ExternalInvoicesTable: React.FC<Props> = ({
 
     const rows = data?.data.data ?? [];
     const activeStatus = searchParams.get('status');
-    const filteredRows = activeStatus && activeStatus !== 'all'
-        ? rows.filter((r) => r.status === activeStatus)
+    const statusForFilter = activeStatus === 'overdue' ? 'unpaid' : activeStatus;
+    const filteredRows = statusForFilter && statusForFilter !== 'all'
+        ? rows.filter((r) => r.status === statusForFilter)
         : rows;
     const pages = data?.data.totalPages ?? 1;
     const computedTotalItems = totalItems ?? data?.data.total ?? 0;
@@ -193,11 +194,30 @@ const ExternalInvoicesTable: React.FC<Props> = ({
             isEmpty={filteredRows.length === 0}
             onRetry={() => refetch()}
             loading={
-                <div className="space-y-3">
-                    <Skeleton className="h-10 w-full" />
-                    <Skeleton className="h-12 w-full" />
-                    <Skeleton className="h-12 w-full" />
-                    <Skeleton className="h-12 w-full" />
+                <div className="rounded-md border min-w-[768px] overflow-hidden">
+                    <div className="flex gap-2 p-3 border-b bg-muted/30">
+                        <Skeleton className="h-4 w-8" />
+                        <Skeleton className="h-4 w-16" />
+                        <Skeleton className="h-4 w-24" />
+                        <Skeleton className="h-4 w-20" />
+                        <Skeleton className="h-4 w-28" />
+                        <Skeleton className="h-4 w-20" />
+                        <Skeleton className="h-4 w-16" />
+                    </div>
+                    {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+                        <div key={i} className="flex gap-2 p-3 border-b last:border-b-0 items-center">
+                            <Skeleton className="h-4 w-6" />
+                            <Skeleton className="h-4 w-20" />
+                            <Skeleton className="h-4 w-24" />
+                            <Skeleton className="h-4 w-16" />
+                            <Skeleton className="h-4 w-28" />
+                            <Skeleton className="h-4 w-14" />
+                            <Skeleton className="h-4 w-12" />
+                        </div>
+                    ))}
+                    <div className="p-3 border-t bg-muted/20">
+                        <Skeleton className="h-8 w-64" />
+                    </div>
                 </div>
             }
             empty={
@@ -245,6 +265,7 @@ const ExternalInvoicesTable: React.FC<Props> = ({
                         key={inv.id}
                         invoice={inv}
                         onSetPaid={canPay ? () => markPaid(inv.id) : undefined}
+                        onViewDetails={() => setSelected(inv)}
                     />
                 ))}
             </div>

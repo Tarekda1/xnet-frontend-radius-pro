@@ -123,6 +123,12 @@ const ProfileCard: React.FC<{ profile: Profile; onEdit: () => void; onDelete: ()
             <div className="text-xs text-muted-foreground">Monthly quota</div>
             <div className="mt-1 font-mono text-sm text-gray-900">{formatQuota(profile.monthlyQuota)}</div>
           </div>
+          {profile.price != null && profile.price > 0 && (
+            <div className="col-span-2 rounded-lg border bg-white/70 p-3">
+              <div className="text-xs text-muted-foreground">Price</div>
+              <div className="mt-1 font-mono text-sm font-semibold text-gray-900">{Number(profile.price).toLocaleString()} / month</div>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -134,6 +140,7 @@ const profileSchema = z.object({
   profileName: z.string().min(1, "Profile name is required"),
   dailyQuota: z.string().min(1, "Daily quota is required"),
   monthlyQuota: z.string().min(1, "Monthly quota is required"),
+  price: z.number().min(0, "Price must be 0 or greater").optional(),
   speedDown: z.number().min(1, "Download speed is required"),
   speedUp: z.number().min(1, "Upload speed is required"),
   nightStart: z.string().optional(),
@@ -147,44 +154,66 @@ type ProfileFormData = z.infer<typeof profileSchema>;
 
 interface ProfileFormModalProps {
   profile?: Profile;
-  onSave: (profile: ProfileFormData) => void;
+  onSave: (profile: Profile) => void;
   onClose: () => void;
 }
+
+const emptyFormValues: ProfileFormData = {
+  profileName: '',
+  dailyQuota: '',
+  monthlyQuota: '',
+  price: 0,
+  nightStart: '',
+  nightEnd: '',
+  speedDown: 0,
+  speedUp: 0,
+  sessionTimeout: 0,
+  idleTimeout: 0,
+  maxSessions: 0
+};
 
 const ProfileFormModal: React.FC<ProfileFormModalProps> = ({ profile, onSave, onClose }) => {
   const { register, handleSubmit, formState: { errors }, reset } = useForm<ProfileFormData>({
     resolver: zodResolver(profileSchema),
-    defaultValues: profile || {
-      profileName: '',
-      dailyQuota: '',
-      monthlyQuota: '',
-      nightStart: '',
-      nightEnd: '',
-      speedDown: 0,
-      speedUp: 0,
-      sessionTimeout: 0,
-      idleTimeout: 0,
-      maxSessions: 0
-    }
+    defaultValues: emptyFormValues
   });
 
   // Use useEffect to reset form values when the profile changes
   useEffect(() => {
     if (profile) {
       reset({
-        ...profile,
-        // Convert quota values from bytes to GB
+        profileName: profile.profileName,
         dailyQuota: (parseInt(profile.dailyQuota) / (1024 * 1024 * 1024)).toString(),
         monthlyQuota: (parseInt(profile.monthlyQuota) / (1024 * 1024 * 1024)).toString(),
+        price: profile.price ?? 0,
+        nightStart: profile.nightStart ?? '',
+        nightEnd: profile.nightEnd ?? '',
+        speedDown: profile.speedDown ?? 0,
+        speedUp: profile.speedUp ?? 0,
+        sessionTimeout: profile.sessionTimeout ?? 0,
+        idleTimeout: profile.idleTimeout ?? 0,
+        maxSessions: profile.maxSessions ?? 0,
       });
+    } else {
+      reset(emptyFormValues);
     }
   }, [profile, reset]);
+
   const onSubmit = (data: ProfileFormData) => {
     // Convert quota values back to bytes before saving
-    const updatedData = {
-      ...data,
+    const updatedData: Profile = {
+      ...(profile ?? {}),
+      profileName: data.profileName,
       dailyQuota: (parseFloat(data.dailyQuota) * 1024 * 1024 * 1024).toString(),
       monthlyQuota: (parseFloat(data.monthlyQuota) * 1024 * 1024 * 1024).toString(),
+      price: data.price ?? 0,
+      nightStart: data.nightStart || undefined,
+      nightEnd: data.nightEnd || undefined,
+      speedDown: data.speedDown ?? 0,
+      speedUp: data.speedUp ?? 0,
+      sessionTimeout: data.sessionTimeout ?? undefined,
+      idleTimeout: data.idleTimeout ?? undefined,
+      maxSessions: data.maxSessions ?? undefined,
     };
     onSave(updatedData);
     onClose();
@@ -196,7 +225,7 @@ const ProfileFormModal: React.FC<ProfileFormModalProps> = ({ profile, onSave, on
       <DialogHeader>
         <DialogTitle>{profile ? 'Edit Profile' : 'Create New Profile'}</DialogTitle>
       </DialogHeader>
-      <form onSubmit={handleSubmit(onSubmit)}>
+      <form onSubmit={handleSubmit(onSubmit as (data: ProfileFormData) => void)}>
         <div className="grid gap-4 py-4">
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="profileName" className="text-right">
@@ -223,6 +252,15 @@ const ProfileFormModal: React.FC<ProfileFormModalProps> = ({ profile, onSave, on
             <div className="col-span-3">
               <Input id="monthlyQuota" type="text" {...register("monthlyQuota")} className="w-full" />
               {errors.monthlyQuota && <p className="text-red-500 text-sm mt-1">{errors.monthlyQuota.message}</p>}
+            </div>
+          </div>
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="price" className="text-right">
+              Price (per month)
+            </Label>
+            <div className="col-span-3">
+              <Input id="price" type="number" min={0} {...register("price", { valueAsNumber: true })} className="w-full" placeholder="0" />
+              {errors.price && <p className="text-red-500 text-sm mt-1">{errors.price.message}</p>}
             </div>
           </div>
           <div className="grid grid-cols-4 items-center gap-4">

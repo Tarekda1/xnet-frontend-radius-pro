@@ -32,14 +32,17 @@ import {
   Check,
   CheckCircle,
   Clock,
+  Copy,
   DollarSign,
   Eye,
   SlidersHorizontal,
   Trash2,
+  User,
   XCircle,
 } from "lucide-react";
 import type { ExternalInvoice } from "@/types/api";
 import { HeaderButton } from "./ui/HeaderButton";
+import { notify } from "@/lib/notify";
 import TableToolbar from "@/components/TableToolbar";
 import TablePager from "@/components/TablePager";
 import TableRowActions from "@/components/TableRowActions";
@@ -281,37 +284,48 @@ const DesktopTable: React.FC<Props> = ({
       cols.push({
         id: "actions",
         header: () => <div className="text-right pr-2">Actions</div>,
-        cell: ({ row }) => (
-          <div className="flex justify-end pr-2">
-            <TableRowActions
-              actions={[
-                { label: "View details", icon: Eye, onClick: () => onViewInvoice(row.original) },
-                ...(onSetPaid
-                  ? [
-                      {
-                        label: "Set as Paid",
-                        icon: Check,
-                        onClick: () => onSetPaid(row.original.id),
-                        disabled: row.original.status === "paid",
-                      },
-                    ]
-                  : []),
-                ...(onUnpay
-                  ? [
-                      {
-                        label: "Unpay",
-                        icon: XCircle,
-                        onClick: () => onUnpay(row.original.id),
-                        disabled: row.original.status !== "paid",
-                        tone: "destructive" as const,
-                      },
-                    ]
-                  : []),
-                { label: "Delete", icon: Trash2, onClick: () => onDeleteInvoice(row.original.id), tone: "destructive" as const },
-              ]}
-            />
-          </div>
-        ),
+        cell: ({ row }) => {
+          const inv = row.original;
+          const copyToClipboard = (text: string, label: string) => {
+            navigator.clipboard.writeText(text).then(
+              () => notify.success("Copied", `${label} copied to clipboard`),
+              () => notify.error("Copy failed", "Could not copy to clipboard")
+            );
+          };
+          return (
+            <div className="flex justify-end pr-2">
+              <TableRowActions
+                actions={[
+                  { label: "View details", icon: Eye, onClick: () => onViewInvoice(inv) },
+                  { label: "Copy Invoice ID", icon: Copy, onClick: () => copyToClipboard(String(inv.id), "Invoice ID") },
+                  { label: "Copy Username", icon: User, onClick: () => copyToClipboard(inv.username, "Username") },
+                  ...(onSetPaid
+                    ? [
+                        {
+                          label: "Set as Paid",
+                          icon: Check,
+                          onClick: () => onSetPaid(inv.id),
+                          disabled: inv.status === "paid",
+                        },
+                      ]
+                    : []),
+                  ...(onUnpay
+                    ? [
+                        {
+                          label: "Unpay",
+                          icon: XCircle,
+                          onClick: () => onUnpay(inv.id),
+                          disabled: inv.status !== "paid",
+                          tone: "destructive" as const,
+                        },
+                      ]
+                    : []),
+                  { label: "Delete", icon: Trash2, onClick: () => onDeleteInvoice(inv.id), tone: "destructive" as const },
+                ]}
+              />
+            </div>
+          );
+        },
       });
 
       return cols;
