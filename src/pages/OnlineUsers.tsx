@@ -8,6 +8,7 @@ import PageHeader from "@/components/PageHeader";
 import { websocketService } from "@/services/websocket";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
 import { notify } from "@/lib/notify";
 import { MESSAGES } from "@/constants/messages";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -51,6 +52,7 @@ export default function OnlineUsersPage() {
   const [onlineCount, setOnlineCount] = useState(0);
   const [refreshToken, setRefreshToken] = useState(0);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date>(() => new Date());
+  const [nowTick, setNowTick] = useState<number>(() => Date.now());
 
   // Change profile modal
   const [profileUsername, setProfileUsername] = useState<string | null>(null);
@@ -69,6 +71,11 @@ export default function OnlineUsersPage() {
     refetchInterval: 15000,
     staleTime: 10_000,
   });
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowTick(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   // Live traffic modal
   const [trafficUsername, setTrafficUsername] = useState<string | null>(null);
@@ -189,10 +196,8 @@ export default function OnlineUsersPage() {
   ]);
 
   useEffect(() => {
-    // Simulate initial loading
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 1500);
+    // Avoid artificial long loading delay on page entry.
+    const timer = setTimeout(() => setIsLoading(false), 200);
 
     // Subscribe to WebSocket notifications
     const unsubscribe = websocketService.onNotification((data) => {
@@ -202,13 +207,9 @@ export default function OnlineUsersPage() {
       }
     });
 
-    // Initial connection
-    websocketService.connect();
-
     return () => {
       clearTimeout(timer);
       unsubscribe();
-      websocketService.disconnect();
     };
   }, [handleRefresh]);
 
@@ -342,6 +343,12 @@ export default function OnlineUsersPage() {
   const totalOnline = Number(metricsQuery.data?.totalOnlineUsers ?? onlineCount) || 0;
   const activeOnline = Number(metricsQuery.data?.totalActiveUsers ?? onlineCount) || 0;
   const idleOnline = Math.max(totalOnline - activeOnline, 0);
+  const secondsSinceRefresh = Math.max(0, Math.floor((nowTick - lastRefreshedAt.getTime()) / 1000));
+  const autoRefreshEverySec = 15;
+  const metricsUpdatedAt = Number(metricsQuery.dataUpdatedAt || 0);
+  const secondsSinceMetricsUpdate = metricsUpdatedAt > 0 ? Math.max(0, Math.floor((nowTick - metricsUpdatedAt) / 1000)) : 0;
+  const autoRefreshIn = metricsQuery.isFetching ? 0 : Math.max(0, autoRefreshEverySec - (secondsSinceMetricsUpdate % autoRefreshEverySec));
+  const isDataStale = secondsSinceRefresh > 60;
 
   return (
     <div className="w-full py-6 space-y-6">
@@ -351,10 +358,18 @@ export default function OnlineUsersPage() {
         icon={Users}
         actions={(
           <div className="flex gap-2 items-center">
+            <Badge className="h-7 text-[11px]" variant={isDataStale ? "destructive" : "secondary"}>
+              {isDataStale ? `Stale ${secondsSinceRefresh}s` : `Fresh ${secondsSinceRefresh}s`}
+            </Badge>
+            <Badge className="h-7 text-[11px]" variant="outline">
+              {metricsQuery.isFetching ? "Auto refresh..." : `Auto in ${autoRefreshIn}s`}
+            </Badge>
             <Button 
+              size="sm"
               variant="outline" 
               onClick={handleRefresh}
               disabled={isRefreshing}
+              className="h-8 px-2 text-xs"
             >
               <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
               {isRefreshing ? 'Refreshing...' : 'Refresh'}
@@ -384,8 +399,8 @@ export default function OnlineUsersPage() {
         <div className="lg:col-span-4">
           <StatCard
             label="Last refresh"
-            value={lastRefreshedAt.toLocaleTimeString()}
-            sublabel={metricsQuery.isFetching ? "Updating metrics…" : " "}
+            value={`${secondsSinceRefresh}s ago`}
+            sublabel={metricsQuery.isFetching ? "Updating metrics..." : `at ${lastRefreshedAt.toLocaleTimeString()}`}
             icon={<div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center"><Clock className="h-5 w-5 text-muted-foreground" /></div>}
           />
         </div>

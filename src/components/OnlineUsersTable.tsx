@@ -50,6 +50,7 @@ import TableRowActions from "@/components/TableRowActions";
 import QueryState from "@/components/QueryState";
 import ActionConfirmDialog from "@/components/ActionConfirmDialog";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import FilterPills from "@/components/FilterPills";
 
 import {
     Clock,
@@ -818,17 +819,17 @@ const OnlineUsersTable: React.FC<Props> = ({
                     <div className="flex items-center gap-3">
                         <div className="hidden lg:flex items-center gap-2">
                             <Label className="text-xs text-muted-foreground">Status</Label>
-                            <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as any)}>
-                                <SelectTrigger className="h-8 w-[140px]">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All</SelectItem>
-                                    <SelectItem value="active">Active</SelectItem>
-                                    <SelectItem value="idle">Idle</SelectItem>
-                                    <SelectItem value="disconnected">Disconnected</SelectItem>
-                                </SelectContent>
-                            </Select>
+                            <FilterPills
+                                value={statusFilter}
+                                onChange={(v) => setStatusFilter(v as StatusFilter)}
+                                options={[
+                                    { value: "all", label: "All" },
+                                    { value: "active", label: "Active" },
+                                    { value: "idle", label: "Idle" },
+                                    { value: "disconnected", label: "Disconnected" },
+                                ]}
+                                name="online-users-status-filter"
+                            />
                         </div>
 
                         <div className="hidden lg:flex items-center gap-2">

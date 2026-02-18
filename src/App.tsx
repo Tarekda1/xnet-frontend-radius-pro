@@ -31,6 +31,7 @@ const AuthUsers = React.lazy(() => import('./pages/AuthUsers'));
 const InvoicesComponent = React.lazy(() => import('./pages/Invoices'));
 const InvoiceUpload = React.lazy(() => import('./pages/InvoiceUpload'));
 const ExternalInvoicesComponent = React.lazy(() => import('./pages/Externalnvoices'));
+const ExternalInvoicesDunningComponent = React.lazy(() => import('./pages/ExternalInvoicesDunning'));
 const AnalyticsComponent = React.lazy(() => import('./pages/Analytics'));
 const AlertsComponent = React.lazy(() => import('./pages/Alerts'));
 const CollectionsComponent = React.lazy(() => import('./pages/Collections'));
@@ -130,6 +131,15 @@ const AppRoutes: React.FC = () => {
                     <FeatureRoute
                       enabled={isFeatureEnabled("external-invoices")}
                       element={<ProtectedRoute element={<ExternalInvoicesComponent />} />}
+                    />
+                  }
+                />
+                <Route
+                  path="/external-invoices/dunning"
+                  element={
+                    <FeatureRoute
+                      enabled={isFeatureEnabled("external-invoices")}
+                      element={<ProtectedRoute element={<ExternalInvoicesDunningComponent />} />}
                     />
                   }
                 />

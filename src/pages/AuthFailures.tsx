@@ -20,6 +20,7 @@ import { ALERT_METRICS } from "@/types/alerts";
 import TableRowActions, { type TableRowAction } from "@/components/TableRowActions";
 import SavedViews from "@/components/SavedViews";
 import type { SavedViewState } from "@/lib/savedViews";
+import FilterPills from "@/components/FilterPills";
 
 type AuthFailureRow = {
   id: number;
@@ -183,6 +184,36 @@ export default function AuthFailuresPage() {
     const next = new URLSearchParams(searchParams);
     next.set("from", from);
     next.set("to", to);
+    if (query.trim()) next.set("q", query.trim());
+    else next.delete("q");
+    if (status !== "all") next.set("status", status);
+    else next.delete("status");
+    next.set("page", "1");
+    next.set("pageSize", String(pageSize));
+    setSearchParams(next);
+  };
+
+  const applyQuickRange = (preset: "1h" | "24h" | "7d") => {
+    const now = new Date();
+    const fromDate = new Date(now);
+    if (preset === "1h") fromDate.setHours(now.getHours() - 1);
+    else if (preset === "24h") fromDate.setHours(now.getHours() - 24);
+    else fromDate.setDate(now.getDate() - 7);
+
+    const nextFrom = toDateTimeLocalValue(fromDate);
+    const nextTo = toDateTimeLocalValue(now);
+
+    setFrom(nextFrom);
+    setTo(nextTo);
+    setAppliedFrom(nextFrom);
+    setAppliedTo(nextTo);
+    setAppliedQuery(query.trim());
+    setAppliedStatus(status);
+    setPage(1);
+
+    const next = new URLSearchParams(searchParams);
+    next.set("from", nextFrom);
+    next.set("to", nextTo);
     if (query.trim()) next.set("q", query.trim());
     else next.delete("q");
     if (status !== "all") next.set("status", status);
@@ -371,20 +402,28 @@ export default function AuthFailuresPage() {
 
       <Card>
         <CardContent className="p-4">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <span className="text-sm text-muted-foreground">Quick ranges</span>
+            <Button variant="outline" size="sm" onClick={() => applyQuickRange("1h")}>Last Hour</Button>
+            <Button variant="outline" size="sm" onClick={() => applyQuickRange("24h")}>Last 24h</Button>
+            <Button variant="outline" size="sm" onClick={() => applyQuickRange("7d")}>Last 7d</Button>
+          </div>
           <div className="grid gap-3 md:grid-cols-4">
             <Input type="datetime-local" value={from} onChange={(e) => setFrom(e.target.value)} />
             <Input type="datetime-local" value={to} onChange={(e) => setTo(e.target.value)} />
-            <Select value={status} onValueChange={setStatus}>
-              <SelectTrigger>
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
-                <SelectItem value="rejected">Rejected</SelectItem>
-                <SelectItem value="timeout">Timeout</SelectItem>
-                <SelectItem value="error">Error</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="flex items-center">
+              <FilterPills
+                name="auth-failures-status-filter"
+                value={status}
+                onChange={setStatus}
+                options={[
+                  { value: "all", label: "All" },
+                  { value: "rejected", label: "Rejected" },
+                  { value: "timeout", label: "Timeout" },
+                  { value: "error", label: "Error" },
+                ]}
+              />
+            </div>
             <Input placeholder="Search user / NAS / MAC" value={query} onChange={(e) => setQuery(e.target.value)} />
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-2">

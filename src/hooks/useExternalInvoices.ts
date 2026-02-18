@@ -67,8 +67,11 @@ const fetchExternalInvoices = async (
     return response.data;
 };
 
-const setInvoiceAsPaid = async (invoiceId: number): Promise<ApiResponse<ExternalInvoice>> => {
-    const response = await apiClient.post(`/invoices/external/pay/${invoiceId}`);
+const setInvoiceAsPaid = async (
+    invoiceId: number,
+    paymentMethod: "cash" | "pos" | "transfer" | "other" | "gateway" = "cash"
+): Promise<ApiResponse<ExternalInvoice>> => {
+    const response = await apiClient.post(`/invoices/external/pay/${invoiceId}`, { paymentMethod });
     return response.data;
 };
 
@@ -189,7 +192,8 @@ export const useExternalInvoices = ({ initialPage, pageSize, search, from, to, s
     });
 
     const setInvoiceAsPaidMutation = useMutation({
-        mutationFn: (vars: { invoiceId: number; silent?: boolean }) => setInvoiceAsPaid(vars.invoiceId),
+        mutationFn: (vars: { invoiceId: number; paymentMethod?: "cash" | "pos" | "transfer" | "other" | "gateway"; silent?: boolean }) =>
+            setInvoiceAsPaid(vars.invoiceId, vars.paymentMethod ?? "cash"),
         onSuccess: (_data, vars) => {
             queryClient.invalidateQueries({ queryKey: ['externalInvoices'] });
             if (!vars?.silent) notify.success("Success", MESSAGES.invoices.external.paid);

@@ -42,6 +42,7 @@ const ExternalInvoiceDetailView: React.FC<Props> = ({
   const canSendReminder = isFeatureEnabled("whatsapp-remind");
 
   const [isEditing, setIsEditing] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "pos" | "transfer" | "other" | "gateway">("cash");
   const [editedInvoice, setEditedInvoice] = useState<ExternalInvoice>({
     ...invoice,
   });
@@ -148,7 +149,7 @@ const ExternalInvoiceDetailView: React.FC<Props> = ({
     if (!canPay) return;
     const prev = { status: editedInvoice.status, paidAt: (editedInvoice as any).paidAt } as any;
     setEditedInvoice((prevInv: any) => ({ ...prevInv, status: "paid", paidAt: new Date().toISOString() }));
-    setInvoiceAsPaidMutation.mutate({ invoiceId: editedInvoice.id, silent: true }, {
+    setInvoiceAsPaidMutation.mutate({ invoiceId: editedInvoice.id, paymentMethod, silent: true }, {
       onSuccess: () => {
         refetch();
         toast({
@@ -274,6 +275,21 @@ const ExternalInvoiceDetailView: React.FC<Props> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {renderField("status", (editedInvoice as any).status)}
                 {renderField("paidAt", (editedInvoice as any).paidAt)}
+              </div>
+              <div className="max-w-xs">
+                <Label className="block mb-2">Payment Method</Label>
+                <Select value={paymentMethod} onValueChange={(v: any) => setPaymentMethod(v)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select payment method" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">Cash</SelectItem>
+                    <SelectItem value="pos">POS</SelectItem>
+                    <SelectItem value="transfer">Transfer</SelectItem>
+                    <SelectItem value="gateway">Gateway</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="flex items-center gap-2">
                 {editedInvoice.status !== "paid" ? (

@@ -64,6 +64,9 @@ export type ExternalInvoice = {
     /** ISO date when invoice was paid (null if unpaid) */
     paidAt: string | null;
 
+    /** How payment was captured */
+    paymentMethod?: "cash" | "pos" | "transfer" | "other" | "gateway" | null;
+
     /** Upstream provider, if relevant */
     provider?: string;
 

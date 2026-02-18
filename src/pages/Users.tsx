@@ -25,7 +25,8 @@ import {
     Shield,
     TrendingUp,
     TrendingDown,
-    Trash2
+    Trash2,
+    X
 } from 'lucide-react';
 import SearchBar from '@/components/SearchBar';
 import UsersTable from '@/components/UsersTable';
@@ -62,6 +63,7 @@ import { useOnlineUsers } from "@/hooks/useOnlineUsers";
 import { usersPageInitialState, usersPageReducer } from "./usersPageReducer";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import SavedViews from "@/components/SavedViews";
+import FilterPills from "@/components/FilterPills";
 
 type AuditLogRow = {
     id: number;
@@ -379,16 +381,16 @@ const BulkActions = ({
                 </div>
                 
                 {selectedUsers.size > 0 && (
-                    <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:ml-4">
+                    <div className="flex w-full flex-wrap gap-1.5 sm:w-auto sm:ml-4">
                         <Button
                             variant="outline"
                             size="sm"
                             onClick={() => onBulkAction('suspend')}
                             disabled={!canManageUsers || isBulkActionInProgress}
                             title={!canManageUsers ? manageUsersReason : "Suspend selected users"}
-                            className="bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100 hover:border-orange-300 transition-all duration-300 hover:scale-105"
+                            className="h-8 px-2 text-xs bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100 hover:border-orange-300 transition-all duration-300"
                         >
-                            <UserX className="h-4 w-4 mr-1" />
+                            <UserX className="h-3.5 w-3.5 mr-1" />
                             Suspend
                         </Button>
                         <Button
@@ -397,18 +399,18 @@ const BulkActions = ({
                             onClick={() => onBulkAction('activate')}
                             disabled={!canManageUsers || isBulkActionInProgress}
                             title={!canManageUsers ? manageUsersReason : "Activate selected users"}
-                            className="bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100 hover:border-emerald-300 transition-all duration-300 hover:scale-105"
+                            className="h-8 px-2 text-xs bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100 hover:border-emerald-300 transition-all duration-300"
                         >
-                            <UserCheck className="h-4 w-4 mr-1" />
+                            <UserCheck className="h-3.5 w-3.5 mr-1" />
                             Activate
                         </Button>
                         <Button
                             variant="outline"
                             size="sm"
                             onClick={() => onBulkAction('export')}
-                            className="bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100 hover:border-blue-300 transition-all duration-300 hover:scale-105"
+                            className="h-8 px-2 text-xs bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100 hover:border-blue-300 transition-all duration-300"
                         >
-                            <Download className="h-4 w-4 mr-1" />
+                            <Download className="h-3.5 w-3.5 mr-1" />
                             Export
                         </Button>
                         <Button
@@ -417,15 +419,15 @@ const BulkActions = ({
                             onClick={() => onBulkAction('reset-mac')}
                             disabled={!canManageUsers || isBulkActionInProgress}
                             title={!canManageUsers ? manageUsersReason : "Reset MAC for selected users"}
-                            className="bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100 hover:border-purple-300 transition-all duration-300 hover:scale-105"
+                            className="h-8 px-2 text-xs bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100 hover:border-purple-300 transition-all duration-300"
                         >
-                            <RefreshCw className="h-4 w-4 mr-1" />
+                            <RefreshCw className="h-3.5 w-3.5 mr-1" />
                             Reset MAC
                         </Button>
 
-                        <div className="flex items-center gap-2 ml-2">
+                        <div className="flex items-center gap-1.5 ml-1">
                             <Select value={profileId} onValueChange={setProfileId}>
-                                <SelectTrigger className="w-full sm:w-[180px] h-9 bg-white/80">
+                                <SelectTrigger className="w-full sm:w-[160px] h-8 bg-white/80 text-xs">
                                     <SelectValue placeholder="Assign profile..." />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -442,7 +444,7 @@ const BulkActions = ({
                                 disabled={!profileId || !canManageUsers || isBulkActionInProgress}
                                 onClick={() => onBulkAction(`assign-profile:${profileId}`)}
                                 title={!canManageUsers ? manageUsersReason : !profileId ? "Select a profile first" : "Assign profile"}
-                                className="bg-white/80 border-gray-200 text-gray-800 hover:bg-white transition-all duration-300 hover:scale-105"
+                                className="h-8 px-2 text-xs bg-white/80 border-gray-200 text-gray-800 hover:bg-white transition-all duration-300"
                             >
                                 Assign
                             </Button>
@@ -453,9 +455,9 @@ const BulkActions = ({
                             onClick={() => onBulkAction('delete')}
                             disabled={!canManageUsers || isBulkActionInProgress}
                             title={!canManageUsers ? manageUsersReason : "Delete selected users"}
-                            className="bg-red-50 border-red-200 text-red-700 hover:bg-red-100 hover:border-red-300 transition-all duration-300 hover:scale-105"
+                            className="h-8 px-2 text-xs bg-red-50 border-red-200 text-red-700 hover:bg-red-100 hover:border-red-300 transition-all duration-300"
                         >
-                            <Trash2 className="h-4 w-4 mr-1" />
+                            <Trash2 className="h-3.5 w-3.5 mr-1" />
                             Delete
                         </Button>
                     </div>
@@ -723,6 +725,36 @@ const UsersPage: React.FC = () => {
                 dispatch({ type: "SET_STATUS_FILTER", payload: '' });
         }
     }, []);
+
+    const currentAttributeFilter = advancedFilters.quotaExceeded
+        ? "quota"
+        : advancedFilters.hasMacAddress
+            ? "mac"
+            : advancedFilters.hasContactInfo
+                ? "contact"
+                : "all";
+
+    const setAttributeFilter = useCallback((value: string) => {
+        dispatch({
+            type: "SET_ADVANCED_FILTERS",
+            payload: {
+                ...advancedFilters,
+                quotaExceeded: value === "quota",
+                hasMacAddress: value === "mac",
+                hasContactInfo: value === "contact",
+            },
+        });
+    }, [advancedFilters]);
+
+    const clearAllFilters = useCallback(() => {
+        setSearchQuery("");
+        dispatch({ type: "SET_STATUS_FILTER", payload: "" });
+        dispatch({
+            type: "SET_ADVANCED_FILTERS",
+            payload: { profile: "all", quotaExceeded: false, hasMacAddress: false, hasContactInfo: false },
+        });
+        setCurrentPage(1);
+    }, [setSearchQuery, setCurrentPage]);
 
     const handleAction = useCallback((action: string, user: User) => {
         const actions = {
@@ -1179,28 +1211,17 @@ const UsersPage: React.FC = () => {
                         </div>
                         <div className="flex items-center gap-2">
                             <Label className="hidden sm:inline text-sm font-medium">Filter:</Label>
-                            <Select
-                                value={
-                                    statusFilter === "online"
-                                        ? "online"
-                                        : statusFilter === "offline"
-                                          ? "offline"
-                                          : statusFilter === "suspended"
-                                            ? "suspended"
-                                            : "all"
-                                }
-                                onValueChange={(v) => handleQuickFilter(v)}
-                            >
-                                <SelectTrigger className="w-full sm:w-[160px]">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All</SelectItem>
-                                    <SelectItem value="online">Online</SelectItem>
-                                    <SelectItem value="offline">Offline</SelectItem>
-                                    <SelectItem value="suspended">Suspended</SelectItem>
-                                </SelectContent>
-                            </Select>
+                            <FilterPills
+                                name="users-quick-filter"
+                                value={["online", "offline", "suspended"].includes(statusFilter) ? statusFilter : "all"}
+                                onChange={handleQuickFilter}
+                                options={[
+                                    { value: "all", label: "All" },
+                                    { value: "online", label: "Online" },
+                                    { value: "offline", label: "Offline" },
+                                    { value: "suspended", label: "Suspended" },
+                                ]}
+                            />
                         </div>
                         <div className="hidden md:flex items-center gap-2">
                             <SavedViews
@@ -1250,19 +1271,19 @@ const UsersPage: React.FC = () => {
                 )}
                 actions={(
                     <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
-                        <Button variant="outline" onClick={handleRefresh} disabled={isRefreshing} className="w-full justify-center sm:w-auto">
+                        <Button size="sm" variant="outline" onClick={handleRefresh} disabled={isRefreshing} className="w-full justify-center sm:w-auto h-8 px-2 text-xs">
                             <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
                             {isRefreshing ? 'Refreshing...' : 'Refresh'}
                         </Button>
-                        <Button variant="outline" onClick={() => dispatch({ type: "SET_EXPORT_OPEN", payload: true })} className="w-full justify-center sm:w-auto">
+                        <Button size="sm" variant="outline" onClick={() => dispatch({ type: "SET_EXPORT_OPEN", payload: true })} className="w-full justify-center sm:w-auto h-8 px-2 text-xs">
                             <Download className="h-4 w-4 mr-2" />
                             Export Excel
                         </Button>
-                        <Button variant="outline" onClick={() => dispatch({ type: "SET_IMPORT_OPEN", payload: true })} disabled={!canManageUsers} title={!canManageUsers ? manageUsersReason : "Import CSV"} className="w-full justify-center sm:w-auto">
+                        <Button size="sm" variant="outline" onClick={() => dispatch({ type: "SET_IMPORT_OPEN", payload: true })} disabled={!canManageUsers} title={!canManageUsers ? manageUsersReason : "Import CSV"} className="w-full justify-center sm:w-auto h-8 px-2 text-xs">
                             <Upload className="h-4 w-4 mr-2" />
                             Import CSV
                         </Button>
-                        <Button onClick={handleAddUser} disabled={!canManageUsers} title={!canManageUsers ? manageUsersReason : "New User"} className="w-full justify-center sm:w-auto">
+                        <Button size="sm" onClick={handleAddUser} disabled={!canManageUsers} title={!canManageUsers ? manageUsersReason : "New User"} className="w-full justify-center sm:w-auto h-8 px-2 text-xs">
                             <Plus className="h-4 w-4 mr-2" />
                             New User
                         </Button>
@@ -1287,60 +1308,39 @@ const UsersPage: React.FC = () => {
                                     showButton
                                 />
                             </div>
-                            <div className="w-full">
-                            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:gap-3">
-                                <div className="col-span-2 flex items-center gap-2 text-xs text-muted-foreground">
+                            <div className="w-full space-y-2">
+                                <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                     <Filter className="h-4 w-4 text-gray-500" />
                                     <span className="font-medium">Filters</span>
                                 </div>
-                                <Select 
-                                    value={advancedFilters.profile} 
-                                    onValueChange={(value) => dispatch({ type: "SET_ADVANCED_FILTERS", payload: { ...advancedFilters, profile: value } })}
-                                >
-                                    <SelectTrigger className="col-span-2 w-full sm:w-[140px] bg-white/80 border-gray-200/60">
-                                        <SelectValue placeholder="Profile" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="all">All</SelectItem>
-                                        <SelectItem value="premium">Premium</SelectItem>
-                                        <SelectItem value="basic">Basic</SelectItem>
-                                        <SelectItem value="business">Business</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                                <div className="flex items-center gap-2">
-                                    <Checkbox
-                                        id="quotaExceeded"
-                                        checked={advancedFilters.quotaExceeded}
-                                        onCheckedChange={(checked) => 
-                                            dispatch({ type: "SET_ADVANCED_FILTERS", payload: { ...advancedFilters, quotaExceeded: !!checked } })
-                                        }
-                                        className="data-[state=checked]:bg-orange-600 data-[state=checked]:border-orange-600"
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-xs text-muted-foreground">Profile</span>
+                                    <FilterPills
+                                        name="users-profile-filter"
+                                        value={advancedFilters.profile}
+                                        onChange={(value) => dispatch({ type: "SET_ADVANCED_FILTERS", payload: { ...advancedFilters, profile: value } })}
+                                        options={[
+                                            { value: "all", label: "All" },
+                                            { value: "premium", label: "Premium" },
+                                            { value: "basic", label: "Basic" },
+                                            { value: "business", label: "Business" },
+                                        ]}
                                     />
-                                    <Label htmlFor="quotaExceeded" className="text-xs font-medium text-gray-700">Quota</Label>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                    <Checkbox
-                                        id="hasMacAddress"
-                                        checked={advancedFilters.hasMacAddress}
-                                        onCheckedChange={(checked) => 
-                                            dispatch({ type: "SET_ADVANCED_FILTERS", payload: { ...advancedFilters, hasMacAddress: !!checked } })
-                                        }
-                                        className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-xs text-muted-foreground">Type</span>
+                                    <FilterPills
+                                        name="users-attribute-filter"
+                                        value={currentAttributeFilter}
+                                        onChange={setAttributeFilter}
+                                        options={[
+                                            { value: "all", label: "All" },
+                                            { value: "quota", label: "Quota" },
+                                            { value: "mac", label: "MAC" },
+                                            { value: "contact", label: "Contact" },
+                                        ]}
                                     />
-                                    <Label htmlFor="hasMacAddress" className="text-xs font-medium text-gray-700">MAC</Label>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                    <Checkbox
-                                        id="hasContactInfo"
-                                        checked={advancedFilters.hasContactInfo}
-                                        onCheckedChange={(checked) => 
-                                            dispatch({ type: "SET_ADVANCED_FILTERS", payload: { ...advancedFilters, hasContactInfo: !!checked } })
-                                        }
-                                        className="data-[state=checked]:bg-purple-600 data-[state=checked]:border-purple-600"
-                                    />
-                                    <Label htmlFor="hasContactInfo" className="text-xs font-medium text-gray-700">Contact</Label>
-                                </div>
-                            </div>
                             </div>
                         </div>
 
@@ -1395,6 +1395,120 @@ const UsersPage: React.FC = () => {
                 </CardContent>
             </Card>
 
+            {(searchQuery ||
+                statusFilter ||
+                advancedFilters.profile !== "all" ||
+                advancedFilters.quotaExceeded ||
+                advancedFilters.hasMacAddress ||
+                advancedFilters.hasContactInfo) ? (
+                <Card className="border-blue-200 bg-blue-50/40">
+                    <CardContent className="p-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs font-medium text-muted-foreground">Active filters</span>
+                            {searchQuery ? (
+                                <Badge variant="secondary" className="gap-1">
+                                    Search: {searchQuery}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setSearchQuery("");
+                                            setCurrentPage(1);
+                                        }}
+                                        className="inline-flex items-center"
+                                        aria-label="Remove search filter"
+                                    >
+                                        <X className="h-3 w-3" />
+                                    </button>
+                                </Badge>
+                            ) : null}
+                            {statusFilter ? (
+                                <Badge variant="secondary" className="gap-1">
+                                    Status: {statusFilter}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            dispatch({ type: "SET_STATUS_FILTER", payload: "" });
+                                            setCurrentPage(1);
+                                        }}
+                                        className="inline-flex items-center"
+                                        aria-label="Remove status filter"
+                                    >
+                                        <X className="h-3 w-3" />
+                                    </button>
+                                </Badge>
+                            ) : null}
+                            {advancedFilters.profile !== "all" ? (
+                                <Badge variant="secondary" className="gap-1">
+                                    Profile: {advancedFilters.profile}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            dispatch({ type: "SET_ADVANCED_FILTERS", payload: { ...advancedFilters, profile: "all" } });
+                                            setCurrentPage(1);
+                                        }}
+                                        className="inline-flex items-center"
+                                        aria-label="Remove profile filter"
+                                    >
+                                        <X className="h-3 w-3" />
+                                    </button>
+                                </Badge>
+                            ) : null}
+                            {advancedFilters.quotaExceeded ? (
+                                <Badge variant="secondary" className="gap-1">
+                                    Quota exceeded
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            dispatch({ type: "SET_ADVANCED_FILTERS", payload: { ...advancedFilters, quotaExceeded: false } });
+                                            setCurrentPage(1);
+                                        }}
+                                        className="inline-flex items-center"
+                                        aria-label="Remove quota exceeded filter"
+                                    >
+                                        <X className="h-3 w-3" />
+                                    </button>
+                                </Badge>
+                            ) : null}
+                            {advancedFilters.hasMacAddress ? (
+                                <Badge variant="secondary" className="gap-1">
+                                    Has MAC
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            dispatch({ type: "SET_ADVANCED_FILTERS", payload: { ...advancedFilters, hasMacAddress: false } });
+                                            setCurrentPage(1);
+                                        }}
+                                        className="inline-flex items-center"
+                                        aria-label="Remove has MAC filter"
+                                    >
+                                        <X className="h-3 w-3" />
+                                    </button>
+                                </Badge>
+                            ) : null}
+                            {advancedFilters.hasContactInfo ? (
+                                <Badge variant="secondary" className="gap-1">
+                                    Has contact
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            dispatch({ type: "SET_ADVANCED_FILTERS", payload: { ...advancedFilters, hasContactInfo: false } });
+                                            setCurrentPage(1);
+                                        }}
+                                        className="inline-flex items-center"
+                                        aria-label="Remove has contact filter"
+                                    >
+                                        <X className="h-3 w-3" />
+                                    </button>
+                                </Badge>
+                            ) : null}
+                            <Button variant="outline" size="sm" onClick={clearAllFilters}>
+                                Clear all
+                            </Button>
+                        </div>
+                    </CardContent>
+                </Card>
+            ) : null}
+
             {/* Clear filters CTA when no results */}
             {filteredUsers.length === 0 && !isLoading && (searchQuery || statusFilter || advancedFilters.profile !== "all" || advancedFilters.quotaExceeded || advancedFilters.hasMacAddress || advancedFilters.hasContactInfo) && (
                 <Card className="border-amber-200 bg-amber-50/50">
@@ -1406,12 +1520,7 @@ const UsersPage: React.FC = () => {
                             variant="outline"
                             size="sm"
                             className="border-amber-300 text-amber-800 hover:bg-amber-100"
-                            onClick={() => {
-                                setSearchQuery("");
-                                dispatch({ type: "SET_STATUS_FILTER", payload: "" });
-                                dispatch({ type: "SET_ADVANCED_FILTERS", payload: { profile: "all", quotaExceeded: false, hasMacAddress: false, hasContactInfo: false } });
-                                setCurrentPage(1);
-                            }}
+                            onClick={clearAllFilters}
                         >
                             Clear all filters
                         </Button>
