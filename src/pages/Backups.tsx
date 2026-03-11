@@ -3,6 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Database, Download, RefreshCw, Server } from "lucide-react";
 
 import PageHeader from "@/components/PageHeader";
+import IconActionButton from "@/components/IconActionButton";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -135,10 +136,12 @@ const Backups: React.FC = () => {
         subtitle="Run and download database / MikroTik backups"
         icon={Database}
         actions={(
-          <Button variant="outline" onClick={() => backupsQuery.refetch()} disabled={backupsQuery.isLoading}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${backupsQuery.isFetching ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
+          <IconActionButton
+            label={backupsQuery.isFetching ? "Refreshing..." : "Refresh"}
+            onClick={() => backupsQuery.refetch()}
+            disabled={backupsQuery.isLoading}
+            icon={<RefreshCw className={`h-4 w-4 ${backupsQuery.isFetching ? "animate-spin" : ""}`} />}
+          />
         )}
       />
 

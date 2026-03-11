@@ -79,8 +79,13 @@ const formatBytes = (b: string) => {
         i = Math.floor(Math.log(n) / Math.log(k));
     return `${(n / k ** i).toFixed(2)} ${units[i]}`;
 };
-const pct = (u: string, t: string) =>
-    Math.min((parseInt(u, 10) / parseInt(t, 10)) * 100, 100);
+const pct = (u: string, t: string) => {
+    const used = parseInt(u, 10);
+    const total = parseInt(t, 10);
+    if (!Number.isFinite(total) || total <= 0) return 0;
+    if (!Number.isFinite(used) || used <= 0) return 0;
+    return Math.min((used / total) * 100, 100);
+};
 const formatUptime = (s: number) => {
     const d = Math.floor(s / 86400),
         h = Math.floor((s % 86400) / 3600),
@@ -101,6 +106,12 @@ const formatAgo = (iso: string | null | undefined) => {
     if (hr < 24) return `${hr}h ago`;
     const d = Math.floor(hr / 24);
     return `${d}d ago`;
+};
+const STALE_AFTER_SECONDS = 60;
+const isSessionStale = (iso: string | null | undefined) => {
+    const t = iso ? Date.parse(iso) : NaN;
+    if (!Number.isFinite(t)) return true;
+    return (Date.now() - t) / 1000 > STALE_AFTER_SECONDS;
 };
 const formatStatus = (s: string) =>
 ({ active: "Online", idle: "Idle", disconnected: "Disconnected" }[
@@ -163,18 +174,37 @@ const isFupUser = (u: OnlineUser) => {
     return byFlag || byProfile || dailyExceeded || monthlyExceeded;
 };
 
+type UsageTone = "normal" | "warning" | "high" | "critical";
+
+const getUsageTone = (value: number, isFup: boolean): UsageTone => {
+    if (isFup || value >= 100) return "critical";
+    if (value >= 90) return "high";
+    if (value >= 75) return "warning";
+    return "normal";
+};
+
 /* small reusable bar */
-const UsageBar: React.FC<{ used: string; total: string; type: 'daily' | 'monthly' }> = ({
+const UsageBar: React.FC<{ used: string; total: string; type: 'daily' | 'monthly'; isFup?: boolean }> = ({
     used,
     total,
-    type
+    type,
+    isFup = false,
 }) => {
     const value = pct(used, total);
+    const tone = getUsageTone(value, isFup);
     return (
         <TooltipProvider>
             <Tooltip>
                 <TooltipTrigger asChild>
-                    <div className="space-y-1.5">
+                    <div
+                        className={cn(
+                            "space-y-1.5 rounded-md border px-2 py-1.5",
+                            tone === "critical" && "bg-red-50/70 border-red-200/70",
+                            tone === "high" && "bg-orange-50/70 border-orange-200/70",
+                            tone === "warning" && "bg-amber-50/70 border-amber-200/70",
+                            tone === "normal" && "bg-emerald-50/60 border-emerald-200/60"
+                        )}
+                    >
                         <div className="flex items-center justify-between text-sm">
                             <span className="text-muted-foreground">
                                 {type === 'daily' ? 'Daily' : 'Monthly'} Usage
@@ -187,14 +217,27 @@ const UsageBar: React.FC<{ used: string; total: string; type: 'daily' | 'monthly
                             value={value}
                             className={cn(
                                 "h-2",
-                                value > 90
-                                    ? "bg-red-200"
-                                    : value > 75
-                                        ? "bg-yellow-200"
-                                        : "bg-gray-200"
+                                tone === "critical" && "bg-red-100",
+                                tone === "high" && "bg-orange-100",
+                                tone === "warning" && "bg-amber-100",
+                                tone === "normal" && "bg-emerald-100"
+                            )}
+                            indicatorClassName={cn(
+                                tone === "critical" && "bg-red-600",
+                                tone === "high" && "bg-orange-500",
+                                tone === "warning" && "bg-amber-500",
+                                tone === "normal" && "bg-emerald-500"
                             )}
                         />
-                        <div className="text-xs text-muted-foreground text-right">
+                        <div
+                            className={cn(
+                                "text-xs text-right",
+                                tone === "critical" && "text-red-700",
+                                tone === "high" && "text-orange-700",
+                                tone === "warning" && "text-amber-700",
+                                tone === "normal" && "text-emerald-700"
+                            )}
+                        >
                             {value.toFixed(1)}% used
                         </div>
                     </div>
@@ -239,8 +282,13 @@ const MobileCard: React.FC<{
     canDisconnect: boolean;
     manageReason: string;
     disconnectReason: string;
-}> = React.memo(({ user, onAction, canManageRadiusUsers, canResetDailyQuota, canResetMonthlyQuota, canDisconnect, manageReason, disconnectReason }) => (
-    <Card className="overflow-hidden border border-border/50 hover:border-border transition-colors">
+}> = React.memo(({ user, onAction, canManageRadiusUsers, canResetDailyQuota, canResetMonthlyQuota, canDisconnect, manageReason, disconnectReason }) => {
+    const fup = isFupUser(user);
+    return (
+    <Card className={cn(
+        "overflow-hidden border border-border/50 hover:border-border transition-colors",
+        fup && "border-red-200 bg-red-50/30"
+    )}>
         <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
                 <div className="space-y-1">
@@ -280,12 +328,14 @@ const MobileCard: React.FC<{
                     used={user.real_time_data_usage}
                     total={user.profile_daily_quota}
                     type="daily"
+                    isFup={fup}
                 />
             </div>
             <UsageBar
                 used={user.monthly_usage}
                 total={user.profile_monthly_quota}
                 type="monthly"
+                isFup={fup}
             />
         </CardContent>
         <CardFooter className="pt-2">
@@ -304,7 +354,8 @@ const MobileCard: React.FC<{
             </div>
         </CardFooter>
     </Card>
-));
+    );
+});
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ DESKTOP TABLE ROWS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 const TableRows = function TableRows({
@@ -328,14 +379,17 @@ const TableRows = function TableRows({
 }) {
     return (
         <>
-            {users.map((u) => (
+            {users.map((u) => {
+                const fup = isFupUser(u);
+                return (
                 <TableRow 
                     key={u.session_username} 
                     className={cn(
                         "hover:bg-muted/50 transition-colors",
                         u.session_status === 'active' && "bg-white/50",
                         u.session_status === 'idle' && "bg-yellow-50/50",
-                        isFupUser(u) && "bg-purple-50/50 border-l-4 border-l-purple-500"
+                        isSessionStale(u.session_last_update) && "bg-amber-50/50 border-l-4 border-l-amber-500",
+                        fup && "bg-red-50/60 border-l-4 border-l-red-500"
                     )}
                 >
                     <TableCell className={cn(profileClass(u.profile_profile_name), "p-4")}>
@@ -367,18 +421,18 @@ const TableRows = function TableRows({
                         <div className="flex items-center gap-1.5">
                             <HardDrive className={cn(
                                 "h-3.5 w-3.5",
-                                isFupUser(u) ? "text-purple-600" : "text-green-600"
+                                fup ? "text-red-600" : "text-green-600"
                             )} />
                             <Badge 
                                 variant="outline" 
                                 className={cn(
                                     "text-sm",
-                                    isFupUser(u) 
-                                        ? "bg-purple-100 text-purple-700 border-purple-200" 
+                                    fup
+                                        ? "bg-red-100 text-red-700 border-red-200" 
                                         : "bg-green-100 text-green-700 border-green-200"
                                 )}
                             >
-                                {isFupUser(u) ? "Yes" : "No"}
+                                {fup ? "Yes" : "No"}
                             </Badge>
                         </div>
                     </TableCell>
@@ -389,8 +443,13 @@ const TableRows = function TableRows({
                         </div>
                     </TableCell>
                     <TableCell>
-                        <div className="text-sm" title={u.session_last_update || ""}>
-                            {formatAgo(u.session_last_update)}
+                        <div className="text-sm space-y-1" title={u.session_last_update || ""}>
+                            <div>{formatAgo(u.session_last_update)}</div>
+                            {isSessionStale(u.session_last_update) ? (
+                                <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+                                    Stale
+                                </Badge>
+                            ) : null}
                         </div>
                     </TableCell>
                     <TableCell>
@@ -398,6 +457,7 @@ const TableRows = function TableRows({
                             used={u.real_time_data_usage}
                             total={u.profile_daily_quota}
                             type="daily"
+                            isFup={fup}
                         />
                     </TableCell>
                     <TableCell>
@@ -405,6 +465,7 @@ const TableRows = function TableRows({
                             used={u.monthly_usage}
                             total={u.profile_monthly_quota}
                             type="monthly"
+                            isFup={fup}
                         />
                     </TableCell>
                     <TableCell className="text-center">
@@ -421,7 +482,7 @@ const TableRows = function TableRows({
                         />
                     </TableCell>
                 </TableRow>
-            ))}
+            )})}
         </>
     );
 }
@@ -593,7 +654,7 @@ const OnlineUsersTable: React.FC<Props> = ({
     /* page-size select options */
     const pageSizes = useMemo(() => [10, 25, 50, 100], []);
 
-    type StatusFilter = "all" | "active" | "idle" | "disconnected";
+    type StatusFilter = "all" | "active" | "idle" | "disconnected" | "stale";
     type SortKey =
         | "lastUpdateDesc"
         | "usernameAsc"
@@ -621,10 +682,28 @@ const OnlineUsersTable: React.FC<Props> = ({
     // Search/refresh are controlled by the page component.
 
     const rows = data?.data ?? [];
+    const statusCounts = useMemo(() => {
+        return rows.reduce(
+            (acc, u) => {
+                const status = String(u.session_status || "").toLowerCase();
+                if (status === "active") acc.active += 1;
+                else if (status === "idle") acc.idle += 1;
+                else if (status === "disconnected") acc.disconnected += 1;
+                if (isSessionStale(u.session_last_update)) acc.stale += 1;
+                return acc;
+            },
+            { active: 0, idle: 0, disconnected: 0, stale: 0 }
+        );
+    }, [rows]);
+
     const displayRows = useMemo(() => {
         let out = rows;
         if (statusFilter !== "all") {
-            out = out.filter((u) => String(u.session_status || "").toLowerCase() === statusFilter);
+            if (statusFilter === "stale") {
+                out = out.filter((u) => isSessionStale(u.session_last_update));
+            } else {
+                out = out.filter((u) => String(u.session_status || "").toLowerCase() === statusFilter);
+            }
         }
         if (fupOnly) {
             out = out.filter((u) => isFupUser(u));
@@ -816,23 +895,24 @@ const OnlineUsersTable: React.FC<Props> = ({
                 label={`${displayRows.length} of ${data?.totalUsers ?? 0} sessions`}
                 className="mb-2 rounded-md border"
                 right={
-                    <div className="flex items-center gap-3">
-                        <div className="hidden lg:flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-3">
+                        <div className="flex items-center gap-2">
                             <Label className="text-xs text-muted-foreground">Status</Label>
                             <FilterPills
                                 value={statusFilter}
                                 onChange={(v) => setStatusFilter(v as StatusFilter)}
                                 options={[
-                                    { value: "all", label: "All" },
-                                    { value: "active", label: "Active" },
-                                    { value: "idle", label: "Idle" },
-                                    { value: "disconnected", label: "Disconnected" },
+                                    { value: "all", label: `All (${rows.length})` },
+                                    { value: "active", label: `Active (${statusCounts.active})` },
+                                    { value: "idle", label: `Idle (${statusCounts.idle})` },
+                                    { value: "disconnected", label: `Disconnected (${statusCounts.disconnected})` },
+                                    { value: "stale", label: `Stale (${statusCounts.stale})` },
                                 ]}
                                 name="online-users-status-filter"
                             />
                         </div>
 
-                        <div className="hidden lg:flex items-center gap-2">
+                        <div className="flex items-center gap-2">
                             <Label className="text-xs text-muted-foreground">Sort</Label>
                             <Select value={sortKey} onValueChange={(v) => setSortKey(v as any)}>
                                 <SelectTrigger className="h-8 w-[180px]">

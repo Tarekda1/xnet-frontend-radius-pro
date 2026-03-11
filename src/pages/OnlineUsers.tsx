@@ -5,6 +5,7 @@ import OnlineUsersTable from "../components/OnlineUsersTable";
 import { RefreshCw, Users, Clock, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import PageHeader from "@/components/PageHeader";
+import IconActionButton from "@/components/IconActionButton";
 import { websocketService } from "@/services/websocket";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -44,7 +45,7 @@ function StatCard(props: { label: string; value: string | number; sublabel?: str
 }
 
 export default function OnlineUsersPage() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const initialSearchFromUrl = useMemo(() => String(searchParams.get("search") ?? "").trim(), [searchParams]);
   const [search, setSearch] = useState(initialSearchFromUrl);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -102,6 +103,16 @@ export default function OnlineUsersPage() {
   useEffect(() => {
     setSearch(initialSearchFromUrl);
   }, [initialSearchFromUrl]);
+
+  useEffect(() => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      const trimmed = search.trim();
+      if (trimmed) next.set("search", trimmed);
+      else next.delete("search");
+      return next;
+    }, { replace: true } as any);
+  }, [search, setSearchParams]);
 
   const sessionsSavedViewsKeys = useMemo(() => ["search"], []);
   const getSessionsViewState = useCallback((): SavedViewState => ({ search: String(search ?? "") }), [search]);
@@ -364,16 +375,12 @@ export default function OnlineUsersPage() {
             <Badge className="h-7 text-[11px]" variant="outline">
               {metricsQuery.isFetching ? "Auto refresh..." : `Auto in ${autoRefreshIn}s`}
             </Badge>
-            <Button 
-              size="sm"
-              variant="outline" 
+            <IconActionButton
+              label={isRefreshing ? "Refreshing..." : "Refresh"}
               onClick={handleRefresh}
               disabled={isRefreshing}
-              className="h-8 px-2 text-xs"
-            >
-              <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-              {isRefreshing ? 'Refreshing...' : 'Refresh'}
-            </Button>
+              icon={<RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />}
+            />
           </div>
         )}
       />
@@ -414,6 +421,8 @@ export default function OnlineUsersPage() {
                   onSearch={handleSearch}
                   placeholder="Search by username or full name…"
                   className="w-full"
+                  autoSearch={false}
+                  showButton
                 />
               </div>
 

@@ -28,6 +28,7 @@ import { AlertDialog } from '@radix-ui/react-alert-dialog';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from "@/components/ui/skeleton";
 import PageHeader from "@/components/PageHeader";
+import IconActionButton from "@/components/IconActionButton";
 import { MESSAGES } from "@/constants/messages";
 import { notify } from "@/lib/notify";
 import TablePager from "@/components/TablePager";
@@ -246,14 +247,8 @@ const AuthUsersComponent: React.FC = () => {
                 icon={Users}
                 actions={(
                     <div className="flex gap-2">
-                        <Button variant="outline" onClick={handleRefresh}>
-                            <RefreshCw className="h-4 w-4 mr-2" />
-                            Refresh
-                        </Button>
-                        <Button onClick={handleAddUser}>
-                            <Plus className="h-4 w-4 mr-2" />
-                            Add User
-                        </Button>
+                        <IconActionButton label="Refresh" onClick={handleRefresh} icon={<RefreshCw className="h-4 w-4" />} />
+                        <IconActionButton label="Add User" onClick={handleAddUser} variant="default" icon={<Plus className="h-4 w-4" />} />
                     </div>
                 )}
             />

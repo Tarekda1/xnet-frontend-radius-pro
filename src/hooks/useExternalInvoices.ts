@@ -51,6 +51,8 @@ const fetchExternalInvoices = async (
     from?: string,
     to?: string,
     status?: string,
+    ageBucket?: string,
+    graceDays?: number,
     sortBy?: string,
     sortDir?: 'asc' | 'desc'
 ): Promise<ApiResponse<PaginatedResponse<ExternalInvoice>>> => {
@@ -61,6 +63,8 @@ const fetchExternalInvoices = async (
     if (from) params.set('from', from);
     if (to) params.set('to', to);
     if (status && status !== 'all') params.set('status', status);
+    if (ageBucket && ageBucket !== 'all') params.set('ageBucket', ageBucket);
+    if (typeof graceDays === 'number' && Number.isFinite(graceDays)) params.set('graceDays', String(Math.max(0, Math.round(graceDays))));
     if (sortBy) params.set('sortBy', sortBy);
     if (sortDir) params.set('sortDir', sortDir);
     const response = await apiClient.get(`/invoices/external?${params.toString()}`);
@@ -144,15 +148,26 @@ type UpdateInvoiceVariables = {
     invoiceData: Partial<ExternalInvoice>;
 };
 
-type Props = { search: string; initialPage: number; pageSize: number; from?: string; to?: string; status?: string; sortBy?: string; sortDir?: 'asc' | 'desc' };
+type Props = {
+    search: string;
+    initialPage: number;
+    pageSize: number;
+    from?: string;
+    to?: string;
+    status?: string;
+    ageBucket?: string;
+    graceDays?: number;
+    sortBy?: string;
+    sortDir?: 'asc' | 'desc';
+};
 
-export const useExternalInvoices = ({ initialPage, pageSize, search, from, to, status, sortBy, sortDir }: Props) => {
+export const useExternalInvoices = ({ initialPage, pageSize, search, from, to, status, ageBucket, graceDays, sortBy, sortDir }: Props) => {
     const [currentPage, setCurrentPage] = useState(initialPage);
     const queryClient = useQueryClient();
 
     const { data, error, isLoading, refetch } = useQuery<ApiResponse<PaginatedResponse<ExternalInvoice>>, Error>({
-        queryKey: ['externalInvoices', currentPage, pageSize, search, from, to, status, sortBy, sortDir],
-        queryFn: () => fetchExternalInvoices(currentPage, pageSize, search, from, to, status, sortBy, sortDir),
+        queryKey: ['externalInvoices', currentPage, pageSize, search, from, to, status, ageBucket, graceDays, sortBy, sortDir],
+        queryFn: () => fetchExternalInvoices(currentPage, pageSize, search, from, to, status, ageBucket, graceDays, sortBy, sortDir),
     });
 
     const updateInvoiceMutation = useMutation<ApiResponse<ExternalInvoice>, Error, UpdateInvoiceVariables>({

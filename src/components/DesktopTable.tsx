@@ -28,13 +28,16 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import {
+  AlertCircle,
   CalendarIcon,
+  BellRing,
   Check,
   CheckCircle,
   Clock,
   Copy,
   DollarSign,
   Eye,
+  Mail,
   SlidersHorizontal,
   Trash2,
   User,
@@ -46,6 +49,7 @@ import { notify } from "@/lib/notify";
 import TableToolbar from "@/components/TableToolbar";
 import TablePager from "@/components/TablePager";
 import TableRowActions from "@/components/TableRowActions";
+import { deriveWorkflowStage, getWorkflowLabel, getWorkflowTone, type ReconciliationFlag, type WorkflowStage } from "@/lib/externalInvoiceInsights";
 
 /* ── colour map for provider pills ───────────────────────── */
 const providerStyles = {
@@ -83,8 +87,13 @@ type Props = {
   /* actions */
   onSetPaid?: (id: number) => void;
   onUnpay?: (id: number) => void;
+  onSendReminder?: (id: number) => void;
+  onSetWorkflowStage?: (id: number, stage: WorkflowStage) => void;
   onViewInvoice: (inv: ExternalInvoice) => void;
   onDeleteInvoice: (id: number) => void;
+  reconciliationMode?: boolean;
+  reconciliationFlags?: Map<number, ReconciliationFlag[]>;
+  workflowGraceDays?: number;
   /* other */
   search: string;
   key?: number;
@@ -109,8 +118,13 @@ const DesktopTable: React.FC<Props> = ({
   onRowSelectionChange,
   onSetPaid,
   onUnpay,
+  onSendReminder,
+  onSetWorkflowStage,
   onViewInvoice,
   onDeleteInvoice,
+  reconciliationMode,
+  reconciliationFlags,
+  workflowGraceDays = 7,
 }) => {
   /* ── column definitions ─────────────────────── */
   const columns = React.useMemo<ColumnDef<ExternalInvoice>[]>(
@@ -195,12 +209,15 @@ const DesktopTable: React.FC<Props> = ({
       {
         accessorKey: "modifiedBy",
         header: ({ column }) => (
-          <HeaderButton column={column}>Modified By</HeaderButton>
+          <HeaderButton column={column}>Last Action</HeaderButton>
         ),
         cell: ({ row }) => (
-          <span className="font-medium">
-            {row.original.modifiedBy || 'N/A'}
-          </span>
+          <div className="flex flex-col">
+            <span className="font-medium">{row.original.modifiedBy || 'N/A'}</span>
+            <span className="text-xs text-muted-foreground">
+              {row.original.modifiedAt ? new Date(row.original.modifiedAt).toLocaleString() : "—"}
+            </span>
+          </div>
         ),
       },
       {
@@ -279,6 +296,27 @@ const DesktopTable: React.FC<Props> = ({
           return a - b;  // Sort by status priority
         },
       },
+      {
+        id: "workflow",
+        header: () => <span>Workflow</span>,
+        cell: ({ row }) => {
+          const stage = deriveWorkflowStage(row.original, workflowGraceDays);
+          const tone = getWorkflowTone(stage);
+          const className =
+            tone === "success"
+              ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+              : tone === "destructive"
+                ? "bg-red-100 text-red-700 border-red-200"
+                : tone === "warning"
+                  ? "bg-amber-100 text-amber-700 border-amber-200"
+                  : "bg-slate-100 text-slate-700 border-slate-200";
+          return (
+            <Badge variant="outline" className={className}>
+              {getWorkflowLabel(stage)}
+            </Badge>
+          );
+        },
+      },
       ];
 
       cols.push({
@@ -299,6 +337,15 @@ const DesktopTable: React.FC<Props> = ({
                   { label: "View details", icon: Eye, onClick: () => onViewInvoice(inv) },
                   { label: "Copy Invoice ID", icon: Copy, onClick: () => copyToClipboard(String(inv.id), "Invoice ID") },
                   { label: "Copy Username", icon: User, onClick: () => copyToClipboard(inv.username, "Username") },
+                  ...(inv.email
+                    ? [
+                        {
+                          label: "Send Email",
+                          icon: Mail,
+                          onClick: () => window.open(`mailto:${inv.email}?subject=Invoice%20%23${inv.id}%20Payment%20Reminder`, "_blank"),
+                        },
+                      ]
+                    : []),
                   ...(onSetPaid
                     ? [
                         {
@@ -306,6 +353,29 @@ const DesktopTable: React.FC<Props> = ({
                           icon: Check,
                           onClick: () => onSetPaid(inv.id),
                           disabled: inv.status === "paid",
+                        },
+                      ]
+                    : []),
+                  ...(onSendReminder
+                    ? [
+                        {
+                          label: "Send Reminder",
+                          icon: BellRing,
+                          onClick: () => onSendReminder(inv.id),
+                        },
+                      ]
+                    : []),
+                  ...(onSetWorkflowStage
+                    ? [
+                        {
+                          label: "Set Stage: Reminded",
+                          icon: Clock,
+                          onClick: () => onSetWorkflowStage(inv.id, "reminded"),
+                        },
+                        {
+                          label: "Set Stage: Escalated",
+                          icon: AlertCircle,
+                          onClick: () => onSetWorkflowStage(inv.id, "escalated"),
                         },
                       ]
                     : []),
@@ -330,7 +400,7 @@ const DesktopTable: React.FC<Props> = ({
 
       return cols;
     },
-    [onSetPaid, onUnpay, onViewInvoice, onDeleteInvoice]
+    [onSetPaid, onSendReminder, onSetWorkflowStage, onUnpay, onViewInvoice, onDeleteInvoice, workflowGraceDays]
   );
 
   /* ── table instance ───────────────────────── */
@@ -443,7 +513,8 @@ const DesktopTable: React.FC<Props> = ({
                   className={cn(
                     i % 2 ? "bg-gray-50" : "bg-white",
                     "hover:bg-gray-100",
-                    row.getIsSelected() && "bg-primary/50"
+                    row.getIsSelected() && "bg-primary/50",
+                    reconciliationMode && (reconciliationFlags?.get(row.original.id)?.length ?? 0) > 0 && "bg-amber-50/70"
                   )}
                   onDoubleClick={() => onViewInvoice(row.original)}
                 >

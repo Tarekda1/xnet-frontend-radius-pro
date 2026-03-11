@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, ArrowLeft } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
+import IconActionButton from "@/components/IconActionButton";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -103,12 +104,11 @@ export default function ExternalInvoicesDunningPage() {
         icon={AlertCircle}
         actions={(
           <div className="w-full sm:w-auto">
-            <Button asChild variant="outline" className="w-full sm:w-auto">
-              <Link to="/external-invoices">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to External Invoices
-              </Link>
-            </Button>
+            <IconActionButton
+              label="Back to External Invoices"
+              to="/external-invoices"
+              icon={<ArrowLeft className="h-4 w-4" />}
+            />
           </div>
         )}
       />

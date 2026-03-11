@@ -14,6 +14,7 @@ import ExternalInvoiceCard from "@/components/ExternalInvoiceCard";
 import ExternalInvoiceDetailView from "@/components/ExternalInvoiceDetailView";
 import DesktopTable from "@/components/DesktopTable"; // <— the TanStack table you wrote earlier
 import type { ExternalInvoice } from "@/types/api";
+import type { ReconciliationFlag, WorkflowStage } from "@/lib/externalInvoiceInsights";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "./ui/alert-dialog";
 import { useToast } from "@/components/ui/use-toast";
 import { ToastAction } from "@/components/ui/toast";
@@ -29,6 +30,13 @@ const initialPage = 1;
 
 type Props = { 
     search: string;
+    ageBucket?: string;
+    graceDays?: number;
+    reconciliationMode?: boolean;
+    reconciliationFlags?: Map<number, ReconciliationFlag[]>;
+    onSetWorkflowStage?: (id: number, stage: WorkflowStage) => void;
+    onSendReminderRequest?: (invoice: ExternalInvoice) => void;
+    rowPredicate?: (inv: ExternalInvoice) => boolean;
     key?: number;
     rowSelection?: RowSelectionState;
     onRowSelectionChange?: OnChangeFn<RowSelectionState>;
@@ -42,6 +50,13 @@ type Props = {
 
 const ExternalInvoicesTable: React.FC<Props> = ({ 
     search, 
+    ageBucket,
+    graceDays,
+    reconciliationMode = false,
+    reconciliationFlags,
+    onSetWorkflowStage,
+    onSendReminderRequest,
+    rowPredicate,
     rowSelection: externalRowSelection,
     onRowSelectionChange: externalOnRowSelectionChange,
     hideBulkActions = false,
@@ -70,6 +85,7 @@ const ExternalInvoicesTable: React.FC<Props> = ({
         unpayInvoiceMutation,
         updateInvoiceMutation,
         deleteInvoiceMutation,
+        sendReminderMutation,
     } = useExternalInvoices({
         initialPage,
         pageSize,
@@ -77,6 +93,8 @@ const ExternalInvoicesTable: React.FC<Props> = ({
         from: searchParams.get('from') || undefined,
         to: searchParams.get('to') || undefined,
         status: (searchParams.get('status') === 'overdue' ? 'unpaid' : searchParams.get('status')) || undefined,
+        ageBucket,
+        graceDays,
         sortBy: (searchParams.get('sort') || '').split(':')[0] || undefined,
         sortDir: ((searchParams.get('sort') || '').split(':')[1] as 'asc' | 'desc') || undefined,
     });
@@ -133,6 +151,16 @@ const ExternalInvoicesTable: React.FC<Props> = ({
         setInvoiceToDelete(id);
     };
 
+    const remind = (id: number) => {
+        const invoice = (data?.data.data ?? []).find((x) => x.id === id);
+        if (!invoice) return;
+        if (onSendReminderRequest) {
+            onSendReminderRequest(invoice);
+            return;
+        }
+        sendReminderMutation.mutate(id);
+    };
+
     const confirmDelete = () => {
         if (invoiceToDelete) {
             deleteInvoiceMutation.mutate(invoiceToDelete, {
@@ -184,6 +212,7 @@ const ExternalInvoicesTable: React.FC<Props> = ({
     const filteredRows = statusForFilter && statusForFilter !== 'all'
         ? rows.filter((r) => r.status === statusForFilter)
         : rows;
+    const visibleRows = rowPredicate ? filteredRows.filter((r) => rowPredicate(r)) : filteredRows;
     const pages = data?.data.totalPages ?? 1;
     const computedTotalItems = totalItems ?? data?.data.total ?? 0;
 
@@ -191,7 +220,7 @@ const ExternalInvoicesTable: React.FC<Props> = ({
         <QueryState
             isLoading={isLoading}
             error={error}
-            isEmpty={filteredRows.length === 0}
+            isEmpty={visibleRows.length === 0}
             onRetry={() => refetch()}
             loading={
                 <div className="rounded-md border min-w-[768px] overflow-hidden">
@@ -234,7 +263,7 @@ const ExternalInvoicesTable: React.FC<Props> = ({
             {/* desktop table */}
             <div className="hidden md:block rounded-md border">
                 <DesktopTable
-                    invoices={filteredRows}
+                    invoices={visibleRows}
                     currentPage={currentPage}
                     totalPages={pages}
                     pageSize={pageSize}
@@ -253,6 +282,11 @@ const ExternalInvoicesTable: React.FC<Props> = ({
                     onUnpay={canUnpay ? unpay : undefined}
                     onViewInvoice={setSelected}
                     onDeleteInvoice={handleDelete}
+                    onSendReminder={remind}
+                    onSetWorkflowStage={onSetWorkflowStage}
+                    reconciliationMode={reconciliationMode}
+                    reconciliationFlags={reconciliationFlags}
+                    workflowGraceDays={graceDays}
                     search={search}
                     hideBulkActions={hideBulkActions}
                 />
@@ -260,7 +294,7 @@ const ExternalInvoicesTable: React.FC<Props> = ({
 
             {/* mobile list */}
             <div className="md:hidden">
-                {filteredRows.map((inv) => (
+                {visibleRows.map((inv) => (
                     <ExternalInvoiceCard
                         key={inv.id}
                         invoice={inv}

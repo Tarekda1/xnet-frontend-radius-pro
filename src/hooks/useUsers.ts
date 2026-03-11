@@ -17,6 +17,7 @@ interface UserMutationData {
   password: string;
   profileId: number;
   accountStatus?: AccountStatus;
+  freenight?: boolean;
   quotaResetDay?: number;
   fullName?: string;
   address?: string;

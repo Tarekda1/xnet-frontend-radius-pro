@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { SetURLSearchParams } from "react-router-dom";
 import type { DateRange } from "react-day-picker";
 
@@ -25,6 +25,12 @@ export function useExternalInvoicesUrlSync({
   setPageSize,
   setCurrentPage,
 }: UseExternalInvoicesUrlSyncParams): { dateRange: DateRange | undefined } {
+  const latestStateRef = useRef({ searchTerm, pageSize });
+
+  useEffect(() => {
+    latestStateRef.current = { searchTerm, pageSize };
+  }, [searchTerm, pageSize]);
+
   const dateRange = useMemo(() => {
     const fromStr = searchParams.get("from");
     const toStr = searchParams.get("to");
@@ -70,11 +76,6 @@ export function useExternalInvoicesUrlSync({
         else next.delete("q");
         if (pageSize) next.set("ps", String(pageSize));
         else next.delete("ps");
-        if (searchTerm) {
-          next.delete("from");
-          next.delete("to");
-          next.delete("status");
-        }
         return next;
       },
       { replace: true } as any
@@ -99,7 +100,7 @@ export function useExternalInvoicesUrlSync({
   // Sync local state from URL (e.g. when applying saved views).
   useEffect(() => {
     const qParam = searchParams.get("q") ?? "";
-    if (qParam !== searchTerm) {
+    if (qParam !== latestStateRef.current.searchTerm) {
       setSearchInput(qParam);
       setSearchTerm(qParam);
       setCurrentPage(1);
@@ -107,12 +108,12 @@ export function useExternalInvoicesUrlSync({
     const psParam = searchParams.get("ps");
     if (psParam) {
       const psNum = parseInt(psParam, 10);
-      if (!Number.isNaN(psNum) && psNum !== pageSize) {
+      if (!Number.isNaN(psNum) && psNum !== latestStateRef.current.pageSize) {
         setPageSize(psNum);
         setCurrentPage(1);
       }
     }
-  }, [searchParams, searchTerm, pageSize, setCurrentPage, setPageSize, setSearchInput, setSearchTerm]);
+  }, [searchParams, setCurrentPage, setPageSize, setSearchInput, setSearchTerm]);
 
   return { dateRange };
 }

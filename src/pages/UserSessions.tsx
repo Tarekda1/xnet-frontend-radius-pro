@@ -1,7 +1,7 @@
 import UserSessionsPanel from "@/components/UserSessionsPanel";
 import { useNavigate, useParams } from "react-router-dom";
 import PageHeader from "@/components/PageHeader";
-import { Button } from "@/components/ui/button";
+import IconActionButton from "@/components/IconActionButton";
 import { ArrowLeft, History } from "lucide-react";
 
 export default function UserSessionsPage() {
@@ -17,10 +17,7 @@ export default function UserSessionsPage() {
         icon={History}
         actions={
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => nav(-1)}>
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back
-            </Button>
+            <IconActionButton label="Back" onClick={() => nav(-1)} icon={<ArrowLeft className="h-4 w-4" />} />
           </div>
         }
       />

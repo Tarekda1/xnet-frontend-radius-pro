@@ -270,6 +270,7 @@ const Sidebar: React.FC = () => {
       { label: 'Upload Invoice', icon: Upload, to: '/invoice-upload', perm: 'billing.invoiceUpload.create', navPerm: "ui.sidebar.billing.invoiceUpload.show", feature: "invoice-upload" },
       { label: 'External Invoices', to: '/external-invoices', icon: FileText, perm: 'billing.externalInvoices.view', navPerm: "ui.sidebar.billing.externalInvoices.show", feature: "external-invoices" },
       { label: 'Dunning Center', to: '/external-invoices/dunning', icon: AlertCircle, perm: 'billing.externalInvoices.view', navPerm: "ui.sidebar.billing.externalInvoices.show", feature: "external-invoices" },
+      { label: 'Reconciliation', to: '/external-invoices/reconciliation', icon: Search, perm: 'billing.externalInvoices.view', navPerm: "ui.sidebar.billing.externalInvoices.show", feature: "external-invoices" },
       { label: 'Collections', to: '/collections', icon: DollarSign, perm: 'billing.collections.view', navPerm: "ui.sidebar.billing.collections.show", feature: "collections" },
       {
         label: 'Cable Vision',

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import PageHeader from "@/components/PageHeader";
+import IconActionButton from "@/components/IconActionButton";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -152,14 +153,16 @@ const Analytics: React.FC = () => {
         )}
         actions={(
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handleRefresh} disabled={chartLoading || metricsLoading}>
-              <RefreshCw className={`mr-2 h-4 w-4 ${(chartLoading || metricsLoading) ? 'animate-spin' : ''}`} />
-              Refresh
-            </Button>
-            <Button variant="outline" size="sm">
-              <Download className="mr-2 h-4 w-4" />
-              Export
-            </Button>
+            <IconActionButton
+              label="Refresh"
+              onClick={handleRefresh}
+              disabled={chartLoading || metricsLoading}
+              icon={<RefreshCw className={`h-4 w-4 ${(chartLoading || metricsLoading) ? 'animate-spin' : ''}`} />}
+            />
+            <IconActionButton
+              label="Export"
+              icon={<Download className="h-4 w-4" />}
+            />
           </div>
         )}
       />

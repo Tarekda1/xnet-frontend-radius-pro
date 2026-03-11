@@ -3,6 +3,7 @@ import { useNavigate, useParams, Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import PageHeader from "@/components/PageHeader";
+import IconActionButton from "@/components/IconActionButton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -250,14 +251,16 @@ export default function UserDetailPage() {
         icon={Settings}
         actions={
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => nav("/users/list")}>
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Users
-            </Button>
-            <Button variant="outline" onClick={() => nav(`/users/${encodeURIComponent(username)}/sessions`)}>
-              <History className="h-4 w-4 mr-2" />
-              Full Sessions
-            </Button>
+            <IconActionButton
+              label="Back to Users"
+              onClick={() => nav("/users/list")}
+              icon={<ArrowLeft className="h-4 w-4" />}
+            />
+            <IconActionButton
+              label="Full Sessions"
+              onClick={() => nav(`/users/${encodeURIComponent(username)}/sessions`)}
+              icon={<History className="h-4 w-4" />}
+            />
           </div>
         }
       />

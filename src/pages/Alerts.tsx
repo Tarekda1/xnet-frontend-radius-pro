@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useQuery } from "@tanstack/react-query";
 import PageHeader from "@/components/PageHeader";
+import IconActionButton from "@/components/IconActionButton";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -244,26 +245,26 @@ const Alerts: React.FC = () => {
         icon={AlertTriangle}
         actions={(
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
+            <IconActionButton
+              label="Refresh"
               onClick={() => {
                 refetchRules?.();
                 refetchAlerts?.();
                 refetchSettings?.();
               }}
-            >
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Refresh
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setIsSettingsDialogOpen(true)}>
-              <Settings className="mr-2 h-4 w-4" />
-              Settings
-            </Button>
-            <Button onClick={() => setIsCreateDialogOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              Create Alert Rule
-            </Button>
+              icon={<RefreshCw className="h-4 w-4" />}
+            />
+            <IconActionButton
+              label="Settings"
+              onClick={() => setIsSettingsDialogOpen(true)}
+              icon={<Settings className="h-4 w-4" />}
+            />
+            <IconActionButton
+              label="Create alert rule"
+              onClick={() => setIsCreateDialogOpen(true)}
+              variant="default"
+              icon={<Plus className="h-4 w-4" />}
+            />
           </div>
         )}
       />

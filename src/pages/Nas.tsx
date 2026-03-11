@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Nas } from '../types/api'; // Make sure to define this type
 import { ArrowUpDown, Edit, MoreHorizontal, Plus, RefreshCw, Server } from 'lucide-react';
 import PageHeader from "@/components/PageHeader";
+import IconActionButton from "@/components/IconActionButton";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -204,15 +205,18 @@ const NasComponent: React.FC = () => {
                     </div>
                 )}
                 actions={(
-                    <div className="flex space-x-2">
-                        <Button onClick={handleRefresh} variant="outline">
-                            <RefreshCw className="h-4 w-4 mr-2" />
-                            Refresh
-                        </Button>
-                        <Button onClick={handleAddNas}>
-                            <Plus className="h-4 w-4 mr-2" />
-                            Add NAS
-                        </Button>
+                    <div className="flex gap-2">
+                        <IconActionButton
+                            label="Refresh"
+                            onClick={handleRefresh}
+                            icon={<RefreshCw className="h-4 w-4" />}
+                        />
+                        <IconActionButton
+                            label="Add NAS"
+                            onClick={handleAddNas}
+                            variant="default"
+                            icon={<Plus className="h-4 w-4" />}
+                        />
                     </div>
                 )}
             />

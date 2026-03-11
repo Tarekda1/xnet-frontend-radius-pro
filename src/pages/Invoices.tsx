@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import PageHeader from "@/components/PageHeader";
+import IconActionButton from "@/components/IconActionButton";
 import {
     Table,
     TableBody,
@@ -635,8 +636,8 @@ const InvoicesComponent: React.FC = () => {
                                     onDateRangeChange={handleDateRangeChange}
                                     className="w-full md:w-auto"
                                 />
-                                <Button
-                                    variant="outline"
+                                <IconActionButton
+                                    label="Clear dates"
                                     onClick={() => {
                                         setDateRange(undefined);
                                         let searchParams = new URLSearchParams(searchQuery);
@@ -645,46 +646,40 @@ const InvoicesComponent: React.FC = () => {
                                         setSearchQuery(searchParams.toString());
                                         setCurrentPage(1);
                                     }}
-                                    className="w-full md:w-auto"
-                                    type="button"
-                                >
-                                    <CalendarIcon className="h-4 w-4 mr-2" />
-                                    Clear Dates
-                                </Button>
-                                <Button
-                                    variant="outline"
+                                    icon={<CalendarIcon className="h-4 w-4" />}
+                                />
+                                <IconActionButton
+                                    label="Clear"
                                     onClick={handleClearSearch}
-                                    className="w-full md:w-auto"
-                                    type="button"
-                                >
-                                    <X className="h-4 w-4 mr-2" />
-                                    Clear
-                                </Button>
+                                    icon={<X className="h-4 w-4" />}
+                                />
                             </form>
                         }
                         right={
                             <>
-                                <Button
+                                <IconActionButton
+                                    label="Set selected as paid"
                                     onClick={handleBulkSetPaid}
-                                    variant="outline"
                                     disabled={Object.keys(rowSelection).length === 0}
-                                    className="w-full md:w-auto"
-                                >
-                                    <Check className="h-4 w-4 mr-2" />
-                                    Set Selected as Paid
-                                </Button>
-                                <Button variant="outline" onClick={handleRefresh} className="w-full md:w-auto">
-                                    <RefreshCw className="h-4 w-4 mr-2" />
-                                    Refresh
-                                </Button>
-                                <Button variant="outline" onClick={handleGenerateInvoices} disabled={isLoading} className="w-full md:w-auto">
-                                    <PlusCircle className="h-4 w-4 mr-2" />
-                                    Generate Invoices
-                                </Button>
-                                <Button variant="outline" onClick={handleExportInvoices} disabled={!data?.data.data.length} className="w-full md:w-auto">
-                                    <Download className="h-4 w-4 mr-2" />
-                                    Export Invoices
-                                </Button>
+                                    icon={<Check className="h-4 w-4" />}
+                                />
+                                <IconActionButton
+                                    label="Refresh"
+                                    onClick={handleRefresh}
+                                    icon={<RefreshCw className="h-4 w-4" />}
+                                />
+                                <IconActionButton
+                                    label="Generate invoices"
+                                    onClick={handleGenerateInvoices}
+                                    disabled={isLoading}
+                                    icon={<PlusCircle className="h-4 w-4" />}
+                                />
+                                <IconActionButton
+                                    label="Export invoices"
+                                    onClick={handleExportInvoices}
+                                    disabled={!data?.data.data.length}
+                                    icon={<Download className="h-4 w-4" />}
+                                />
                             </>
                         }
                     />

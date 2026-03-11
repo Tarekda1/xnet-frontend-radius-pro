@@ -67,7 +67,7 @@ const PageHeader: React.FC<PageHeaderProps> = ({
             <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:items-center md:justify-end">
               {rightContent ? <div className="w-full md:w-auto">{rightContent}</div> : null}
               {actions ? (
-                <div className="flex w-full flex-wrap gap-2 md:w-auto md:justify-end [&_button]:h-9 [&_button]:px-3 [&_button]:text-sm">
+                <div className="flex w-full flex-wrap gap-2 md:w-auto md:justify-end">
                   {actions}
                 </div>
               ) : null}

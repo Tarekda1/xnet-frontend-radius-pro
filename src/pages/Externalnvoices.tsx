@@ -1,32 +1,32 @@
-import React, { useCallback, useEffect, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import SearchBar from "@/components/SearchBar";
 import ExternalInvoicesTable from "@/components/ExternalInvoicesTable";
+import IconActionButton from "@/components/IconActionButton";
 import { 
   Plus, 
   FileText, 
-  TrendingUp, 
   DollarSign, 
   RefreshCw,
   CheckCircle,
+  BellRing,
   Calendar,
+  ChevronDown,
+  ChevronUp,
   AlertCircle,
+  AlertTriangle,
   Clock as ClockIcon,
   FileCheck,
   Download,
-  Loader2
+  Loader2,
+  Trash2,
+  X
 } from "lucide-react";
 import { useExternalInvoices } from "@/hooks/useExternalInvoices";
 import { Link, useSearchParams } from "react-router-dom";
-/* removed DateRange import - not used after quick preset approach */
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import PageHeader from "@/components/PageHeader";
 import { DateRangePicker } from "@/components/ui/DateRangePicker";
 import { Input } from "@/components/ui/input";
@@ -42,60 +42,43 @@ import { Skeleton } from "@/components/ui/skeleton";
 import FilterPills from "@/components/FilterPills";
 import { useExternalInvoicesPageState } from "./useExternalInvoicesPageState";
 import { useExternalInvoicesUrlSync } from "./useExternalInvoicesUrlSync";
+import { fetchExternalAgingSummary, setExternalInvoiceWorkflow } from "@/api/invoices";
+import { buildReminderMessagePreview, getReconciliationFlagsMap, type ReconciliationFlag, type WorkflowStage } from "@/lib/externalInvoiceInsights";
+import type { ExternalInvoice } from "@/types/api";
 
-const MetricItemSkeleton = () => (
-  <div className="flex flex-col items-center">
-    <Skeleton className="h-3 w-12 mb-1.5" />
-    <Skeleton className="h-5 w-14" />
+const WidgetSkeleton = () => (
+  <div className="rounded-lg border p-3 space-y-1.5">
+    <Skeleton className="h-3 w-20" />
+    <Skeleton className="h-5 w-16" />
   </div>
 );
 
-const MetricItem = ({ 
-  label, 
-  value, 
+const CompactWidget = ({
+  title,
+  value,
+  subtitle,
   icon: Icon, 
-  color, 
-  onClick, 
-  showDot = false,
-  tooltipText,
-  suffix = ''
-}: { 
-  label: string;
+  colorClass,
+  to,
+}: {
+  title: string;
   value: number | string;
+  subtitle?: string;
   icon: React.ElementType;
-  color: string;
-  onClick?: () => void;
-  showDot?: boolean;
-  tooltipText: string;
-  suffix?: string;
+  colorClass: string;
+  to: string;
 }) => (
-  <TooltipProvider>
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <div 
-          className={`flex flex-col items-center ${onClick ? 'cursor-pointer hover:bg-accent/50 rounded-lg px-2 py-1 transition-colors' : ''}`}
-          onClick={onClick}
-        >
-          <span className="text-xs text-muted-foreground">{label}</span>
-          <div className="flex items-center gap-1.5">
-            <div className="relative">
-              <Icon className={`h-4 w-4 ${color}`} />
-              {showDot && (
-                <span className={`absolute -top-1 -right-1 h-2 w-2 ${color.replace('text', 'bg')} rounded-full`} />
-              )}
-            </div>
-            <span className={`text-lg font-semibold ${color}`}>{value}{suffix}</span>
-          </div>
-        </div>
-      </TooltipTrigger>
-      <TooltipContent>
-        <p>{tooltipText}</p>
-      </TooltipContent>
-    </Tooltip>
-  </TooltipProvider>
+  <Link to={to} className="group block rounded-lg border p-3 transition-colors hover:bg-accent/40">
+    <div className="flex items-center justify-between">
+      <span className="text-[11px] sm:text-xs text-muted-foreground">{title}</span>
+      <Icon className={`h-4 w-4 ${colorClass}`} />
+    </div>
+    <div className={`mt-1 text-base sm:text-lg font-semibold ${colorClass}`}>{value}</div>
+    {subtitle ? <div className="text-[11px] text-muted-foreground">{subtitle}</div> : null}
+  </Link>
 );
 
-export default function ExternalInvoicesPage() {
+export function ExternalInvoicesPageImpl({ mode = "standard" }: { mode?: "standard" | "reconciliation" }) {
   const { user } = useAuth();
   const canViewTotals = can(user, 'billing.externalInvoices.viewTotals');
   const canPayExternalInvoices = can(user, 'billing.externalInvoices.pay');
@@ -129,7 +112,28 @@ export default function ExternalInvoicesPage() {
     setRowSelection,
   } = useExternalInvoicesPageState(defaultPageSize);
   const [searchParams, setSearchParams] = useSearchParams();
-  const savedViewsKeys = ["q", "from", "to", "status", "ps", "sort"];
+  const savedViewsKeys = useMemo(
+    () => (mode === "reconciliation" ? ["q", "from", "to", "status", "age", "ps", "sort"] : ["q", "from", "to", "status", "ps", "sort"]),
+    [mode]
+  );
+  const [isReminderDialogOpen, setIsReminderDialogOpen] = useState(false);
+  const [reminderTargets, setReminderTargets] = useState<ExternalInvoice[]>([]);
+  const isReconciliationMode = mode === "reconciliation";
+  const [reconciliationFilter, setReconciliationFilter] = useState<"all" | ReconciliationFlag>("all");
+  const metricsCollapsedStorageKey = "ui.externalInvoices.metricsCollapsed";
+  const [metricsCollapsed, setMetricsCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(metricsCollapsedStorageKey) === "1";
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(metricsCollapsedStorageKey, metricsCollapsed ? "1" : "0");
+    } catch {}
+  }, [metricsCollapsed]);
+  const graceDays = 7;
   const { dateRange } = useExternalInvoicesUrlSync({
     defaultPageSize,
     searchParams,
@@ -150,6 +154,7 @@ export default function ExternalInvoicesPage() {
 
   // Map 'overdue' to 'unpaid' for API (backend stores paid/unpaid/pending only)
   const apiStatus = searchParams.get('status') === 'overdue' ? 'unpaid' : (searchParams.get('status') || undefined);
+  const ageBucket = searchParams.get('age') || undefined;
 
   // Get quick stats for header
   const { data: statsData, isLoading: isStatsLoading, refetch, setInvoiceAsPaidMutation, bulkDeleteInvoicesMutation } = useExternalInvoices({ 
@@ -159,6 +164,8 @@ export default function ExternalInvoicesPage() {
     from: searchParams.get('from') || undefined,
     to: searchParams.get('to') || undefined,
     status: apiStatus,
+    ageBucket,
+    graceDays,
   });
 
   // Get the full data for table with pagination
@@ -169,32 +176,106 @@ export default function ExternalInvoicesPage() {
     from: searchParams.get('from') || undefined,
     to: searchParams.get('to') || undefined,
     status: apiStatus,
+    ageBucket,
+    graceDays,
+  });
+
+  const reconciliationDataQuery = useQuery({
+    queryKey: [
+      "externalInvoicesReconciliationDataset",
+      isReconciliationMode,
+      searchTerm,
+      searchParams.get("from"),
+      searchParams.get("to"),
+      apiStatus,
+      ageBucket,
+      graceDays,
+    ],
+    enabled: isReconciliationMode,
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      params.set("page", "1");
+      params.set("limit", "500");
+      if (searchTerm) params.set("search", searchTerm);
+      const from = searchParams.get("from");
+      const to = searchParams.get("to");
+      if (from) params.set("from", from);
+      if (to) params.set("to", to);
+      if (apiStatus && apiStatus !== "all") params.set("status", apiStatus);
+      if (ageBucket && ageBucket !== "all") params.set("ageBucket", ageBucket);
+      params.set("graceDays", String(graceDays));
+
+      const first = await apiClient.get(`/invoices/external?${params.toString()}`);
+      const payload = first?.data?.data ?? first?.data;
+      const rows: ExternalInvoice[] = [...(payload?.data ?? [])];
+      const totalPages = payload?.totalPages ?? 1;
+      for (let p = 2; p <= totalPages; p++) {
+        params.set("page", String(p));
+        const next = await apiClient.get(`/invoices/external?${params.toString()}`);
+        const nextPayload = next?.data?.data ?? next?.data;
+        if (nextPayload?.data?.length) rows.push(...nextPayload.data);
+      }
+      return rows;
+    },
+  });
+
+  const agingSummaryQuery = useQuery({
+    queryKey: [
+      "externalAgingSummary",
+      searchTerm,
+      searchParams.get("from"),
+      searchParams.get("to"),
+      apiStatus,
+      graceDays,
+    ],
+    queryFn: () =>
+      fetchExternalAgingSummary({
+        search: searchTerm || undefined,
+        from: searchParams.get("from") || undefined,
+        to: searchParams.get("to") || undefined,
+        status: apiStatus,
+        graceDays,
+      }),
+  });
+
+  const sendRemindersMutation = useMutation({
+    mutationFn: async (ids: number[]) => {
+      const results = await Promise.allSettled(ids.map((id) => apiClient.post(`/invoices/external/${id}/remind`)));
+      const sent = results.filter((r) => r.status === "fulfilled").length;
+      const failed = results.length - sent;
+      return { sent, failed };
+    },
+    onSuccess: (result) => {
+      if (result.failed > 0) {
+        notify.error("Reminder partial", `Sent ${result.sent}, failed ${result.failed}.`);
+      } else {
+        notify.success("Reminder sent", `Sent ${result.sent} reminder(s).`);
+      }
+      refetch();
+    },
+    onError: (e: unknown) => {
+      notify.error("Reminder failed", e instanceof Error ? e.message : "Could not send reminder.");
+    },
+  });
+
+  const workflowMutation = useMutation({
+    mutationFn: async (payload: { invoiceId: number; stage: WorkflowStage; promiseDate?: string | null }) =>
+      setExternalInvoiceWorkflow(payload.invoiceId, { stage: payload.stage, promiseDate: payload.promiseDate }),
+    onSuccess: () => {
+      notify.success("Workflow updated", "Collection workflow stage saved.");
+      incrementRefreshKey();
+      refetch();
+    },
+    onError: (e: unknown) => {
+      notify.error("Workflow failed", e instanceof Error ? e.message : "Could not update workflow.");
+    },
   });
 
   const handleSearch = useCallback((term: string) => {
     setSearchInput(term);
-    // Clear URL-driven filters only when actually searching (non-empty term).
-    // SearchBar will also call onSearch("") when the input is cleared or when
-    // other controls programmatically clear the search input; we should NOT
-    // wipe status/date filters in that case.
-    if (term.trim()) {
-      setSearchParams(prev => {
-        const next = new URLSearchParams(prev);
-        next.delete('from');
-        next.delete('to');
-        next.delete('status');
-        return next;
-      }, { replace: true } as any);
-    }
-  }, [setSearchInput, setSearchParams]);
-
-  useEffect(() => {
-    const id = setTimeout(() => {
-      setSearchTerm(searchInput);
-      setCurrentPage(1);
-    }, 300);
-    return () => clearTimeout(id);
-  }, [searchInput]);
+    setSearchTerm(term);
+    setCurrentPage(1);
+  }, [setSearchInput, setSearchTerm, setCurrentPage]);
 
   // date range handler removed (using quick presets encoded in search string)
 
@@ -230,13 +311,22 @@ export default function ExternalInvoicesPage() {
     clearSearchFields();
     switch (filter) {
       case 'pending':
-        updateSearchParams((next) => next.set("status", "pending"));
+        updateSearchParams((next) => {
+          next.set("status", "pending");
+          next.delete("age");
+        });
         break;
       case 'paid':
-        updateSearchParams((next) => next.set("status", "paid"));
+        updateSearchParams((next) => {
+          next.set("status", "paid");
+          next.delete("age");
+        });
         break;
       case 'overdue':
-        updateSearchParams((next) => next.set("status", "overdue"));
+        updateSearchParams((next) => {
+          next.set("status", "overdue");
+          if (!next.get("age")) next.set("age", "1_30");
+        });
         break;
       case 'today':
         updateSearchParams((next) => {
@@ -256,16 +346,72 @@ export default function ExternalInvoicesPage() {
           next.delete("from");
           next.delete("to");
           next.delete("status");
+          next.delete("age");
         });
     }
     setCurrentPage(1); // Reset to first page on filter change
   }, [clearSearchFields, setCurrentPage, updateSearchParams]);
+
+  const handleAgeBucketFilter = useCallback((bucket: string) => {
+    updateSearchParams((next) => {
+      if (!bucket || bucket === "all") next.delete("age");
+      else next.set("age", bucket);
+      if (!next.get("status")) next.set("status", "overdue");
+    });
+    setCurrentPage(1);
+  }, [setCurrentPage, updateSearchParams]);
 
   const selectedIds = useMemo(() => {
     return Object.keys(rowSelection)
       .map((k) => parseInt(k, 10))
       .filter((n) => Number.isFinite(n) && n > 0);
   }, [rowSelection]);
+
+  const selectedInvoices = useMemo(() => {
+    const rows = (allData?.data?.data ?? []) as ExternalInvoice[];
+    const idSet = new Set(selectedIds);
+    return rows.filter((inv) => idSet.has(inv.id));
+  }, [allData?.data?.data, selectedIds]);
+
+  const openReminderPreview = useCallback((targets: ExternalInvoice[]) => {
+    if (!targets.length) {
+      notify.error("No selection", "Select at least one invoice.");
+      return;
+    }
+    setReminderTargets(targets);
+    setIsReminderDialogOpen(true);
+  }, []);
+
+  const handleSendRemindersConfirm = useCallback(async () => {
+    const ids = reminderTargets.map((x) => x.id);
+    if (!ids.length) return;
+    setIsReminderDialogOpen(false);
+    await sendRemindersMutation.mutateAsync(ids);
+  }, [reminderTargets, sendRemindersMutation]);
+
+  const handleSetWorkflowStage = useCallback((invoiceId: number, stage: WorkflowStage) => {
+    workflowMutation.mutate({ invoiceId, stage });
+  }, [workflowMutation]);
+
+  const handleSetPromiseDate = useCallback((date: string) => {
+    if (!date || selectedIds.length === 0) return;
+    selectedIds.forEach((invoiceId) => {
+      workflowMutation.mutate({ invoiceId, stage: "promise_to_pay", promiseDate: date });
+    });
+  }, [selectedIds, workflowMutation]);
+
+  const reconciliationRows = isReconciliationMode
+    ? (reconciliationDataQuery.data ?? ((allData?.data?.data ?? []) as ExternalInvoice[]))
+    : ((allData?.data?.data ?? []) as ExternalInvoice[]);
+  const reconciliationFlagsMap = useMemo(
+    () => getReconciliationFlagsMap(reconciliationRows),
+    [reconciliationRows]
+  );
+  const flaggedCount = reconciliationFlagsMap.size;
+  const rowPredicate = useMemo(() => {
+    if (!isReconciliationMode || reconciliationFilter === "all") return undefined;
+    return (inv: ExternalInvoice) => (reconciliationFlagsMap.get(inv.id) || []).includes(reconciliationFilter);
+  }, [isReconciliationMode, reconciliationFilter, reconciliationFlagsMap]);
 
   const handleBulkPaid = useCallback(async () => {
     if (!canPayExternalInvoices || selectedIds.length === 0) return;
@@ -312,6 +458,8 @@ export default function ExternalInvoicesPage() {
       if (from) params.set("from", from);
       if (to) params.set("to", to);
       if (apiStatus && apiStatus !== "all") params.set("status", apiStatus);
+      if (ageBucket && ageBucket !== "all") params.set("ageBucket", ageBucket);
+      params.set("graceDays", String(graceDays));
       const sortParam = searchParams.get("sort") || "";
       const [sortBy, sortDir] = sortParam.split(":");
       if (sortBy) params.set("sortBy", sortBy);
@@ -345,7 +493,7 @@ export default function ExternalInvoicesPage() {
     } finally {
       setIsExportingAll(false);
     }
-  }, [searchTerm, searchParams, apiStatus]);
+  }, [searchTerm, searchParams, apiStatus, ageBucket, graceDays]);
 
   const handleBulkDelete = useCallback(async () => {
     if (selectedIds.length === 0) return;
@@ -372,253 +520,320 @@ export default function ExternalInvoicesPage() {
   // keep full export behavior but wire into bulk bar; not used directly here
 
   const metrics = statsData?.data?.metrics;
+  const agingSummary = agingSummaryQuery.data;
   const selectedCount = selectedIds.length;
   const statusFilterValue = searchParams.get("status") || "all";
+  const ageFilterValue = searchParams.get("age") || "all";
   const statusFilterOptions = useMemo(() => ([
     { value: "all", label: `All (${metrics?.totalInvoices ?? 0})` },
     { value: "pending", label: `Pending (${metrics?.totalPending ?? 0})` },
     { value: "paid", label: `Paid (${metrics?.totalPaid ?? 0})` },
     { value: "overdue", label: `Overdue (${metrics?.totalUnpaid ?? 0})` },
   ]), [metrics?.totalInvoices, metrics?.totalPaid, metrics?.totalPending, metrics?.totalUnpaid]);
+  const ageFilterOptions = useMemo(() => {
+    const bucketMap = new Map((agingSummary?.buckets || []).map((b) => [b.key, b]));
+    return [
+      { value: "all", label: "All Aging" },
+      { value: "current", label: `Current (${bucketMap.get("current")?.count ?? 0})` },
+      { value: "1_30", label: `1-30 (${bucketMap.get("1_30")?.count ?? 0})` },
+      { value: "31_60", label: `31-60 (${bucketMap.get("31_60")?.count ?? 0})` },
+      { value: "61_90", label: `61-90 (${bucketMap.get("61_90")?.count ?? 0})` },
+      { value: "90_plus", label: `90+ (${bucketMap.get("90_plus")?.count ?? 0})` },
+    ];
+  }, [agingSummary?.buckets]);
+
+  const buildWidgetHref = useCallback((widgetKey: string, extras?: Record<string, string>) => {
+    const params = new URLSearchParams();
+    const q = searchTerm.trim();
+    const from = searchParams.get("from");
+    const to = searchParams.get("to");
+    const status = searchParams.get("status");
+    const age = searchParams.get("age");
+    if (q) params.set("q", q);
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    if (status) params.set("status", status);
+    if (age) params.set("age", age);
+    Object.entries(extras || {}).forEach(([k, v]) => {
+      if (v) params.set(k, v);
+    });
+    const suffix = params.toString();
+    return `/external-invoices/widgets/${widgetKey}${suffix ? `?${suffix}` : ""}`;
+  }, [searchParams, searchTerm]);
+
+  const compactWidgets = useMemo(() => {
+    const totalInvoices = metrics?.totalInvoices ?? 0;
+    const totalAmount = metrics?.totalAmount ?? 0;
+    const average = totalInvoices > 0 ? totalAmount / totalInvoices : 0;
+    return [
+      {
+        key: "total-invoices",
+        title: "Total Invoices",
+        value: totalInvoices.toLocaleString(),
+        subtitle: "All invoices in view",
+        icon: FileCheck,
+        colorClass: "text-blue-600",
+        to: buildWidgetHref("total-invoices"),
+      },
+      {
+        key: "total-amount",
+        title: "Total Amount",
+        value: `$${totalAmount.toLocaleString()}`,
+        subtitle: "Gross invoice value",
+        icon: DollarSign,
+        colorClass: "text-primary",
+        to: buildWidgetHref("total-amount"),
+      },
+      {
+        key: "average-amount",
+        title: "Average",
+        value: `$${Math.round(average).toLocaleString()}`,
+        subtitle: "Average invoice amount",
+        icon: DollarSign,
+        colorClass: "text-violet-600",
+        to: buildWidgetHref("average-amount"),
+      },
+      {
+        key: "paid",
+        title: "Paid",
+        value: (metrics?.totalPaid ?? 0).toLocaleString(),
+        subtitle: "Paid invoices",
+        icon: CheckCircle,
+        colorClass: "text-green-600",
+        to: buildWidgetHref("paid", { status: "paid" }),
+      },
+      {
+        key: "pending",
+        title: "Pending",
+        value: (metrics?.totalPending ?? 0).toLocaleString(),
+        subtitle: "Pending invoices",
+        icon: ClockIcon,
+        colorClass: "text-orange-600",
+        to: buildWidgetHref("pending", { status: "pending" }),
+      },
+      {
+        key: "unpaid",
+        title: "Unpaid",
+        value: (metrics?.totalUnpaid ?? 0).toLocaleString(),
+        subtitle: "Open/unpaid invoices",
+        icon: AlertCircle,
+        colorClass: "text-amber-600",
+        to: buildWidgetHref("unpaid", { status: "unpaid" }),
+      },
+    ];
+  }, [buildWidgetHref, metrics?.totalAmount, metrics?.totalInvoices, metrics?.totalPaid, metrics?.totalPending, metrics?.totalUnpaid]);
 
   return (
     <div className="w-full space-y-6 py-2 sm:py-2 px-2 sm:px-0 animate-in fade-in-50">
       <PageHeader
         title="External Invoices"
-        subtitle="Manage and track all external invoices"
+        subtitle={mode === "reconciliation" ? "Reconciliation view for external invoices" : "Manage and track all external invoices"}
         icon={FileText}
         rightContent={(
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
-            <div className="flex items-center gap-2 w-full sm:w-auto min-w-0">
-              <div className="text-sm text-muted-foreground whitespace-nowrap">Status:</div>
+          <div className="w-full xl:min-w-[680px] space-y-2">
+            <div
+              className={
+                isReconciliationMode
+                  ? "grid grid-cols-1 gap-2 lg:grid-cols-[auto,1fr,auto,1fr] lg:items-center"
+                  : "grid grid-cols-1 gap-2 lg:grid-cols-[auto,1fr] lg:items-center"
+              }
+            >
+              <div className="text-xs text-muted-foreground whitespace-nowrap">Status</div>
               <FilterPills
                 value={statusFilterValue}
                 onChange={handleQuickFilter}
                 options={statusFilterOptions}
                 name="external-invoices-status"
-                className="w-full sm:w-auto"
+                className="w-full min-w-0"
               />
+              {isReconciliationMode ? (
+                <>
+                  <div className="text-xs text-muted-foreground whitespace-nowrap">Aging</div>
+                  <FilterPills
+                    value={ageFilterValue}
+                    onChange={handleAgeBucketFilter}
+                    options={ageFilterOptions}
+                    name="external-invoices-age"
+                    className="w-full min-w-0"
+                  />
+                </>
+              ) : null}
             </div>
 
-            <div className="hidden md:block w-px h-6 bg-border mx-2" />
-            {/* Saved Views: hide on small screens for cleaner mobile header */}
-            <div className="hidden md:flex items-center gap-2">
-              <SavedViews
-                storageKey="externalInvoices.views"
-                keys={savedViewsKeys}
-                getState={() => ({
-                  q: searchParams.get("q") || "",
-                  from: searchParams.get("from") || "",
-                  to: searchParams.get("to") || "",
-                  status: searchParams.get("status") || "",
-                  ps: searchParams.get("ps") || "",
-                  sort: searchParams.get("sort") || "",
-                })}
-                applyState={(state) => {
-                  const next = new URLSearchParams(searchParams);
-                  savedViewsKeys.forEach((k) => {
-                    const v = state[k];
-                    if (v) next.set(k, v);
-                    else next.delete(k);
-                  });
-                  setSearchParams(next, { replace: true } as any);
+            <div
+              className={`flex flex-col gap-2 sm:flex-row sm:items-center ${
+                isReconciliationMode ? "sm:justify-between" : "sm:justify-end"
+              }`}
+            >
+              {isReconciliationMode ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="text-xs text-muted-foreground whitespace-nowrap">{`Flags: ${flaggedCount}`}</div>
+                  <div className="inline-flex items-center gap-2 rounded-md border bg-white/70 px-2 py-1 text-xs">
+                    <span className="text-muted-foreground whitespace-nowrap">Avg overdue</span>
+                    <span className="font-semibold whitespace-nowrap">{(agingSummary?.avgDaysOverdue ?? 0).toFixed(1)}d</span>
+                  </div>
+                  <div className="inline-flex items-center gap-2 rounded-md border bg-white/70 px-2 py-1 text-xs">
+                    <span className="text-muted-foreground whitespace-nowrap">Overdue</span>
+                    <span className="font-semibold whitespace-nowrap text-amber-700">
+                      ${(agingSummary?.overdueAmount ?? 0).toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              ) : null}
 
-                  // Force update both stats and table after applying a view
-                  incrementRefreshKey();
+              <div className="hidden lg:flex items-center gap-2">
+                <SavedViews
+                  storageKey="externalInvoices.views"
+                  keys={savedViewsKeys}
+                  getState={() => ({
+                    q: searchParams.get("q") || "",
+                    from: searchParams.get("from") || "",
+                    to: searchParams.get("to") || "",
+                    status: searchParams.get("status") || "",
+                    age: isReconciliationMode ? (searchParams.get("age") || "") : "",
+                    ps: searchParams.get("ps") || "",
+                    sort: searchParams.get("sort") || "",
+                  })}
+                  applyState={(state) => {
+                    const next = new URLSearchParams(searchParams);
+                    savedViewsKeys.forEach((k) => {
+                      const v = state[k];
+                      if (v) next.set(k, v);
+                      else next.delete(k);
+                    });
+                    if (!isReconciliationMode) next.delete("age");
+                    setSearchParams(next, { replace: true } as any);
 
-                  // Sync local states immediately for instant UI update
-                  if (typeof state.q === "string") {
-                    setSearchInput(state.q);
-                    setSearchTerm(state.q);
-                  }
-                  if (state.ps) {
-                    const psNum = parseInt(state.ps, 10);
-                    if (!Number.isNaN(psNum)) setPageSize(psNum);
-                  }
-                  setCurrentPage(1);
-                  refetch();
-                }}
-                onSaved={(name) => notify.success(MESSAGES.externalInvoices.viewSavedTitle, `Saved “${name}”.`)}
-                onDeleted={(name) => notify.success("View deleted", `Deleted “${name}”.`)}
-              />
+                    // Force update both stats and table after applying a view
+                    incrementRefreshKey();
+
+                    // Sync local states immediately for instant UI update
+                    if (typeof state.q === "string") {
+                      setSearchInput(state.q);
+                      setSearchTerm(state.q);
+                    }
+                    if (state.ps) {
+                      const psNum = parseInt(state.ps, 10);
+                      if (!Number.isNaN(psNum)) setPageSize(psNum);
+                    }
+                    setCurrentPage(1);
+                    refetch();
+                  }}
+                  onSaved={(name) => notify.success(MESSAGES.externalInvoices.viewSavedTitle, `Saved “${name}”.`)}
+                  onDeleted={(name) => notify.success("View deleted", `Deleted “${name}”.`)}
+                />
+              </div>
             </div>
           </div>
         )}
         actions={(
-          <div className="w-full sm:w-auto">
-            <div className="flex gap-2 flex-col sm:flex-row w-full">
-              <Button
-                asChild
-                variant="outline"
-                className="w-full sm:w-auto"
-              >
-                <Link to="/external-invoices/dunning">
-                  <AlertCircle className="h-4 w-4 mr-2" />
-                  Dunning Center
-                </Link>
-              </Button>
-              <Button variant="outline" onClick={handleRefresh} className="w-full sm:w-auto">
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Refresh
-              </Button>
-              <Button
-                variant="outline"
-                onClick={handleExportAll}
-                disabled={isExportingAll || isStatsLoading}
-                className="w-full sm:w-auto"
-              >
-                {isExportingAll ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <Download className="h-4 w-4 mr-2" />
-                )}
-                {isExportingAll ? "Exporting..." : "Export All"}
-              </Button>
-              {canUploadInvoice && (
-                <Button asChild className="w-full sm:w-auto">
-                  <Link to="/invoice-upload">
-                    <Plus className="h-4 w-4 mr-2" />
-                    New Invoice
-                  </Link>
-                </Button>
-              )}
-            </div>
+          <div className="flex w-full flex-wrap justify-end gap-2">
+            <IconActionButton
+              label="Dunning Center"
+              to="/external-invoices/dunning"
+              icon={<AlertCircle className="h-4 w-4" />}
+            />
+            <IconActionButton
+              label="Refresh"
+              onClick={handleRefresh}
+              icon={<RefreshCw className="h-4 w-4" />}
+            />
+            <IconActionButton
+              label={isExportingAll ? "Exporting..." : "Export All"}
+              onClick={handleExportAll}
+              disabled={isExportingAll || isStatsLoading}
+              icon={isExportingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            />
+            {canUploadInvoice ? (
+              <IconActionButton
+                label="New Invoice"
+                to="/invoice-upload"
+                variant="default"
+                icon={<Plus className="h-4 w-4" />}
+              />
+            ) : null}
           </div>
         )}
       />
 
+      {isReconciliationMode ? (
+        <Card className="p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
+              Reconciliation mode
+            </Badge>
+            {reconciliationDataQuery.isLoading ? (
+              <Badge variant="outline" className="text-xs">Scanning all filtered invoices...</Badge>
+            ) : null}
+            <FilterPills
+              value={reconciliationFilter}
+              onChange={(value) => setReconciliationFilter(value as any)}
+              name="reconciliation-flags"
+              options={[
+                { value: "all", label: `All Flags (${flaggedCount})` },
+                { value: "missing_payment", label: "Missing Payment" },
+                { value: "duplicate", label: "Duplicate" },
+                { value: "amount_mismatch", label: "Amount Mismatch" },
+              ]}
+            />
+          </div>
+        </Card>
+      ) : null}
+
       {/* Dashboard Controls Card */}
       <Card className="p-4">
-        <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
-          {/* Search Section */}
-          <div className="flex-1 min-w-0 w-full lg:max-w-xl">
-            <div className="flex items-center gap-2">
-              <SearchBar 
-                currentSearchTerm={searchInput} 
-                onSearch={handleSearch}
-                placeholder="Search invoices by ID, status, or amount..."
-                className="w-full"
-              />
-              <Button
-                variant="outline"
-                size="icon"
-                className={(searchParams.get("from") || searchParams.get("to")) ? "ring-2 ring-primary/30" : ""}
-                onClick={() => setIsDateFilterOpen(true)}
-                title="Date range filter"
-              >
-                <Calendar className="h-4 w-4" />
-              </Button>
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <SearchBar 
+              currentSearchTerm={searchInput} 
+              onSearch={handleSearch}
+              placeholder="Search invoices by ID, status, or amount..."
+              className="w-full"
+              autoSearch={false}
+              showButton
+            />
+            <IconActionButton
+              label="Date range filter"
+              onClick={() => setIsDateFilterOpen(true)}
+              icon={<Calendar className="h-4 w-4" />}
+              className={(searchParams.get("from") || searchParams.get("to")) ? "ring-2 ring-primary/30" : ""}
+            />
+            <IconActionButton
+              label={metricsCollapsed ? "Show metrics" : "Hide metrics"}
+              onClick={() => setMetricsCollapsed((v) => !v)}
+              icon={metricsCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+            />
+          </div>
+
+          {!metricsCollapsed ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-7 gap-2">
+              {isStatsLoading ? (
+                <>
+                  <WidgetSkeleton />
+                  <WidgetSkeleton />
+                  <WidgetSkeleton />
+                  <WidgetSkeleton />
+                  <WidgetSkeleton />
+                  <WidgetSkeleton />
+                  <WidgetSkeleton />
+                </>
+              ) : (
+                compactWidgets
+                  .filter((widget) => canViewTotals || (widget.key !== "total-amount" && widget.key !== "average-amount"))
+                  .map((widget) => (
+                    <CompactWidget
+                      key={widget.key}
+                      title={widget.title}
+                      value={widget.value}
+                      subtitle={widget.subtitle}
+                      icon={widget.icon}
+                      colorClass={widget.colorClass}
+                      to={widget.to}
+                    />
+                  ))
+              )}
             </div>
-          </div>
-
-          {/* Metrics Section */}
-          <div className="flex items-center gap-3 lg:gap-4 lg:border-l lg:border-border lg:pl-4 overflow-x-auto w-full lg:w-auto">
-            {isStatsLoading ? (
-              <>
-                {canViewTotals && (
-                  <div className="flex items-center gap-3">
-                    <MetricItemSkeleton />
-                    <MetricItemSkeleton />
-                  </div>
-                )}
-                <div className="flex items-center gap-3">
-                  <MetricItemSkeleton />
-                  <MetricItemSkeleton />
-                </div>
-                <div className="flex items-center gap-3">
-                  <MetricItemSkeleton />
-                  <MetricItemSkeleton />
-                </div>
-                <MetricItemSkeleton />
-              </>
-            ) : (
-              <>
-                {/* Amount Stats */}
-                {canViewTotals ? (
-                  <div className="flex items-center gap-3">
-                    <MetricItem
-                      label="Total Amount"
-                      value={metrics?.totalAmount?.toLocaleString() ?? 0}
-                      icon={DollarSign}
-                      color="text-primary"
-                      tooltipText={`Total value of all invoices: $${metrics?.totalAmount?.toLocaleString() ?? 0}`}
-                      suffix="$"
-                    />
-                    <MetricItem
-                      label="Average"
-                      value={metrics?.totalAmount && metrics?.totalInvoices 
-                        ? Math.round(metrics.totalAmount / metrics.totalInvoices).toLocaleString() 
-                        : '0'}
-                      icon={TrendingUp}
-                      color="text-violet-600"
-                      tooltipText="Average invoice amount"
-                      suffix="$"
-                    />
-                  </div>
-                ) : null}
-
-                {/* Status Stats */}
-                <div className="flex items-center gap-3">
-                  <MetricItem
-                    label="Paid"
-                    value={`${metrics?.totalPaid ?? 0} (${metrics?.totalPaid && metrics?.totalInvoices 
-                      ? Math.round((metrics.totalPaid / metrics.totalInvoices) * 100) 
-                      : 0}%)`}
-                    icon={CheckCircle}
-                    color="text-green-600"
-                    onClick={() => handleQuickFilter('paid')}
-                    tooltipText="Click to filter paid invoices"
-                  />
-                  <MetricItem
-                    label="Pending"
-                    value={`${metrics?.totalPending ?? 0} (${metrics?.totalPending && metrics?.totalInvoices 
-                      ? Math.round((metrics.totalPending / metrics.totalInvoices) * 100) 
-                      : 0}%)`}
-                    icon={ClockIcon}
-                    color="text-orange-600"
-                    onClick={() => handleQuickFilter('pending')}
-                    tooltipText="Click to filter pending invoices"
-                  />
-                </div>
-
-                {/* Additional Stats */}
-                <div className="flex items-center gap-3">
-                  <MetricItem
-                    label="Unpaid"
-                    value={`${metrics?.totalUnpaid ?? 0} (${metrics?.totalUnpaid && metrics?.totalInvoices 
-                      ? Math.round((metrics.totalUnpaid / metrics.totalInvoices) * 100) 
-                      : 0}%)`}
-                    icon={AlertCircle}
-                    color="text-yellow-600"
-                    onClick={() => handleQuickFilter('overdue')}
-                    tooltipText="Click to filter unpaid invoices"
-                  />
-                  <MetricItem
-                    label="Selected"
-                    value={`${selectedCount}${selectedCount > 0 ? ` (${Math.round((selectedCount / (metrics?.totalInvoices ?? 1)) * 100)}%)` : ''}`}
-                    icon={CheckCircle}
-                    color={selectedCount > 0 ? "text-blue-600" : "text-gray-400"}
-                    tooltipText={selectedCount > 0 
-                      ? `${selectedCount} invoices selected - Click to mark as paid` 
-                      : "No invoices selected"}
-                    onClick={(selectedCount > 0 && canPayExternalInvoices) ? () => setIsConfirmBulkPaidOpen(true) : undefined}
-                    showDot={selectedCount > 0}
-                  />
-                </div>
-
-                {/* Total Count */}
-                <div className="flex items-center gap-3">
-                  <MetricItem
-                    label="Total"
-                    value={metrics?.totalInvoices ?? 0}
-                    icon={FileCheck}
-                    color="text-blue-600"
-                    tooltipText={`Total number of invoices: ${metrics?.totalInvoices ?? 0}`}
-                  />
-                </div>
-              </>
-            )}
-          </div>
+          ) : null}
         </div>
       </Card>
 
@@ -662,6 +877,25 @@ export default function ExternalInvoicesPage() {
             </Button>
           </Badge>
         )}
+        {searchParams.get('age') && (
+          <Badge variant="secondary" className="flex items-center gap-2">
+            Aging: {searchParams.get('age')}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setSearchParams(prev => {
+                  const n = new URLSearchParams(prev);
+                  n.delete('age');
+                  return n;
+                }, { replace: true } as any);
+                setCurrentPage(1);
+              }}
+            >
+              ×
+            </Button>
+          </Badge>
+        )}
         {searchTerm && (
           <Badge variant="secondary" className="flex items-center gap-2">
             Search: “{searchTerm}”
@@ -670,7 +904,7 @@ export default function ExternalInvoicesPage() {
             </Button>
           </Badge>
         )}
-        {(searchParams.get('from') || searchParams.get('to') || searchParams.get('status') || searchTerm) && (
+        {(searchParams.get('from') || searchParams.get('to') || searchParams.get('status') || searchParams.get('age') || searchTerm) && (
           <Button
             variant="outline"
             size="sm"
@@ -678,7 +912,7 @@ export default function ExternalInvoicesPage() {
             onClick={() => {
               setSearchParams(prev => {
                 const n = new URLSearchParams(prev);
-                n.delete('from'); n.delete('to'); n.delete('status'); n.delete('q');
+                n.delete('from'); n.delete('to'); n.delete('status'); n.delete('age'); n.delete('q');
                 return n;
               }, { replace: true } as any);
               setSearchInput("");
@@ -803,42 +1037,58 @@ export default function ExternalInvoicesPage() {
             </div>
             <div className="flex items-center flex-wrap gap-1.5">
               {canPayExternalInvoices ? (
-                <Button
-                  size="sm"
-                  variant="default"
-                  className="h-8 px-2 text-xs bg-green-600 hover:bg-green-700 text-white"
+                <IconActionButton
+                  label={isBulkPaidInProgress ? "Marking paid..." : "Mark paid"}
                   onClick={() => setIsConfirmBulkPaidOpen(true)}
                   disabled={isBulkPaidInProgress}
-                >
-                  {isBulkPaidInProgress ? (
-                    <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
-                  ) : (
-                    <CheckCircle className="h-3.5 w-3.5 mr-1" />
-                  )}
-                  {isBulkPaidInProgress ? "Marking..." : "Mark Paid"}
-                </Button>
+                  variant="default"
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                  icon={isBulkPaidInProgress ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                />
               ) : null}
-              <Button
-                size="sm"
-                variant="destructive"
-                className="h-8 px-2 text-xs"
+              <IconActionButton
+                label="Send reminder"
+                onClick={() => openReminderPreview(selectedInvoices)}
+                disabled={sendRemindersMutation.isPending || selectedInvoices.length === 0}
+                icon={<BellRing className="h-4 w-4" />}
+              />
+              <IconActionButton
+                label="Escalate"
+                onClick={() => {
+                  selectedIds.forEach((invoiceId) => handleSetWorkflowStage(invoiceId, "escalated"));
+                }}
+                disabled={workflowMutation.isPending}
+                icon={<AlertTriangle className="h-4 w-4" />}
+              />
+              <IconActionButton
+                label="Set promise-to-pay date"
+                onClick={() => {
+                  const suggestion = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+                  const date = window.prompt("Promise-to-pay date (YYYY-MM-DD)", suggestion);
+                  if (date) handleSetPromiseDate(date);
+                }}
+                disabled={workflowMutation.isPending}
+                icon={<Calendar className="h-4 w-4" />}
+              />
+              <IconActionButton
+                label="Delete selected"
                 onClick={() => setIsConfirmBulkDeleteOpen(true)}
                 disabled={bulkDeleteInvoicesMutation.isPending || isBulkPaidInProgress}
-              >
-                Delete
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-8 px-2 text-xs"
+                variant="destructive"
+                icon={<Trash2 className="h-4 w-4" />}
+              />
+              <IconActionButton
+                label="Export selected"
                 onClick={handleExportSelected}
                 disabled={isExportingAll}
-              >
-                <FileText className="h-3.5 w-3.5 mr-1" /> Export Selected
-              </Button>
-              <Button size="sm" variant="ghost" className="h-8 px-2 text-xs" onClick={() => setRowSelection({})}>
-                Clear Selection
-              </Button>
+                icon={<FileText className="h-4 w-4" />}
+              />
+              <IconActionButton
+                label="Clear selection"
+                onClick={() => setRowSelection({})}
+                variant="ghost"
+                icon={<X className="h-4 w-4" />}
+              />
             </div>
           </div>
         </Card>
@@ -847,6 +1097,13 @@ export default function ExternalInvoicesPage() {
       {/* Main Table */}
       <ExternalInvoicesTable 
         search={searchTerm} 
+        ageBucket={ageBucket}
+        graceDays={graceDays}
+        reconciliationMode={isReconciliationMode}
+        reconciliationFlags={reconciliationFlagsMap}
+        rowPredicate={rowPredicate}
+        onSetWorkflowStage={handleSetWorkflowStage}
+        onSendReminderRequest={(invoice) => openReminderPreview([invoice])}
         key={refreshKey}
         rowSelection={rowSelection}
         onRowSelectionChange={setRowSelection}
@@ -857,6 +1114,30 @@ export default function ExternalInvoicesPage() {
         onLastPage={() => allData?.data?.totalPages && setCurrentPage(allData.data.totalPages)}
         totalItems={allData?.data?.total || 0}
       />
+
+      <Dialog open={isReminderDialogOpen} onOpenChange={setIsReminderDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Send Reminder{reminderTargets.length > 1 ? "s" : ""}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <div className="text-muted-foreground">
+              You are about to send {reminderTargets.length} WhatsApp reminder{reminderTargets.length > 1 ? "s" : ""}.
+            </div>
+            {reminderTargets[0] ? (
+              <div className="rounded-md border p-3 bg-muted/30 text-xs whitespace-pre-wrap">
+                {buildReminderMessagePreview(reminderTargets[0])}
+              </div>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setIsReminderDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleSendRemindersConfirm} disabled={sendRemindersMutation.isPending}>
+              {sendRemindersMutation.isPending ? "Sending..." : "Send"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Confirm bulk paid dialog */}
       <Dialog open={isConfirmBulkPaidOpen} onOpenChange={setIsConfirmBulkPaidOpen}>
@@ -915,4 +1196,8 @@ export default function ExternalInvoicesPage() {
       </Dialog>
     </div>
   );
+}
+
+export default function ExternalInvoicesPage() {
+  return <ExternalInvoicesPageImpl mode="standard" />;
 }

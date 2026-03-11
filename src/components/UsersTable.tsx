@@ -17,6 +17,7 @@ import TableRowActions from "@/components/TableRowActions";
 import { useNavigate } from "react-router-dom";
 import { Checkbox } from "@/components/ui/checkbox";
 import { notify } from "@/lib/notify";
+import { getUserHealth } from "@/lib/userHealth";
 
 interface UsersTableProps {
     users: User[];
@@ -65,6 +66,13 @@ const UserRow: React.FC<{
 }> = ({ user, onAction, index, isSelected, onToggleSelected, canManageUsers = true, manageUsersReason = "You don't have permission to manage users.", canResetDailyQuota = true, canResetMonthlyQuota = true }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const navigate = useNavigate();
+    const health = getUserHealth(user);
+    const healthBadgeClass = cn(
+        "transition-colors duration-200 text-xs",
+        health.level === "healthy" && "border-emerald-500 text-emerald-600 hover:bg-emerald-50",
+        health.level === "warning" && "border-amber-500 text-amber-600 hover:bg-amber-50",
+        health.level === "risk" && "border-red-500 text-red-600 hover:bg-red-50"
+    );
 
     return (
         <>
@@ -129,6 +137,11 @@ const UserRow: React.FC<{
                                 {user.userDetails.fullName}
                             </span>
                         )}
+                        <span className="mt-1">
+                            <Badge variant="outline" className={healthBadgeClass} title={health.reason}>
+                                {health.label}
+                            </Badge>
+                        </span>
                     </div>
                 </TableCell>
 

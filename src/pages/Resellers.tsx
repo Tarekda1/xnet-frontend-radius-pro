@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import PageHeader from "@/components/PageHeader";
+import IconActionButton from "@/components/IconActionButton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useAuth } from "@/context/AuthContext";
 import { can } from "@/lib/permissions";
 import { notify } from "@/lib/notify";
+import { RefreshCw } from "lucide-react";
 import { createReseller, createResellerLogin, fetchResellerLedger, fetchResellers, fundReseller, type ResellerDto, type ResellerLoginDto } from "@/api/resellers";
 import TableRowActions from "@/components/TableRowActions";
 
@@ -141,7 +143,12 @@ export default function ResellersPage() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>{title}</CardTitle>
-          <Button variant="outline" onClick={load} disabled={loading}>Refresh</Button>
+          <IconActionButton
+            label={loading ? "Refreshing..." : "Refresh"}
+            onClick={load}
+            disabled={loading}
+            icon={<RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />}
+          />
         </CardHeader>
         <CardContent>
           <Table>

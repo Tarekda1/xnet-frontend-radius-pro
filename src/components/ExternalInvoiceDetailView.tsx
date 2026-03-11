@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { CalendarIcon, Copy, User } from "lucide-react";
 
@@ -24,6 +25,8 @@ import { useAuth } from "@/context/AuthContext";
 import { can } from "@/lib/permissions";
 import { isFeatureEnabled } from "@/lib/featureFlags";
 import { notify } from "@/lib/notify";
+import { fetchExternalInvoiceHistory, setExternalInvoiceWorkflow } from "@/api/invoices";
+import { parsePromiseDateFromLastAction } from "@/lib/externalInvoiceInsights";
 
 type Props = {
   invoice: ExternalInvoice;
@@ -43,20 +46,30 @@ const ExternalInvoiceDetailView: React.FC<Props> = ({
 
   const [isEditing, setIsEditing] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "pos" | "transfer" | "other" | "gateway">("cash");
+  const [promiseDateInput, setPromiseDateInput] = useState<string>(parsePromiseDateFromLastAction((invoice as any).lastAction) || "");
   const [editedInvoice, setEditedInvoice] = useState<ExternalInvoice>({
     ...invoice,
   });
 
-  const historyItems = useMemo(() => {
-    const items: Array<{ label: string; date: string | null }> = [];
-    items.push({ label: "Created", date: (invoice as any).createdAt || null });
-    if ((invoice as any).paidAt) items.push({ label: "Paid", date: (invoice as any).paidAt });
-    return items;
-  }, [invoice]);
-
   // lightweight access to mutations via hook (pageSize 1 to avoid heavy work)
   const { updateInvoiceMutation, setInvoiceAsPaidMutation, unpayInvoiceMutation, sendReminderMutation, refetch } = useExternalInvoices({ initialPage: 1, pageSize: 1, search: "", });
   const { toast } = useToast();
+  const historyQuery = useQuery({
+    queryKey: ["externalInvoiceHistory", invoice.id],
+    queryFn: () => fetchExternalInvoiceHistory(invoice.id, 100),
+  });
+  const workflowMutation = useMutation({
+    mutationFn: async (payload: { stage: "new" | "reminded" | "promise_to_pay" | "escalated" | "resolved"; promiseDate?: string | null }) =>
+      setExternalInvoiceWorkflow(invoice.id, payload),
+    onSuccess: () => {
+      notify.success("Workflow updated", "Stage saved.");
+      historyQuery.refetch();
+      refetch();
+    },
+    onError: (e: unknown) => {
+      notify.error("Workflow failed", e instanceof Error ? e.message : "Could not update workflow.");
+    },
+  });
 
   /* ── handlers ─────────────────────────────── */
   const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -186,6 +199,24 @@ const ExternalInvoiceDetailView: React.FC<Props> = ({
   };
 
   /* ── render ───────────────────────────────── */
+  const timelineItems = useMemo(() => {
+    const seed = [
+      (invoice as any).createdAt
+        ? { label: "CREATED", actor: (invoice as any).modifiedBy || "system", date: (invoice as any).createdAt, detail: "" }
+        : null,
+      (invoice as any).paidAt
+        ? { label: "PAID", actor: (invoice as any).modifiedBy || "system", date: (invoice as any).paidAt, detail: "" }
+        : null,
+    ].filter(Boolean) as Array<{ label: string; actor: string; date: string; detail: string }>;
+    const fromLogs = (historyQuery.data || []).map((item) => ({
+      label: item.action,
+      actor: item.username,
+      date: item.timestamp,
+      detail: item.changes ? JSON.stringify(item.changes) : "",
+    }));
+    return [...seed, ...fromLogs].sort((a, b) => new Date(b.date || "").getTime() - new Date(a.date || "").getTime());
+  }, [historyQuery.data, invoice]);
+
   return (
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="lg:max-w-4xl w-full p-0 overflow-hidden relative flex flex-col max-h-[85vh]">
@@ -298,19 +329,43 @@ const ExternalInvoiceDetailView: React.FC<Props> = ({
                   <Button variant="outline" onClick={markUnpaidLocal}>Mark Unpaid</Button>
                 )}
               </div>
+              <div className="rounded-md border p-3 space-y-2">
+                <div className="text-xs text-muted-foreground">Collection workflow</div>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="outline" onClick={() => workflowMutation.mutate({ stage: "reminded" })}>Set Reminded</Button>
+                  <Button size="sm" variant="outline" onClick={() => workflowMutation.mutate({ stage: "escalated" })}>Set Escalated</Button>
+                  <Button size="sm" variant="outline" onClick={() => workflowMutation.mutate({ stage: "resolved" })}>Set Resolved</Button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Input type="date" value={promiseDateInput} onChange={(e) => setPromiseDateInput(e.target.value)} />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => workflowMutation.mutate({ stage: "promise_to_pay", promiseDate: promiseDateInput || null })}
+                    disabled={!promiseDateInput}
+                  >
+                    Set Promise Date
+                  </Button>
+                </div>
+              </div>
             </TabsContent>
 
             <TabsContent value="history" className="space-y-3">
-              {historyItems.length === 0 && (
+              {historyQuery.isLoading ? (
+                <div className="text-sm text-muted-foreground">Loading history...</div>
+              ) : null}
+              {!historyQuery.isLoading && timelineItems.length === 0 && (
                 <div className="text-sm text-muted-foreground">No history available.</div>
               )}
               <div className="space-y-3">
-                {historyItems.map((h, idx) => (
+                {timelineItems.map((h, idx) => (
                   <div key={idx} className="flex items-center gap-3">
                     <div className="h-2 w-2 rounded-full bg-primary" />
                     <div className="text-sm">
                       <span className="font-medium mr-2">{h.label}</span>
                       <span className="text-muted-foreground">{h.date ? new Date(h.date).toLocaleString() : "—"}</span>
+                      {h.actor ? <span className="ml-2 text-xs text-muted-foreground">by {h.actor}</span> : null}
+                      {h.detail ? <div className="text-xs text-muted-foreground mt-0.5 break-all">{h.detail}</div> : null}
                     </div>
                   </div>
                 ))}

@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import PageHeader from "@/components/PageHeader";
+import IconActionButton from "@/components/IconActionButton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -164,10 +165,12 @@ export default function ExpensesPage() {
         subtitle="Track and manage operational expenses."
         icon={Receipt}
         actions={
-          <Button onClick={openCreate}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Expense
-          </Button>
+          <IconActionButton
+            label="Add Expense"
+            onClick={openCreate}
+            variant="default"
+            icon={<Plus className="h-4 w-4" />}
+          />
         }
       />
 

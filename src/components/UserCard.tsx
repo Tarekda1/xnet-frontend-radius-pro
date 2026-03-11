@@ -6,9 +6,11 @@ import { RefreshCw, Edit, Trash2 } from 'lucide-react';
 import Loader from '@/components/ui/loader';
 import { useNavigate } from "react-router-dom";
 import { Checkbox } from "@/components/ui/checkbox";
+import type { User } from "@/types/api";
+import { getUserHealth } from "@/lib/userHealth";
 
 interface UserCardProps {
-    user: any;
+    user: User;
     onEdit: () => void;
     onDelete: () => void;
     onResetMAC?: () => void;
@@ -41,6 +43,7 @@ const UserCard: React.FC<UserCardProps> = ({
     canResetMonthlyQuota = true,
 }) => {
     const navigate = useNavigate();
+    const health = getUserHealth(user);
     // const dailyUsagePercentage = user.profile.dailyQuota ? (user.profile.dailyUsage / user.profile.dailyQuota) * 100 : 0;
     // const monthlyUsagePercentage = user.profile.monthlyQuota ? (user.monthlyUsage / user.profile.monthlyQuota) * 100 : 0;
 
@@ -63,9 +66,24 @@ const UserCard: React.FC<UserCardProps> = ({
                         {user.username}
                     </button>
                     </div>
-                    <Badge variant={user.isOnline ? "success" : "secondary"}>
-                        {user.isOnline ? "Online" : "Offline"}
-                    </Badge>
+                    <div className="flex flex-col items-end gap-1">
+                        <Badge variant={user.isOnline ? "success" : "secondary"}>
+                            {user.isOnline ? "Online" : "Offline"}
+                        </Badge>
+                        <Badge
+                            variant="outline"
+                            className={
+                                health.level === "healthy"
+                                    ? "border-emerald-500 text-emerald-600"
+                                    : health.level === "warning"
+                                      ? "border-amber-500 text-amber-600"
+                                      : "border-red-500 text-red-600"
+                            }
+                            title={health.reason}
+                        >
+                            {health.label}
+                        </Badge>
+                    </div>
                 </CardTitle>
                 <CardDescription>{user.userDetails?.fullName || 'N/A'}</CardDescription>
             </CardHeader>
@@ -73,19 +91,17 @@ const UserCard: React.FC<UserCardProps> = ({
                 <div className="space-y-2">
                     <div>
                         <span className="font-semibold">Profile:</span>{" "}
-                        {user?.profile?.profileName ?? user?.profile_profile_name ?? user?.role ?? '—'}
+                        {user.profile?.profileName ?? '—'}
                     </div>
                     <div>
                         <span className="font-semibold">MAC Address:</span>{" "}
-                        {user?.macAddress?.macAddress ?? user?.session_mac_address ?? 'Not set'}
+                        {user.macAddress?.macAddress ?? 'Not set'}
                     </div>
                     <div>
                         <span className="font-semibold">Last Active:</span>{" "}
-                        {user?.lastTimeActive
+                        {user.lastTimeActive
                             ? new Date(user.lastTimeActive).toLocaleString()
-                            : user?.session_last_update
-                              ? new Date(user.session_last_update).toLocaleString()
-                              : "—"}
+                            : "—"}
                     </div>
                 </div>
             </CardContent>

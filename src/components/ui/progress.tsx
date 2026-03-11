@@ -7,10 +7,12 @@ interface ProgressProps extends React.ComponentProps<typeof ProgressPrimitive.Ro
   value?: number
   showPercentage?: boolean
   text?: string
+  indicatorClassName?: string
 }
 
 function Progress({
   className,
+  indicatorClassName,
   value,
   showPercentage = false,
   text,
@@ -27,7 +29,7 @@ function Progress({
     >
       <ProgressPrimitive.Indicator
         data-slot="progress-indicator"
-        className="bg-orange-500 h-full w-full flex-1 transition-all"
+        className={cn("h-full w-full flex-1 transition-all", indicatorClassName ?? "bg-orange-500")}
         style={{ transform: `translateX(-${100 - (value || 0)}%)` }}
       >
         {(showPercentage || text) && (

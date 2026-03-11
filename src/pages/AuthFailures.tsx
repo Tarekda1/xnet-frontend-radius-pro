@@ -1,8 +1,9 @@
 import { useCallback, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Copy, Download, ExternalLink, RefreshCw } from "lucide-react";
+import { AlertTriangle, Copy, Download, ExternalLink, Filter, Loader2, RefreshCw } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
+import IconActionButton from "@/components/IconActionButton";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -384,18 +385,24 @@ export default function AuthFailuresPage() {
         icon={AlertTriangle}
         actions={(
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" onClick={() => authFailuresQuery.refetch()} disabled={authFailuresQuery.isFetching}>
-              <RefreshCw className={`mr-2 h-4 w-4 ${authFailuresQuery.isFetching ? "animate-spin" : ""}`} />
-              Refresh
-            </Button>
-            <Button variant="outline" onClick={exportExcel} disabled={!rows.length}>
-              <Download className="mr-2 h-4 w-4" />
-              Export Excel
-            </Button>
-            <Button variant="outline" onClick={exportAllExcel} disabled={isExportingAll || authFailuresQuery.isFetching}>
-              <Download className="mr-2 h-4 w-4" />
-              {isExportingAll ? "Exporting all..." : "Export All"}
-            </Button>
+            <IconActionButton
+              label={authFailuresQuery.isFetching ? "Refreshing..." : "Refresh"}
+              onClick={() => authFailuresQuery.refetch()}
+              disabled={authFailuresQuery.isFetching}
+              icon={<RefreshCw className={`h-4 w-4 ${authFailuresQuery.isFetching ? "animate-spin" : ""}`} />}
+            />
+            <IconActionButton
+              label="Export Excel"
+              onClick={exportExcel}
+              disabled={!rows.length}
+              icon={<Download className="h-4 w-4" />}
+            />
+            <IconActionButton
+              label={isExportingAll ? "Exporting all..." : "Export All"}
+              onClick={exportAllExcel}
+              disabled={isExportingAll || authFailuresQuery.isFetching}
+              icon={isExportingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            />
           </div>
         )}
       />
@@ -427,7 +434,12 @@ export default function AuthFailuresPage() {
             <Input placeholder="Search user / NAS / MAC" value={query} onChange={(e) => setQuery(e.target.value)} />
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Button onClick={applyFiltersToUrl}>Apply Filters</Button>
+            <IconActionButton
+              label="Apply filters"
+              onClick={applyFiltersToUrl}
+              variant="default"
+              icon={<Filter className="h-4 w-4" />}
+            />
             <SavedViews
               storageKey="savedViews:authFailures"
               keys={authFailuresSavedViewsKeys}

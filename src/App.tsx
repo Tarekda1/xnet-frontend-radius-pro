@@ -18,6 +18,7 @@ import CommandPalette from './components/CommandPalette';
 
 const Home = React.lazy(() => import('./pages/Home'));
 const Dashboard = React.lazy(() => import('./pages/Dashboard'));
+const DashboardWidgetDetails = React.lazy(() => import('./pages/DashboardWidgetDetails'));
 const UsersComponent = React.lazy(() => import('./pages/Users'));
 const ProfilesComponent = React.lazy(() => import('./pages/Profiles'));
 const OnlineUsersComponent = React.lazy(() => import('./pages/OnlineUsers'));
@@ -31,7 +32,9 @@ const AuthUsers = React.lazy(() => import('./pages/AuthUsers'));
 const InvoicesComponent = React.lazy(() => import('./pages/Invoices'));
 const InvoiceUpload = React.lazy(() => import('./pages/InvoiceUpload'));
 const ExternalInvoicesComponent = React.lazy(() => import('./pages/Externalnvoices'));
+const ExternalInvoicesReconciliationComponent = React.lazy(() => import('./pages/ExternalInvoicesReconciliation'));
 const ExternalInvoicesDunningComponent = React.lazy(() => import('./pages/ExternalInvoicesDunning'));
+const ExternalInvoicesWidgetDetailsComponent = React.lazy(() => import('./pages/ExternalInvoicesWidgetDetails'));
 const AnalyticsComponent = React.lazy(() => import('./pages/Analytics'));
 const AlertsComponent = React.lazy(() => import('./pages/Alerts'));
 const CollectionsComponent = React.lazy(() => import('./pages/Collections'));
@@ -103,6 +106,7 @@ const AppRoutes: React.FC = () => {
               <Route path="/" element={<ProtectedRoute element={<Layout />} />}>
                 <Route index element={<ProtectedRoute element={<Home />} />} />
                 <Route path="dashboard" element={<ProtectedRoute element={<Dashboard />} />} />
+                <Route path="/dashboard/widgets/:widgetKey" element={<ProtectedRoute element={<DashboardWidgetDetails />} />} />
                 <Route path="forbidden" element={<ProtectedRoute element={<ForbiddenComponent />} />} />
                 <Route path="auth-users" element={<ProtectedRoute element={<AuthUsers />} />} />
                 <Route path="settings" element={<ProtectedRoute element={<Setting />} />} />
@@ -140,6 +144,24 @@ const AppRoutes: React.FC = () => {
                     <FeatureRoute
                       enabled={isFeatureEnabled("external-invoices")}
                       element={<ProtectedRoute element={<ExternalInvoicesDunningComponent />} />}
+                    />
+                  }
+                />
+                <Route
+                  path="/external-invoices/reconciliation"
+                  element={
+                    <FeatureRoute
+                      enabled={isFeatureEnabled("external-invoices")}
+                      element={<ProtectedRoute element={<ExternalInvoicesReconciliationComponent />} />}
+                    />
+                  }
+                />
+                <Route
+                  path="/external-invoices/widgets/:widgetKey"
+                  element={
+                    <FeatureRoute
+                      enabled={isFeatureEnabled("external-invoices")}
+                      element={<ProtectedRoute element={<ExternalInvoicesWidgetDetailsComponent />} />}
                     />
                   }
                 />

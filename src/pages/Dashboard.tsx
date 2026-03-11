@@ -1,6 +1,7 @@
 import { useOnlineMetrics } from '@/hooks/useOnlineMetrics';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import PageHeader from "@/components/PageHeader";
+import IconActionButton from "@/components/IconActionButton";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { useExpenseMonthlyTotals } from '@/hooks/useExpenses';
 import { useAuthMetrics } from "@/hooks/useAuthMetrics";
+import { useCollectedMetrics } from '@/hooks/useInvoices';
 import { useQuery } from "@tanstack/react-query";
 import { 
   Users, 
@@ -17,8 +19,6 @@ import {
   AlertTriangle, 
   Activity, 
   RefreshCw,
-  ArrowUpRight,
-  ArrowDownRight,
   Cpu,
   CircuitBoard,
   HardDrive,
@@ -27,6 +27,7 @@ import {
   Settings,
   LineChart,
   Receipt,
+  DollarSign,
   Clock,
   User as UserIcon,
   Server
@@ -42,7 +43,6 @@ import AnalyticsWidget from '@/components/AnalyticsWidget';
 import AlertNotification from '@/components/AlertNotification';
 import BandwidthWidget from '@/components/BandwidthWidget';
 import { useAlerts } from '@/hooks/useAlerts';
-import CollectedSummaryCards from '@/components/CollectedSummaryCards';
 import { useAuth } from '@/context/AuthContext';
 import { can, canAny } from '@/lib/permissions';
 import { fetchResellerMe } from '@/api/resellers';
@@ -52,7 +52,8 @@ import { QuotaExceededSummaryAlert } from "@/components/ui/Alert";
 import useNas from "@/hooks/useNas";
 import { useOnlineUsers } from "@/hooks/useOnlineUsers";
 import { Line as RechartsLine, LineChart as RechartsLineChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from "recharts";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import FilterPills from "@/components/FilterPills";
 
 type AuditLogRow = {
   id: number;
@@ -67,6 +68,50 @@ type NocHealthSample = {
   dbLatencyMs: number;
   serverProcessingMs: number;
   clientRttMs: number;
+};
+type WatchlistFilter = "all" | "fup" | "stale";
+type DashboardAutoRefreshSeconds = 0 | 30 | 60 | 120;
+type WatchlistStaleThresholdSeconds = 30 | 60 | 120;
+type DashboardWidgetSurface = "white" | "theme";
+
+const DASHBOARD_WATCHLIST_DEFAULT_FILTER_KEY = "dashboard.watchlist.defaultFilter";
+const DASHBOARD_WATCHLIST_STALE_THRESHOLD_KEY = "dashboard.watchlist.staleAfterSeconds";
+const DASHBOARD_AUTO_REFRESH_SECONDS_KEY = "dashboard.autoRefreshSeconds";
+const DASHBOARD_WIDGET_SURFACE_KEY = "dashboard.widgetSurface";
+
+const getStoredWatchlistFilter = (): WatchlistFilter => {
+  const raw = localStorage.getItem(DASHBOARD_WATCHLIST_DEFAULT_FILTER_KEY);
+  return raw === "fup" || raw === "stale" || raw === "all" ? raw : "all";
+};
+const getStoredStaleThreshold = (): WatchlistStaleThresholdSeconds => {
+  const raw = Number(localStorage.getItem(DASHBOARD_WATCHLIST_STALE_THRESHOLD_KEY));
+  return raw === 30 || raw === 60 || raw === 120 ? raw : 60;
+};
+const getStoredAutoRefreshSeconds = (): DashboardAutoRefreshSeconds => {
+  const raw = Number(localStorage.getItem(DASHBOARD_AUTO_REFRESH_SECONDS_KEY));
+  return raw === 0 || raw === 30 || raw === 60 || raw === 120 ? raw : 0;
+};
+const getStoredWidgetSurface = (): DashboardWidgetSurface => {
+  const raw = localStorage.getItem(DASHBOARD_WIDGET_SURFACE_KEY);
+  return raw === "theme" || raw === "white" ? raw : "white";
+};
+
+const formatAgo = (iso: string | null | undefined) => {
+  const t = iso ? Date.parse(iso) : NaN;
+  if (!Number.isFinite(t)) return "—";
+  const sec = Math.max(Math.floor((Date.now() - t) / 1000), 0);
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const d = Math.floor(hr / 24);
+  return `${d}d ago`;
+};
+const isSessionStale = (iso: string | null | undefined, staleAfterSeconds: number = 60) => {
+  const t = iso ? Date.parse(iso) : NaN;
+  if (!Number.isFinite(t)) return true;
+  return (Date.now() - t) / 1000 > staleAfterSeconds;
 };
 
 function formatAuditTitle(action: string, meta: any): { title: string; detail?: string } {
@@ -113,9 +158,43 @@ function formatAuditTitle(action: string, meta: any): { title: string; detail?: 
   return { title: pretty };
 }
 
+const DashboardMiniWidget = ({
+  title,
+  value,
+  subtitle,
+  to,
+  icon: Icon,
+  valueClassName = "text-foreground",
+  surfaceClassName = "bg-white",
+}: {
+  title: string;
+  value: string;
+  subtitle: string;
+  to: string;
+  icon: React.ElementType;
+  valueClassName?: string;
+  surfaceClassName?: string;
+}) => (
+  <Link to={to} className={`group block rounded-lg border p-3 transition-colors hover:bg-accent/40 ${surfaceClassName}`}>
+    <div className="flex items-center justify-between">
+      <span className="text-[11px] sm:text-xs text-muted-foreground">{title}</span>
+      <Icon className={`h-4 w-4 ${valueClassName}`} />
+    </div>
+    <div className={`mt-1 text-base sm:text-lg font-semibold ${valueClassName}`}>{value}</div>
+    <div className="text-[11px] text-muted-foreground truncate">{subtitle}</div>
+  </Link>
+);
+
 const Dashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showQuotaExceeded, setShowQuotaExceeded] = useState(true);
+  const [watchlistDefaultFilter, setWatchlistDefaultFilter] = useState<WatchlistFilter>(() => getStoredWatchlistFilter());
+  const [watchlistFilter, setWatchlistFilter] = useState<WatchlistFilter>(() => getStoredWatchlistFilter());
+  const [watchlistStaleThresholdSec, setWatchlistStaleThresholdSec] = useState<WatchlistStaleThresholdSeconds>(() => getStoredStaleThreshold());
+  const [dashboardAutoRefreshSec, setDashboardAutoRefreshSec] = useState<DashboardAutoRefreshSeconds>(() => getStoredAutoRefreshSeconds());
+  const [widgetSurface, setWidgetSurface] = useState<DashboardWidgetSurface>(() => getStoredWidgetSurface());
   const [selectedRejectBucket, setSelectedRejectBucket] = useState<string | null>(null);
   const [rejectTrendWindowHours, setRejectTrendWindowHours] = useState<6 | 12 | 24>(24);
   const [nocHealthTrend, setNocHealthTrend] = useState<NocHealthSample[]>([]);
@@ -142,6 +221,7 @@ const Dashboard: React.FC = () => {
   const onlineMetrics = useOnlineMetrics();
   const expenseMonthlyTotals = useExpenseMonthlyTotals();
   const authMetrics = useAuthMetrics(86400);
+  const collectedMetricsQuery = useCollectedMetrics();
   const nasQuery = useNas(1, 1);
   const onlineWatchlistQuery = useOnlineUsers("", 1, 5, {
     enabled: (!isReseller && canSeeOnline) || isReseller,
@@ -247,6 +327,21 @@ const Dashboard: React.FC = () => {
   const showRejectThresholdAlert = isRejectThresholdBreached && !isRejectAlertMuted;
   const totalNas = nasQuery.data?.data?.totalEntries ?? 0;
   const watchlistRows = onlineWatchlistQuery.data?.data ?? [];
+  const watchlistCounts = useMemo(() => {
+    return watchlistRows.reduce(
+      (acc, row) => {
+        if (row.is_fallback) acc.fup += 1;
+        if (isSessionStale(row.session_last_update, watchlistStaleThresholdSec)) acc.stale += 1;
+        return acc;
+      },
+      { fup: 0, stale: 0 }
+    );
+  }, [watchlistRows, watchlistStaleThresholdSec]);
+  const filteredWatchlistRows = useMemo(() => {
+    if (watchlistFilter === "fup") return watchlistRows.filter((row) => Boolean(row.is_fallback));
+    if (watchlistFilter === "stale") return watchlistRows.filter((row) => isSessionStale(row.session_last_update, watchlistStaleThresholdSec));
+    return watchlistRows;
+  }, [watchlistRows, watchlistFilter, watchlistStaleThresholdSec]);
   const rejectTrendData = (nocSnapshotQuery.data?.authRejectTrend ?? []).map((r) => ({
     bucket: r.bucket,
     time: String(r.bucket || "").slice(11, 16),
@@ -348,6 +443,9 @@ const Dashboard: React.FC = () => {
 
   const totalOnlineUsers = isReseller ? (resellerOnlineCount ?? 0) : onlineMetrics.totalOnlineUsers;
   const totalActiveUsers = isReseller ? (resellerOnlineCount ?? 0) : onlineMetrics.totalActiveUsers;
+  const unresolvedAlertsCount = alerts && Array.isArray(alerts) ? alerts.filter((a) => !a.resolved).length : 0;
+  const unacknowledgedAlertsCount = alerts && Array.isArray(alerts) ? alerts.filter((a) => !a.acknowledged && !a.resolved).length : 0;
+  const fupUsersCount = (quotaExceededQuery.data?.dailyCount ?? 0) + (quotaExceededQuery.data?.monthlyCount ?? 0);
 
   const now = new Date();
   const todayLabel = now.toISOString().slice(0, 10); // YYYY-MM-DD
@@ -361,6 +459,165 @@ const Dashboard: React.FC = () => {
   const spendPrev = prevMonth?.totalAmount ?? 0;
   const spendCurrency = thisMonth?.currency || mt[0]?.currency || 'USD';
   const spendGrowth = spendPrev > 0 ? ((spendThis - spendPrev) / spendPrev) * 100 : (spendThis > 0 ? 100 : 0);
+  const totalCollectedInvoices = collectedMetricsQuery.data?.totalCollectedInvoices ?? 0;
+  const totalCollectedCash = collectedMetricsQuery.data?.totalCashCollected ?? 0;
+  const widgetSurfaceClassName = widgetSurface === "white" ? "bg-white" : "bg-card";
+
+  const dashboardWidgets = useMemo(() => {
+    const items: Array<{
+      key: string;
+      title: string;
+      value: string;
+      subtitle: string;
+      to: string;
+      icon: React.ElementType;
+      valueClassName?: string;
+    }> = [];
+
+    if (isReseller) {
+      items.push({
+        key: "reseller-balance",
+        title: "Balance",
+        value: resellerBalance === null ? "…" : `${resellerBalance.toFixed(2)}`,
+        subtitle: "Reseller wallet",
+        to: "/dashboard/widgets/reseller-balance",
+        icon: Receipt,
+        valueClassName: "text-emerald-600",
+      });
+      items.push({
+        key: "reseller-users",
+        title: "My Users",
+        value: resellerUserCount === null ? "…" : String(resellerUserCount),
+        subtitle: "Owned users",
+        to: "/dashboard/widgets/reseller-users",
+        icon: Users,
+        valueClassName: "text-blue-600",
+      });
+    }
+
+    if ((!isReseller && canSeeOnline) || isReseller) {
+      items.push({
+        key: "live-sessions",
+        title: "Live Sessions",
+        value: String(totalOnlineUsers),
+        subtitle: "Current online users",
+        to: "/dashboard/widgets/live-sessions",
+        icon: Activity,
+        valueClassName: "text-blue-600",
+      });
+      items.push({
+        key: "active-users",
+        title: "Active Users",
+        value: String(totalActiveUsers),
+        subtitle: "Real-time active accounts",
+        to: "/dashboard/widgets/active-users",
+        icon: UserCheck,
+        valueClassName: "text-green-600",
+      });
+    }
+
+    if (canSeeExpenses && canSeeTotals) {
+      items.push({
+        key: "expenses-month",
+        title: "Expenses",
+        value: expenseMonthlyTotals.isLoading ? "…" : `${spendThis.toFixed(2)} ${spendCurrency}`,
+        subtitle: `${thisMonthKey} (${Math.abs(spendGrowth).toFixed(1)}%)`,
+        to: "/dashboard/widgets/expenses-month",
+        icon: Receipt,
+        valueClassName: "text-indigo-600",
+      });
+    }
+
+    if (canSeeInvoiceCounts) {
+      items.push({
+        key: "auth-requests",
+        title: "Auth Requests",
+        value: authMetrics.isLoading
+          ? "…"
+          : new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(authAttempts),
+        subtitle: "Past 24h attempts",
+        to: "/dashboard/widgets/auth-requests",
+        icon: Shield,
+        valueClassName: "text-purple-600",
+      });
+    }
+
+    if (canSeeCollections) {
+      items.push({
+        key: "total-invoices-collected",
+        title: "Invoices Collected",
+        value: collectedMetricsQuery.isLoading ? "…" : totalCollectedInvoices.toLocaleString(),
+        subtitle: "Per-collector breakdown",
+        to: "/collections?view=breakdown",
+        icon: Receipt,
+        valueClassName: "text-blue-600",
+      });
+      items.push({
+        key: "total-cash-collected",
+        title: "Cash Collected",
+        value: collectedMetricsQuery.isLoading ? "…" : totalCollectedCash.toFixed(2),
+        subtitle: "Collected invoices list",
+        to: "/collections?view=list",
+        icon: DollarSign,
+        valueClassName: "text-green-600",
+      });
+    }
+
+    if (canSeeQuotaExceeded) {
+      items.push({
+        key: "fup-users",
+        title: "Users in FUP",
+        value: String(fupUsersCount),
+        subtitle: `${quotaExceededQuery.data?.dailyCount ?? 0} daily / ${quotaExceededQuery.data?.monthlyCount ?? 0} monthly`,
+        to: "/dashboard/widgets/fup-users",
+        icon: AlertTriangle,
+        valueClassName: "text-amber-600",
+      });
+    }
+
+    if (canSeeAlerts) {
+      items.push({
+        key: "active-alerts",
+        title: "Active Alerts",
+        value: alertsLoading ? "…" : String(unresolvedAlertsCount),
+        subtitle: `${unacknowledgedAlertsCount} unacknowledged`,
+        to: "/dashboard/widgets/active-alerts",
+        icon: Bell,
+        valueClassName: "text-red-600",
+      });
+    }
+
+    return items;
+  }, [
+    alertsLoading,
+    authAttempts,
+    authMetrics.isLoading,
+    canSeeAlerts,
+    canSeeCollections,
+    canSeeExpenses,
+    canSeeInvoiceCounts,
+    canSeeOnline,
+    canSeeQuotaExceeded,
+    canSeeTotals,
+    collectedMetricsQuery.isLoading,
+    expenseMonthlyTotals.isLoading,
+    fupUsersCount,
+    isReseller,
+    quotaExceededQuery.data?.dailyCount,
+    quotaExceededQuery.data?.monthlyCount,
+    resellerBalance,
+    resellerUserCount,
+    spendCurrency,
+    spendGrowth,
+    spendThis,
+    thisMonthKey,
+    totalCollectedCash,
+    totalCollectedInvoices,
+    totalActiveUsers,
+    totalOnlineUsers,
+    unacknowledgedAlertsCount,
+    unresolvedAlertsCount,
+  ]);
 
   useEffect(() => {
     // Simulate initial loading
@@ -375,6 +632,22 @@ const Dashboard: React.FC = () => {
     const value = Math.min(Math.max(Math.round(Number(rejectAlertThreshold) || 15), 1), 100);
     localStorage.setItem("dashboard.noc.rejectAlertThreshold", String(value));
   }, [rejectAlertThreshold]);
+
+  useEffect(() => {
+    localStorage.setItem(DASHBOARD_WATCHLIST_DEFAULT_FILTER_KEY, watchlistDefaultFilter);
+  }, [watchlistDefaultFilter]);
+
+  useEffect(() => {
+    localStorage.setItem(DASHBOARD_WATCHLIST_STALE_THRESHOLD_KEY, String(watchlistStaleThresholdSec));
+  }, [watchlistStaleThresholdSec]);
+
+  useEffect(() => {
+    localStorage.setItem(DASHBOARD_AUTO_REFRESH_SECONDS_KEY, String(dashboardAutoRefreshSec));
+  }, [dashboardAutoRefreshSec]);
+
+  useEffect(() => {
+    localStorage.setItem(DASHBOARD_WIDGET_SURFACE_KEY, widgetSurface);
+  }, [widgetSurface]);
 
   useEffect(() => {
     if (!nocHealth.generatedAt) return;
@@ -434,14 +707,47 @@ const Dashboard: React.FC = () => {
     };
   }, [isReseller]);
 
-  const handleRefresh = () => {
-    setIsLoading(true);
-    
-    // Simulate refresh loading
-    setTimeout(() => {
-      setIsLoading(false);
-    }, 1000);
-  };
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      const tasks: Array<Promise<unknown>> = [];
+      if ((!isReseller && canSeeOnline) || isReseller) {
+        tasks.push(onlineWatchlistQuery.refetch());
+        tasks.push(nocSnapshotQuery.refetch());
+        tasks.push(nocHealthQuery.refetch());
+      }
+      if (canSeeExpenses) tasks.push(expenseMonthlyTotals.refetch());
+      if (canSeeAudit) tasks.push(recentAuditQuery.refetch());
+      if (canSeeQuotaExceeded) tasks.push(quotaExceededQuery.refetch());
+      tasks.push(nasQuery.refetch());
+      await Promise.allSettled(tasks);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [
+    isReseller,
+    canSeeOnline,
+    canSeeExpenses,
+    canSeeAudit,
+    canSeeQuotaExceeded,
+    onlineWatchlistQuery,
+    nocSnapshotQuery,
+    nocHealthQuery,
+    expenseMonthlyTotals,
+    recentAuditQuery,
+    quotaExceededQuery,
+    nasQuery,
+  ]);
+
+  useEffect(() => {
+    if (dashboardAutoRefreshSec <= 0) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      if (isLoading || isRefreshing) return;
+      void handleRefresh();
+    }, dashboardAutoRefreshSec * 1000);
+    return () => window.clearInterval(timer);
+  }, [dashboardAutoRefreshSec, isLoading, isRefreshing, handleRefresh]);
 
   const LoadingSkeleton = () => (
     <>
@@ -530,38 +836,36 @@ const Dashboard: React.FC = () => {
         subtitle="Monitor your system's performance and user activity."
         icon={Activity}
         actions={(
-          <div className="flex w-full flex-col gap-2 md:w-auto">
-            <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-end">
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full justify-center text-black sm:w-auto"
-                onClick={handleRefresh}
-                disabled={isLoading}
-              >
-                <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-                Refresh Data
-              </Button>
-              {canSeeAnalytics ? (
-                <Button variant="outline" size="sm" className="w-full justify-center text-black sm:w-auto" asChild>
-                  <a href="/analytics">
-                    <LineChart className="mr-2 h-4 w-4" />
-                    View Analytics
-                  </a>
-                </Button>
-              ) : null}
-            </div>
-
-            <div className="flex w-full justify-center gap-2 sm:justify-end">
-              <Button variant="outline" size="icon" className="text-black !h-9 !w-9 !px-0">
-                <Settings className="h-4 w-4" />
-              </Button>
-              {canSeeAlerts ? (
-                <Button variant="outline" size="icon" className="text-black !h-9 !w-9 !px-0">
-                  <Bell className="h-4 w-4" />
-                </Button>
-              ) : null}
-            </div>
+          <div className="flex w-full flex-wrap justify-end gap-2">
+            <IconActionButton
+              label={isRefreshing ? "Refreshing..." : "Refresh Data"}
+              onClick={handleRefresh}
+              disabled={isLoading || isRefreshing}
+              className="text-black"
+              icon={<RefreshCw className={`h-4 w-4 ${(isLoading || isRefreshing) ? 'animate-spin' : ''}`} />}
+            />
+            {canSeeAnalytics ? (
+              <IconActionButton
+                label="View Analytics"
+                to="/analytics"
+                className="text-black"
+                icon={<LineChart className="h-4 w-4" />}
+              />
+            ) : null}
+            <IconActionButton
+              label="Dashboard settings"
+              onClick={() => setIsSettingsOpen(true)}
+              className="text-black"
+              icon={<Settings className="h-4 w-4" />}
+            />
+            {canSeeAlerts ? (
+              <IconActionButton
+                label="Alerts"
+                to="/alerts"
+                className="text-black"
+                icon={<Bell className="h-4 w-4" />}
+              />
+            ) : null}
           </div>
         )}
       />
@@ -606,186 +910,20 @@ const Dashboard: React.FC = () => {
             ) : null
           ) : null}
 
-          {/* Stats Grid */}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            {/* Reseller balance */}
-            {isReseller ? (
-              <Card className="hover:shadow-lg transition-shadow">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Balance</CardTitle>
-                  <Receipt className="h-4 w-4 text-emerald-600" />
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-2xl font-bold text-emerald-600">
-                        {resellerBalance === null ? '…' : resellerBalance.toFixed(2)}
-                      </div>
-                      <p className="text-xs text-muted-foreground">Reseller wallet</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : null}
-
-            {/* Reseller users */}
-            {isReseller ? (
-              <Link to="/users/list" className="block">
-              <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">My Users</CardTitle>
-                  <Users className="h-4 w-4 text-blue-600" />
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-2xl font-bold text-blue-600">
-                        {resellerUserCount === null ? '…' : resellerUserCount}
-                      </div>
-                      <p className="text-xs text-muted-foreground">Owned users</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-              </Link>
-            ) : null}
-
-            {/* Live Sessions Card */}
-            {(!isReseller && canSeeOnline) || isReseller ? (
-            <Link to="/online-users" className="block">
-            <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Live Sessions</CardTitle>
-                <Users className="h-4 w-4 text-blue-600" />
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-2xl font-bold text-blue-600">{totalOnlineUsers}</div>
-                    <p className="text-xs text-muted-foreground">Real-time data</p>
-                  </div>
-                  <Badge variant="secondary" className="flex gap-1 items-center">
-                    <Activity className="h-3 w-3" />
-                    Live
-                  </Badge>
-                </div>
-              </CardContent>
-            </Card>
-            </Link>
-            ) : null}
-
-            {/* Active Users Card */}
-            {(!isReseller && canSeeOnline) || isReseller ? (
-            <Link to="/users/list" className="block">
-            <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Active Users</CardTitle>
-                <UserCheck className="h-4 w-4 text-green-600" />
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-2xl font-bold text-green-600">{totalActiveUsers}</div>
-                    <p className="text-xs text-muted-foreground">Real-time data</p>
-                  </div>
-                  <Badge variant="secondary" className="flex gap-1 items-center">
-                    <ArrowUpRight className="h-3 w-3 text-green-600" />
-                    +5%
-                  </Badge>
-                </div>
-              </CardContent>
-            </Card>
-            </Link>
-            ) : null}
-
-            {/* Expenses This Month */}
-            {canSeeExpenses && canSeeTotals ? (
-            <Card className="hover:shadow-lg transition-shadow">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Expenses (This Month)</CardTitle>
-                <Receipt className="h-4 w-4 text-blue-600" />
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-2xl font-bold text-blue-600">
-                      {expenseMonthlyTotals.isLoading ? '...' : `${spendThis.toFixed(2)} ${spendCurrency}`}
-                    </div>
-                    <p className="text-xs text-muted-foreground">{thisMonthKey}</p>
-                  </div>
-                  <Badge variant="secondary" className="flex gap-1 items-center">
-                    {spendGrowth >= 0 ? (
-                      <ArrowUpRight className="h-3 w-3 text-green-600" />
-                    ) : (
-                      <ArrowDownRight className="h-3 w-3 text-red-600" />
-                    )}
-                    {Math.abs(spendGrowth).toFixed(1)}%
-                  </Badge>
-                </div>
-              </CardContent>
-            </Card>
-            ) : null}
-
-            {/* Auth Requests Card */}
-            {canSeeInvoiceCounts ? (
-            <Card className="hover:shadow-lg transition-shadow">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Auth Requests</CardTitle>
-                <Shield className="h-4 w-4 text-purple-600" />
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-2xl font-bold">
-                      {authMetrics.isLoading
-                        ? "..."
-                        : new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(
-                            authMetrics.data?.current.attempts ?? 0
-                          )}
-                    </div>
-                    <p className="text-xs text-muted-foreground">Past 24 hours</p>
-                  </div>
-                  <Badge variant="secondary" className="flex gap-1 items-center">
-                    {(authMetrics.data?.changePct.attempts ?? 0) >= 0 ? (
-                      <ArrowUpRight className="h-3 w-3 text-green-600" />
-                    ) : (
-                      <ArrowDownRight className="h-3 w-3 text-red-600" />
-                    )}
-                    {Math.abs(authMetrics.data?.changePct.attempts ?? 0).toFixed(1)}%
-                  </Badge>
-                </div>
-              </CardContent>
-            </Card>
-            ) : null}
-
-            {/* Collected Summary Cards */}
-            {canSeeCollections ? <CollectedSummaryCards /> : null}
-
-            {/* Failed Attempts Card */}
-            {canSeeAlerts ? (
-            <Card className="hover:shadow-lg transition-shadow">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Active Alerts</CardTitle>
-                <AlertTriangle className="h-4 w-4 text-red-600" />
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-2xl font-bold text-red-600">
-                      {alertsLoading ? '...' : (alerts && Array.isArray(alerts) ? alerts.filter(a => !a.resolved).length : 0)}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {alerts && Array.isArray(alerts) ? alerts.filter(a => !a.acknowledged && !a.resolved).length : 0} unacknowledged
-                    </p>
-                  </div>
-                  <Badge variant="secondary" className="flex gap-1 items-center">
-                    <ArrowDownRight className="h-3 w-3 text-red-600" />
-                    +3%
-                  </Badge>
-                </div>
-              </CardContent>
-            </Card>
-            ) : null}
+          {/* Compact Widget Grid */}
+          <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+            {dashboardWidgets.map((widget) => (
+              <DashboardMiniWidget
+                key={widget.key}
+                title={widget.title}
+                value={widget.value}
+                subtitle={widget.subtitle}
+                to={widget.to}
+                icon={widget.icon}
+                valueClassName={widget.valueClassName}
+                surfaceClassName={widgetSurfaceClassName}
+              />
+            ))}
           </div>
 
           {/* NOC Snapshot */}
@@ -970,19 +1108,40 @@ const Dashboard: React.FC = () => {
                         <Skeleton key={idx} className="h-10 w-full" />
                       ))}
                     </div>
-                  ) : watchlistRows.length === 0 ? (
-                    <div className="text-sm text-muted-foreground">No live sessions available.</div>
+                  ) : filteredWatchlistRows.length === 0 ? (
+                    <div className="text-sm text-muted-foreground">No sessions match the selected watchlist filter.</div>
                   ) : (
                     <div className="space-y-2">
-                      {watchlistRows.map((row) => (
+                      <div className="mb-1 flex flex-wrap items-center gap-2">
+                        <FilterPills
+                          value={watchlistFilter}
+                          onChange={(v) => setWatchlistFilter(v as WatchlistFilter)}
+                          options={[
+                            { value: "all", label: `All (${watchlistRows.length})` },
+                            { value: "fup", label: `FUP (${watchlistCounts.fup})` },
+                            { value: "stale", label: `Stale (${watchlistCounts.stale})` },
+                          ]}
+                          name="dashboard-watchlist-filter"
+                        />
+                      </div>
+                      {filteredWatchlistRows.map((row) => (
                         <div key={`${row.session_username}-${row.session_mac_address}`} className="flex items-center justify-between rounded-lg border p-2.5">
                           <div className="min-w-0">
                             <div className="truncate text-sm font-medium">{row.session_username}</div>
-                            <div className="truncate text-xs text-muted-foreground">{row.profile_profile_name || "No profile"}</div>
+                            <div className="truncate text-xs text-muted-foreground">
+                              {row.profile_profile_name || "No profile"} • Last update {formatAgo(row.session_last_update)}
+                            </div>
                           </div>
-                          <Badge variant={row.is_fallback ? "destructive" : "secondary"}>
-                            {row.is_fallback ? "FUP" : "Normal"}
-                          </Badge>
+                          <div className="flex items-center gap-1.5">
+                            {isSessionStale(row.session_last_update, watchlistStaleThresholdSec) ? (
+                              <Badge variant="outline" className="text-amber-700 border-amber-200 bg-amber-50">
+                                Stale
+                              </Badge>
+                            ) : null}
+                            <Badge variant={row.is_fallback ? "destructive" : "secondary"}>
+                              {row.is_fallback ? "FUP" : "Normal"}
+                            </Badge>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1332,6 +1491,123 @@ const Dashboard: React.FC = () => {
           </div>
         </>
       )}
+
+      <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
+        <DialogContent className="sm:max-w-[560px]">
+          <DialogHeader>
+            <DialogTitle>Dashboard settings</DialogTitle>
+            <DialogDescription>
+              Configure how watchlist triage and refresh behavior works on this dashboard.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <div className="text-sm font-medium">Watchlist default filter</div>
+              <Select
+                value={watchlistDefaultFilter}
+                onValueChange={(value) => {
+                  const next = (value === "fup" || value === "stale" || value === "all")
+                    ? (value as WatchlistFilter)
+                    : "all";
+                  setWatchlistDefaultFilter(next);
+                  setWatchlistFilter(next);
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All sessions</SelectItem>
+                  <SelectItem value="fup">FUP only</SelectItem>
+                  <SelectItem value="stale">Stale only</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-sm font-medium">Stale session threshold</div>
+              <Select
+                value={String(watchlistStaleThresholdSec)}
+                onValueChange={(value) => {
+                  const next = Number(value);
+                  if (next === 30 || next === 60 || next === 120) {
+                    setWatchlistStaleThresholdSec(next);
+                  }
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="30">30 seconds</SelectItem>
+                  <SelectItem value="60">60 seconds</SelectItem>
+                  <SelectItem value="120">120 seconds</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-sm font-medium">Auto refresh dashboard data</div>
+              <Select
+                value={String(dashboardAutoRefreshSec)}
+                onValueChange={(value) => {
+                  const next = Number(value);
+                  if (next === 0 || next === 30 || next === 60 || next === 120) {
+                    setDashboardAutoRefreshSec(next);
+                  }
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">Off</SelectItem>
+                  <SelectItem value="30">Every 30 seconds</SelectItem>
+                  <SelectItem value="60">Every 60 seconds</SelectItem>
+                  <SelectItem value="120">Every 2 minutes</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-sm font-medium">Widget background</div>
+              <Select
+                value={widgetSurface}
+                onValueChange={(value) => {
+                  if (value === "white" || value === "theme") {
+                    setWidgetSurface(value);
+                  }
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="white">White</SelectItem>
+                  <SelectItem value="theme">Theme default</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setWatchlistDefaultFilter("all");
+                setWatchlistFilter("all");
+                setWatchlistStaleThresholdSec(60);
+                setDashboardAutoRefreshSec(0);
+                setWidgetSurface("white");
+              }}
+            >
+              Reset defaults
+            </Button>
+            <Button onClick={() => setIsSettingsOpen(false)}>Done</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -156,4 +156,65 @@ export async function runExternalDunningCampaign(payload?: {
   return data.data as DunningRunResponse;
 }
 
+export type AgingBucketKey = 'current' | '1_30' | '31_60' | '61_90' | '90_plus';
+
+export type ExternalAgingSummary = {
+  asOf: string;
+  graceDays: number;
+  openInvoices: number;
+  openAmount: number;
+  overdueInvoices: number;
+  overdueAmount: number;
+  overdueRatePercent: number;
+  avgDaysOverdue: number;
+  buckets: Array<{
+    key: AgingBucketKey;
+    label: string;
+    count: number;
+    amount: number;
+  }>;
+  topDebtors: Array<{
+    username: string;
+    fullName: string;
+    amount: number;
+    invoices: number;
+    maxOverdueDays: number;
+  }>;
+};
+
+export async function fetchExternalAgingSummary(params?: {
+  search?: string;
+  from?: string;
+  to?: string;
+  status?: string;
+  graceDays?: number;
+}): Promise<ExternalAgingSummary> {
+  const { data } = await apiClient.get('/invoices/external/aging-summary', { params });
+  return data.data as ExternalAgingSummary;
+}
+
+export type ExternalInvoiceHistoryItem = {
+  id: number;
+  action: string;
+  username: string;
+  timestamp: string;
+  changes?: Record<string, unknown> | null;
+};
+
+export async function fetchExternalInvoiceHistory(invoiceId: number, limit = 100): Promise<ExternalInvoiceHistoryItem[]> {
+  const { data } = await apiClient.get(`/invoices/external/${invoiceId}/history`, {
+    params: { limit },
+  });
+  return data.data as ExternalInvoiceHistoryItem[];
+}
+
+export type ExternalWorkflowStage = 'new' | 'reminded' | 'promise_to_pay' | 'escalated' | 'resolved';
+
+export async function setExternalInvoiceWorkflow(
+  invoiceId: number,
+  payload: { stage: ExternalWorkflowStage; promiseDate?: string | null }
+): Promise<void> {
+  await apiClient.post(`/invoices/external/${invoiceId}/workflow`, payload);
+}
+
 

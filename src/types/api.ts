@@ -2,6 +2,7 @@ export interface User {
   id: number;
   username: string;
   profileId: number;
+  freenight?: boolean | number | null;
   isFallback: number;
   isMonthlyExceeded: number;
   isDailyExceeded?: boolean;
@@ -67,10 +68,29 @@ export type ExternalInvoice = {
     /** How payment was captured */
     paymentMethod?: "cash" | "pos" | "transfer" | "other" | "gateway" | null;
 
+    /** Collector username for field collections */
+    collectedBy?: string | null;
+
+    /** Collected timestamp */
+    collectedAt?: string | null;
+
+    /** Cash is reconciled with ledger */
+    cashReconciled?: boolean | 0 | 1 | "0" | "1" | null;
+
+    /** Reconciliation actor */
+    reconciledBy?: string | null;
+
+    /** Reconciliation timestamp */
+    reconciledAt?: string | null;
+
     /** Upstream provider, if relevant */
     provider?: string;
 
+    /** Last invoice action marker */
+    lastAction?: string | null;
+
     modifiedBy: string | null;
+    modifiedAt?: string | null;
 };
 
 export type Expense = {

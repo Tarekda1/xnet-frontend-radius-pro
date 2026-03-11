@@ -1,5 +1,6 @@
 import React, { useMemo, useReducer } from "react";
 import PageHeader from "@/components/PageHeader";
+import IconActionButton from "@/components/IconActionButton";
 import QueryState from "@/components/QueryState";
 import EmptyState from "@/components/EmptyState";
 import SearchBar from "@/components/SearchBar";
@@ -9,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Pencil, Plus, RefreshCw, Trash2, Tv } from "lucide-react";
+import { FileText, Pencil, Plus, RefreshCw, Trash2, Tv } from "lucide-react";
 import { useCableVisionAccounts } from "@/hooks/useCableVision";
 import { useAuth } from "@/context/AuthContext";
 import { can } from "@/lib/permissions";
@@ -130,34 +131,26 @@ export default function CableVisionPage() {
             </div>
           }
           actions={
-            <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-end">
-              <Button
-                variant="outline"
+            <div className="flex w-full flex-wrap gap-2 sm:justify-end">
+              <IconActionButton
+                label={state.isRefreshing ? `${T.refresh}...` : T.refresh}
                 onClick={handleRefresh}
                 disabled={state.isRefreshing}
-                className="w-full sm:w-auto"
-              >
-                <RefreshCw className={`h-4 w-4 mr-2 ${state.isRefreshing ? "animate-spin" : ""}`} />
-                {T.refresh}
-              </Button>
-              <Button
-                variant="outline"
-                disabled={!canGenerate || generateMonthlyInvoicesMutation.isPending}
+                icon={<RefreshCw className={`h-4 w-4 ${state.isRefreshing ? "animate-spin" : ""}`} />}
+              />
+              <IconActionButton
+                label={!canGenerate ? T.generateInvoicesNoPerm : T.generateInvoicesHint}
                 onClick={() => generateMonthlyInvoicesMutation.mutate({ billingMonth: billingMonthYmd })}
-                title={!canGenerate ? T.generateInvoicesNoPerm : T.generateInvoicesHint}
-                className="w-full sm:w-auto"
-              >
-                {T.generateInvoices}
-              </Button>
-              <Button
+                disabled={!canGenerate || generateMonthlyInvoicesMutation.isPending}
+                icon={<FileText className="h-4 w-4" />}
+              />
+              <IconActionButton
+                label={!canManage ? T.newAccountNoPerm : T.newAccount}
                 onClick={() => dispatch({ type: "openCreateAccount" })}
                 disabled={!canManage}
-                title={!canManage ? T.newAccountNoPerm : T.newAccount}
-                className="w-full sm:w-auto"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                {T.newAccount}
-              </Button>
+                variant="default"
+                icon={<Plus className="h-4 w-4" />}
+              />
             </div>
           }
         />

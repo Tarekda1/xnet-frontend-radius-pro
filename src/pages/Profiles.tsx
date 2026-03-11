@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import PageHeader from "@/components/PageHeader";
+import IconActionButton from "@/components/IconActionButton";
 import { Profile, useProfiles } from '../hooks/useProfiles';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -367,9 +368,12 @@ const ProfilesComponent: React.FC = () => {
         className="border-0 shadow-xl bg-white/80 backdrop-blur-sm"
         actions={(
           <div className="flex gap-2">
-            <Button onClick={() => setIsModalOpen(true)}>
-              <Plus className="w-4 h-4 mr-2" /> Add Profile
-            </Button>
+            <IconActionButton
+              label="Add Profile"
+              onClick={() => setIsModalOpen(true)}
+              variant="default"
+              icon={<Plus className="h-4 w-4" />}
+            />
           </div>
         )}
       />

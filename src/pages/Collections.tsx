@@ -5,7 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button } from '@/components/ui/button';
 import { useCollectorBreakdown, useCollectedInvoicesList, useCollectedMetrics } from '@/hooks/useInvoices';
 import { useLocation } from 'react-router-dom';
-import { DollarSign, Users } from 'lucide-react';
+import { Calendar, DollarSign, Users, X } from 'lucide-react';
 import { DateRange } from 'react-day-picker';
 import { DateRangePicker } from '@/components/ui/DateRangePicker';
 import { reconcileCollectedInvoice, type CollectedInvoicesList, type CollectedMetrics, type CollectorBreakdown } from '@/api/invoices';
@@ -16,6 +16,7 @@ import TableToolbar from '@/components/TableToolbar';
 import TableRowActions from '@/components/TableRowActions';
 import QueryState from '@/components/QueryState';
 import { Skeleton } from '@/components/ui/skeleton';
+import IconActionButton from "@/components/IconActionButton";
 
 function useQuery() {
   const { search } = useLocation();
@@ -153,17 +154,21 @@ const Collections: React.FC = () => {
                 <div className="w-full min-w-0 sm:w-auto">
                   <DateRangePicker dateRange={range} onDateRangeChange={setRange} />
                 </div>
-                <Button className="w-full justify-center sm:w-auto" variant="outline" onClick={() => setRange(undefined)}>Clear</Button>
-                <Button
-                  className="w-full justify-center sm:w-auto"
+                <IconActionButton
+                  label="Clear date range"
+                  variant="outline"
+                  onClick={() => setRange(undefined)}
+                  icon={<X className="h-4 w-4" />}
+                />
+                <IconActionButton
+                  label="Today"
                   variant="outline"
                   onClick={() => {
                     const today = new Date();
                     setRange({ from: today, to: today });
                   }}
-                >
-                  Today
-                </Button>
+                  icon={<Calendar className="h-4 w-4" />}
+                />
               </div>
             </CardContent>
           </Card>

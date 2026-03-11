@@ -17,6 +17,7 @@ import {
     Wifi, 
     UserCheck, 
     UserX, 
+    AlertTriangle,
     Download,
     Upload,
     Filter,
@@ -64,6 +65,8 @@ import { usersPageInitialState, usersPageReducer } from "./usersPageReducer";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import SavedViews from "@/components/SavedViews";
 import FilterPills from "@/components/FilterPills";
+import { isUserAtRisk } from "@/lib/userHealth";
+import IconActionButton from "@/components/IconActionButton";
 
 type AuditLogRow = {
     id: number;
@@ -382,48 +385,33 @@ const BulkActions = ({
                 
                 {selectedUsers.size > 0 && (
                     <div className="flex w-full flex-wrap gap-1.5 sm:w-auto sm:ml-4">
-                        <Button
-                            variant="outline"
-                            size="sm"
+                        <IconActionButton
+                            label={!canManageUsers ? manageUsersReason : "Suspend selected users"}
                             onClick={() => onBulkAction('suspend')}
                             disabled={!canManageUsers || isBulkActionInProgress}
-                            title={!canManageUsers ? manageUsersReason : "Suspend selected users"}
-                            className="h-8 px-2 text-xs bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100 hover:border-orange-300 transition-all duration-300"
-                        >
-                            <UserX className="h-3.5 w-3.5 mr-1" />
-                            Suspend
-                        </Button>
-                        <Button
-                            variant="outline"
-                            size="sm"
+                            icon={<UserX className="h-4 w-4" />}
+                            className="bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100 hover:border-orange-300 transition-all duration-300"
+                        />
+                        <IconActionButton
+                            label={!canManageUsers ? manageUsersReason : "Activate selected users"}
                             onClick={() => onBulkAction('activate')}
                             disabled={!canManageUsers || isBulkActionInProgress}
-                            title={!canManageUsers ? manageUsersReason : "Activate selected users"}
-                            className="h-8 px-2 text-xs bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100 hover:border-emerald-300 transition-all duration-300"
-                        >
-                            <UserCheck className="h-3.5 w-3.5 mr-1" />
-                            Activate
-                        </Button>
-                        <Button
-                            variant="outline"
-                            size="sm"
+                            icon={<UserCheck className="h-4 w-4" />}
+                            className="bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100 hover:border-emerald-300 transition-all duration-300"
+                        />
+                        <IconActionButton
+                            label="Export selected users"
                             onClick={() => onBulkAction('export')}
-                            className="h-8 px-2 text-xs bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100 hover:border-blue-300 transition-all duration-300"
-                        >
-                            <Download className="h-3.5 w-3.5 mr-1" />
-                            Export
-                        </Button>
-                        <Button
-                            variant="outline"
-                            size="sm"
+                            icon={<Download className="h-4 w-4" />}
+                            className="bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100 hover:border-blue-300 transition-all duration-300"
+                        />
+                        <IconActionButton
+                            label={!canManageUsers ? manageUsersReason : "Reset MAC for selected users"}
                             onClick={() => onBulkAction('reset-mac')}
                             disabled={!canManageUsers || isBulkActionInProgress}
-                            title={!canManageUsers ? manageUsersReason : "Reset MAC for selected users"}
-                            className="h-8 px-2 text-xs bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100 hover:border-purple-300 transition-all duration-300"
-                        >
-                            <RefreshCw className="h-3.5 w-3.5 mr-1" />
-                            Reset MAC
-                        </Button>
+                            icon={<RefreshCw className="h-4 w-4" />}
+                            className="bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100 hover:border-purple-300 transition-all duration-300"
+                        />
 
                         <div className="flex items-center gap-1.5 ml-1">
                             <Select value={profileId} onValueChange={setProfileId}>
@@ -438,28 +426,21 @@ const BulkActions = ({
                                     ))}
                                 </SelectContent>
                             </Select>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                disabled={!profileId || !canManageUsers || isBulkActionInProgress}
+                            <IconActionButton
+                                label={!canManageUsers ? manageUsersReason : !profileId ? "Select a profile first" : "Assign profile"}
                                 onClick={() => onBulkAction(`assign-profile:${profileId}`)}
-                                title={!canManageUsers ? manageUsersReason : !profileId ? "Select a profile first" : "Assign profile"}
-                                className="h-8 px-2 text-xs bg-white/80 border-gray-200 text-gray-800 hover:bg-white transition-all duration-300"
-                            >
-                                Assign
-                            </Button>
+                                disabled={!profileId || !canManageUsers || isBulkActionInProgress}
+                                icon={<UserCheck className="h-4 w-4" />}
+                                className="bg-white/80 border-gray-200 text-gray-800 hover:bg-white transition-all duration-300"
+                            />
                         </div>
-                        <Button
-                            variant="outline"
-                            size="sm"
+                        <IconActionButton
+                            label={!canManageUsers ? manageUsersReason : "Delete selected users"}
                             onClick={() => onBulkAction('delete')}
                             disabled={!canManageUsers || isBulkActionInProgress}
-                            title={!canManageUsers ? manageUsersReason : "Delete selected users"}
-                            className="h-8 px-2 text-xs bg-red-50 border-red-200 text-red-700 hover:bg-red-100 hover:border-red-300 transition-all duration-300"
-                        >
-                            <Trash2 className="h-3.5 w-3.5 mr-1" />
-                            Delete
-                        </Button>
+                            icon={<Trash2 className="h-4 w-4" />}
+                            className="bg-red-50 border-red-200 text-red-700 hover:bg-red-100 hover:border-red-300 transition-all duration-300"
+                        />
                     </div>
                 )}
             </div>
@@ -603,6 +584,8 @@ const UsersPage: React.FC = () => {
                         return user.accountStatus === 'active';
                     case 'suspended':
                         return user.accountStatus === 'suspended';
+                    case 'risk':
+                        return isUserAtRisk(user);
                     case 'online':
                         return user.isOnline === true;
                     case 'offline':
@@ -651,6 +634,8 @@ const UsersPage: React.FC = () => {
         const premium = filteredUsers.filter(u => u.profile.profileName.toLowerCase() === 'premium').length;
         const basic = filteredUsers.filter(u => u.profile.profileName.toLowerCase() === 'basic').length;
         const quotaExceeded = filteredUsers.filter(u => u.isMonthlyExceeded).length;
+        const riskUsers = filteredUsers.filter(isUserAtRisk).length;
+        const onlinePct = allUsers.length ? Math.round((online / allUsers.length) * 100) : 0;
 
         const onlineTrend: 'up' | 'down' | 'neutral' = online > allUsers.length / 2 ? 'up' : 'down';
         const quotaTrend: 'up' | 'down' | 'neutral' = quotaExceeded > 0 ? 'up' : 'neutral';
@@ -664,9 +649,10 @@ const UsersPage: React.FC = () => {
             premium,
             basic,
             quotaExceeded,
+            riskUsers,
             // Calculate trends (simulated)
             onlineTrend,
-            onlineTrendValue: `${Math.round((online / allUsers.length) * 100)}%`,
+            onlineTrendValue: `${onlinePct}%`,
             quotaTrend,
             quotaTrendValue: quotaExceeded > 0 ? `${quotaExceeded} users` : undefined
         };
@@ -720,6 +706,9 @@ const UsersPage: React.FC = () => {
                 break;
             case 'offline':
                 dispatch({ type: "SET_STATUS_FILTER", payload: 'offline' });
+                break;
+            case 'risk':
+                dispatch({ type: "SET_STATUS_FILTER", payload: 'risk' });
                 break;
             default:
                 dispatch({ type: "SET_STATUS_FILTER", payload: '' });
@@ -1213,13 +1202,14 @@ const UsersPage: React.FC = () => {
                             <Label className="hidden sm:inline text-sm font-medium">Filter:</Label>
                             <FilterPills
                                 name="users-quick-filter"
-                                value={["online", "offline", "suspended"].includes(statusFilter) ? statusFilter : "all"}
+                                value={["online", "offline", "suspended", "risk"].includes(statusFilter) ? statusFilter : "all"}
                                 onChange={handleQuickFilter}
                                 options={[
                                     { value: "all", label: "All" },
                                     { value: "online", label: "Online" },
                                     { value: "offline", label: "Offline" },
                                     { value: "suspended", label: "Suspended" },
+                                    { value: "risk", label: "Risk" },
                                 ]}
                             />
                         </div>
@@ -1270,23 +1260,31 @@ const UsersPage: React.FC = () => {
                     </div>
                 )}
                 actions={(
-                    <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
-                        <Button size="sm" variant="outline" onClick={handleRefresh} disabled={isRefreshing} className="w-full justify-center sm:w-auto h-8 px-2 text-xs">
-                            <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-                            {isRefreshing ? 'Refreshing...' : 'Refresh'}
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={() => dispatch({ type: "SET_EXPORT_OPEN", payload: true })} className="w-full justify-center sm:w-auto h-8 px-2 text-xs">
-                            <Download className="h-4 w-4 mr-2" />
-                            Export Excel
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={() => dispatch({ type: "SET_IMPORT_OPEN", payload: true })} disabled={!canManageUsers} title={!canManageUsers ? manageUsersReason : "Import CSV"} className="w-full justify-center sm:w-auto h-8 px-2 text-xs">
-                            <Upload className="h-4 w-4 mr-2" />
-                            Import CSV
-                        </Button>
-                        <Button size="sm" onClick={handleAddUser} disabled={!canManageUsers} title={!canManageUsers ? manageUsersReason : "New User"} className="w-full justify-center sm:w-auto h-8 px-2 text-xs">
-                            <Plus className="h-4 w-4 mr-2" />
-                            New User
-                        </Button>
+                    <div className="flex w-full flex-wrap gap-2 sm:justify-end">
+                        <IconActionButton
+                            label={isRefreshing ? "Refreshing..." : "Refresh"}
+                            onClick={handleRefresh}
+                            disabled={isRefreshing}
+                            icon={<RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />}
+                        />
+                        <IconActionButton
+                            label="Export Excel"
+                            onClick={() => dispatch({ type: "SET_EXPORT_OPEN", payload: true })}
+                            icon={<Download className="h-4 w-4" />}
+                        />
+                        <IconActionButton
+                            label={!canManageUsers ? manageUsersReason : "Import CSV"}
+                            onClick={() => dispatch({ type: "SET_IMPORT_OPEN", payload: true })}
+                            disabled={!canManageUsers}
+                            icon={<Upload className="h-4 w-4" />}
+                        />
+                        <IconActionButton
+                            label={!canManageUsers ? manageUsersReason : "New User"}
+                            onClick={handleAddUser}
+                            disabled={!canManageUsers}
+                            variant="default"
+                            icon={<Plus className="h-4 w-4" />}
+                        />
                     </div>
                 )}
             />
@@ -1298,7 +1296,7 @@ const UsersPage: React.FC = () => {
                     <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
                         {/* Search + Inline Filters */}
                         <div className="flex-1 min-w-0 lg:max-w-5xl flex flex-col md:flex-row gap-3 items-start md:items-center">
-                            <div className="w-full md:min-w-[60%] md:max-w-[60%]">
+                            <div className="w-full md:flex-none md:w-[320px] lg:w-[360px] xl:w-[420px]">
                                 <SearchBar 
                                     currentSearchTerm={searchQuery} 
                                     onSearch={handleSearch}
@@ -1308,38 +1306,40 @@ const UsersPage: React.FC = () => {
                                     showButton
                                 />
                             </div>
-                            <div className="w-full space-y-2">
-                                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                    <Filter className="h-4 w-4 text-gray-500" />
-                                    <span className="font-medium">Filters</span>
-                                </div>
+                            <div className="w-full md:flex-1 md:min-w-0">
                                 <div className="flex flex-wrap items-center gap-2">
-                                    <span className="text-xs text-muted-foreground">Profile</span>
-                                    <FilterPills
-                                        name="users-profile-filter"
-                                        value={advancedFilters.profile}
-                                        onChange={(value) => dispatch({ type: "SET_ADVANCED_FILTERS", payload: { ...advancedFilters, profile: value } })}
-                                        options={[
-                                            { value: "all", label: "All" },
-                                            { value: "premium", label: "Premium" },
-                                            { value: "basic", label: "Basic" },
-                                            { value: "business", label: "Business" },
-                                        ]}
-                                    />
-                                </div>
-                                <div className="flex flex-wrap items-center gap-2">
-                                    <span className="text-xs text-muted-foreground">Type</span>
-                                    <FilterPills
-                                        name="users-attribute-filter"
-                                        value={currentAttributeFilter}
-                                        onChange={setAttributeFilter}
-                                        options={[
-                                            { value: "all", label: "All" },
-                                            { value: "quota", label: "Quota" },
-                                            { value: "mac", label: "MAC" },
-                                            { value: "contact", label: "Contact" },
-                                        ]}
-                                    />
+                                    <div className="flex items-center gap-2 text-xs text-muted-foreground whitespace-nowrap">
+                                        <Filter className="h-4 w-4 text-gray-500" />
+                                        <span className="font-medium">Filters</span>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                        <span className="text-xs text-muted-foreground whitespace-nowrap">Profile</span>
+                                        <FilterPills
+                                            name="users-profile-filter"
+                                            value={advancedFilters.profile}
+                                            onChange={(value) => dispatch({ type: "SET_ADVANCED_FILTERS", payload: { ...advancedFilters, profile: value } })}
+                                            options={[
+                                                { value: "all", label: "All" },
+                                                { value: "premium", label: "Premium" },
+                                                { value: "basic", label: "Basic" },
+                                                { value: "business", label: "Business" },
+                                            ]}
+                                        />
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                        <span className="text-xs text-muted-foreground whitespace-nowrap">Type</span>
+                                        <FilterPills
+                                            name="users-attribute-filter"
+                                            value={currentAttributeFilter}
+                                            onChange={setAttributeFilter}
+                                            options={[
+                                                { value: "all", label: "All" },
+                                                { value: "quota", label: "Quota" },
+                                                { value: "mac", label: "MAC" },
+                                                { value: "contact", label: "Contact" },
+                                            ]}
+                                        />
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1376,13 +1376,13 @@ const UsersPage: React.FC = () => {
                                         iconOnly={false}
                                     />
                                     <MetricItem
-                                        label="Suspended"
-                                        value={metrics.suspended}
-                                        icon={UserX}
-                                        color="text-red-600"
-                                        onClick={() => handleQuickFilter('suspended')}
-                                        tooltipText={`Suspended users: ${metrics.suspended} (${metrics.total ? Math.round((metrics.suspended / metrics.total) * 100) : 0}%). Click to filter.`}
-                                        showDot={metrics.suspended > 0}
+                                        label="Risk"
+                                        value={metrics.riskUsers}
+                                        icon={AlertTriangle}
+                                        color="text-orange-600"
+                                        onClick={() => handleQuickFilter('risk')}
+                                        tooltipText={`Users needing attention: ${metrics.riskUsers}. Click to filter.`}
+                                        showDot={metrics.riskUsers > 0}
                                         gradient={true}
                                         iconOnly={false}
                                     />
@@ -1501,9 +1501,12 @@ const UsersPage: React.FC = () => {
                                     </button>
                                 </Badge>
                             ) : null}
-                            <Button variant="outline" size="sm" onClick={clearAllFilters}>
-                                Clear all
-                            </Button>
+                            <IconActionButton
+                                label="Clear all filters"
+                                onClick={clearAllFilters}
+                                icon={<X className="h-4 w-4" />}
+                                size="sm"
+                            />
                         </div>
                     </CardContent>
                 </Card>
@@ -1516,14 +1519,13 @@ const UsersPage: React.FC = () => {
                         <p className="text-sm text-amber-800">
                             No users match your current filters. Clear filters to see all users.
                         </p>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            className="border-amber-300 text-amber-800 hover:bg-amber-100"
+                        <IconActionButton
+                            label="Clear all filters"
                             onClick={clearAllFilters}
-                        >
-                            Clear all filters
-                        </Button>
+                            variant="outline"
+                            className="border-amber-300 text-amber-800 hover:bg-amber-100"
+                            icon={<X className="h-4 w-4" />}
+                        />
                     </CardContent>
                 </Card>
             )}

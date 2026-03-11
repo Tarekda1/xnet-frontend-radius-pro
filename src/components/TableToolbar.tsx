@@ -1,7 +1,7 @@
 import React from "react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { LayoutGrid, Rows3 } from "lucide-react";
+import IconActionButton from "@/components/IconActionButton";
 
 type Density = "comfortable" | "compact";
 
@@ -61,15 +61,11 @@ export default function TableToolbar({
       <div className="min-w-0 text-sm text-muted-foreground break-words">{label}</div>
       <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
         {right}
-        <Button
-          variant="outline"
-          size="sm"
+        <IconActionButton
+          label={`Density: ${density === "compact" ? "Compact" : "Comfortable"}`}
           onClick={() => setDensity((d) => (d === "compact" ? "comfortable" : "compact"))}
-          className="w-full gap-2 sm:w-auto"
-        >
-          {density === "compact" ? <Rows3 className="h-4 w-4" /> : <LayoutGrid className="h-4 w-4" />}
-          {density === "compact" ? "Compact" : "Comfortable"}
-        </Button>
+          icon={density === "compact" ? <Rows3 className="h-4 w-4" /> : <LayoutGrid className="h-4 w-4" />}
+        />
       </div>
     </div>
   );
