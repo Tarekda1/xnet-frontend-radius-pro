@@ -1,28 +1,14 @@
-# Use a lightweight Node.js image
 FROM node:20-slim
 
-# Set environment variables for consistent behavior
 ENV NODE_ENV=development
-
-# Set working directory
 WORKDIR /app
 
-# Install dependencies separately to improve build caching
-COPY package.json package-lock.json* ./
-
-RUN npm ci || npm install
-
-# Copy source code AFTER installing dependencies
 COPY . .
 
-# Ensure node_modules/.bin is in PATH
-ENV PATH=/app/node_modules/.bin:$PATH
+WORKDIR /app/next-app
+RUN npm ci --legacy-peer-deps
 
-# Install `vite` globally (optional if needed for tooling)
-# RUN npm install -g vite
-
-# Expose Vite dev server and HMR port (default: 5173)
+ENV PATH=/app/next-app/node_modules/.bin:$PATH
 EXPOSE 5173
 
-# Use host networking for Vite dev server
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+CMD ["npx", "next", "dev", "--hostname", "0.0.0.0", "--port", "5173"]

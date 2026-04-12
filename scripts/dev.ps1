@@ -14,9 +14,10 @@ Require-Command npm
 $repoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $repoRoot
 
-if (-not (Test-Path ".env.local") -and (Test-Path "env.example")) {
-  Copy-Item "env.example" ".env.local" -Force
-  Write-Host "Created .env.local from env.example"
+$nextEnvLocal = Join-Path $repoRoot "next-app\.env.local"
+if (-not (Test-Path $nextEnvLocal) -and (Test-Path "env.example")) {
+  Copy-Item "env.example" $nextEnvLocal -Force
+  Write-Host "Created next-app\.env.local from env.example"
 }
 
 try {

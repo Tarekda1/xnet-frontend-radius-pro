@@ -1,0 +1,382 @@
+import React, { useState, useMemo } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { format } from "date-fns";
+import { CalendarIcon, Copy, User } from "lucide-react";
+
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { cn } from "@/lib/utils";
+import { ExternalInvoice } from "@/types/api";
+import { useExternalInvoices } from "@/hooks/useExternalInvoices";
+import { useToast } from "@/components/ui/use-toast";
+import { ToastAction } from "@/components/ui/toast";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/permissions";
+import { isFeatureEnabled } from "@/lib/featureFlags";
+import { notify } from "@/lib/notify";
+import { fetchExternalInvoiceHistory, setExternalInvoiceWorkflow } from "@/api/invoices";
+import { parsePromiseDateFromLastAction } from "@/lib/externalInvoiceInsights";
+
+type Props = {
+  invoice: ExternalInvoice;
+  onClose: () => void;
+  onSave: (updated: ExternalInvoice) => void;
+};
+
+const ExternalInvoiceDetailView: React.FC<Props> = ({
+  invoice,
+  onClose,
+  onSave,
+}) => {
+  const { user } = useAuth();
+  const canPay = can(user, "billing.externalInvoices.pay");
+  const canUnpay = can(user, "billing.externalInvoices.unpay");
+  const canSendReminder = isFeatureEnabled("whatsapp-remind");
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "pos" | "transfer" | "other" | "gateway">("cash");
+  const [promiseDateInput, setPromiseDateInput] = useState<string>(parsePromiseDateFromLastAction((invoice as any).lastAction) || "");
+  const [editedInvoice, setEditedInvoice] = useState<ExternalInvoice>({
+    ...invoice,
+  });
+
+  // lightweight access to mutations via hook (pageSize 1 to avoid heavy work)
+  const { updateInvoiceMutation, setInvoiceAsPaidMutation, unpayInvoiceMutation, sendReminderMutation, refetch } = useExternalInvoices({ initialPage: 1, pageSize: 1, search: "", });
+  const { toast } = useToast();
+  const historyQuery = useQuery({
+    queryKey: ["externalInvoiceHistory", invoice.id],
+    queryFn: () => fetchExternalInvoiceHistory(invoice.id, 100),
+  });
+  const workflowMutation = useMutation({
+    mutationFn: async (payload: { stage: "new" | "reminded" | "promise_to_pay" | "escalated" | "resolved"; promiseDate?: string | null }) =>
+      setExternalInvoiceWorkflow(invoice.id, payload),
+    onSuccess: () => {
+      notify.success("Workflow updated", "Stage saved.");
+      historyQuery.refetch();
+      refetch();
+    },
+    onError: (e: unknown) => {
+      notify.error("Workflow failed", e instanceof Error ? e.message : "Could not update workflow.");
+    },
+  });
+
+  /* ── handlers ─────────────────────────────── */
+  const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { id, value } = e.target;
+    setEditedInvoice((prev) => ({ ...prev, [id]: value }));
+  };
+
+  const handleDate = (date: Date | undefined, field: keyof ExternalInvoice) => {
+    if (date)
+      setEditedInvoice((prev) => ({ ...prev, [field]: date.toISOString() }));
+  };
+
+  const handleStatusChange = (value: string) => {
+    setEditedInvoice((prev: any) => ({ ...prev, status: value }));
+  };
+
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text).then(
+      () => notify.success("Copied", `${label} copied to clipboard`),
+      () => notify.error("Copy failed", "Could not copy to clipboard")
+    );
+  };
+
+  const renderField = (key: string, value: any) => (
+    <div key={key} className="mb-4">
+      <Label htmlFor={key} className="block mb-2 capitalize">
+        {key}
+      </Label>
+      {key === "status" && isEditing ? (
+        <Select
+          value={value as string}
+          onValueChange={handleStatusChange}
+        >
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="Select status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="paid">Paid</SelectItem>
+            <SelectItem value="pending">Pending</SelectItem>
+            <SelectItem value="unpaid">Unpaid</SelectItem>
+          </SelectContent>
+        </Select>
+      ) : key === "paidAt" && isEditing ? (
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              className={cn(
+                "w-full justify-start",
+                !value && "text-muted-foreground"
+              )}
+            >
+              <CalendarIcon className="mr-2 h-4 w-4" />
+              {value ? format(new Date(value), "PPP") : "Pick a date"}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="p-0">
+            <Calendar
+              mode="single"
+              selected={value ? new Date(value) : undefined}
+              onSelect={(d) => handleDate(d!, "paidAt")}
+              autoFocus
+            />
+          </PopoverContent>
+        </Popover>
+      ) : (
+        <Input
+          id={key}
+          value={
+            ["billingMonth", "createdAt", "paidAt"].includes(key)
+              ? value
+                ? new Date(value as string).toLocaleString()
+                : ""
+              : (value as string)
+          }
+          readOnly={!isEditing || key === "id" || key === "createdAt"}
+          onChange={handleInput}
+          className="w-full"
+        />
+      )}
+    </div>
+  );
+
+  const saveAndClose = () => {
+    onSave(editedInvoice);
+    setIsEditing(false);
+  };
+
+  const markPaidLocal = () => {
+    if (!canPay) return;
+    const prev = { status: editedInvoice.status, paidAt: (editedInvoice as any).paidAt } as any;
+    setEditedInvoice((prevInv: any) => ({ ...prevInv, status: "paid", paidAt: new Date().toISOString() }));
+    setInvoiceAsPaidMutation.mutate({ invoiceId: editedInvoice.id, paymentMethod, silent: true }, {
+      onSuccess: () => {
+        refetch();
+        toast({
+          title: `Invoice #${editedInvoice.id} marked as paid`,
+          action: (
+            <ToastAction altText="Undo" onClick={() => updateInvoiceMutation.mutate({ invoiceId: editedInvoice.id, invoiceData: prev }, { onSuccess: () => refetch() })}>
+              Undo
+            </ToastAction>
+          ),
+        });
+      },
+      onError: () => setEditedInvoice((_) => ({ ..._, ...prev })),
+    });
+  };
+
+  const markUnpaidLocal = () => {
+    if (!canUnpay) return;
+    const prev = { status: editedInvoice.status, paidAt: (editedInvoice as any).paidAt } as any;
+    setEditedInvoice((prevInv: any) => ({ ...prevInv, status: "unpaid", paidAt: null }));
+    unpayInvoiceMutation.mutate({ invoiceId: editedInvoice.id, silent: true }, {
+      onSuccess: () => {
+        refetch();
+        toast({
+          title: `Invoice #${editedInvoice.id} marked as unpaid`,
+          action: (
+            <ToastAction altText="Undo" onClick={() => updateInvoiceMutation.mutate({ invoiceId: editedInvoice.id, invoiceData: prev }, { onSuccess: () => refetch() })}>
+              Undo
+            </ToastAction>
+          ),
+        });
+      },
+      onError: () => setEditedInvoice((_) => ({ ..._, ...prev })),
+    });
+  };
+
+  /* ── render ───────────────────────────────── */
+  const timelineItems = useMemo(() => {
+    const seed = [
+      (invoice as any).createdAt
+        ? { label: "CREATED", actor: (invoice as any).modifiedBy || "system", date: (invoice as any).createdAt, detail: "" }
+        : null,
+      (invoice as any).paidAt
+        ? { label: "PAID", actor: (invoice as any).modifiedBy || "system", date: (invoice as any).paidAt, detail: "" }
+        : null,
+    ].filter(Boolean) as Array<{ label: string; actor: string; date: string; detail: string }>;
+    const fromLogs = (historyQuery.data || []).map((item) => ({
+      label: item.action,
+      actor: item.username,
+      date: item.timestamp,
+      detail: item.changes ? JSON.stringify(item.changes) : "",
+    }));
+    return [...seed, ...fromLogs].sort((a, b) => new Date(b.date || "").getTime() - new Date(a.date || "").getTime());
+  }, [historyQuery.data, invoice]);
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="lg:max-w-4xl w-full p-0 overflow-hidden relative flex flex-col max-h-[85vh]">
+        {/* Sticky header */}
+        <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-3 border-b bg-background/90 backdrop-blur">
+          <DialogHeader>
+            <DialogTitle>External Invoice Details</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => copyToClipboard(String(editedInvoice.id), "Invoice ID")}
+              title="Copy Invoice ID"
+            >
+              <Copy className="h-4 w-4 mr-1" />
+              Copy ID
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => copyToClipboard(editedInvoice.username, "Username")}
+              title="Copy Username"
+            >
+              <User className="h-4 w-4 mr-1" />
+              Copy User
+            </Button>
+            {editedInvoice.status !== "paid" ? (
+              canPay ? (
+                <Button variant="outline" size="sm" onClick={markPaidLocal}>
+                  Mark Paid
+                </Button>
+              ) : null
+            ) : (
+              canUnpay ? (
+                <Button variant="outline" size="sm" onClick={markUnpaidLocal}>
+                  Mark Unpaid
+                </Button>
+              ) : null
+            )}
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => sendReminderMutation.mutate(editedInvoice.id)}
+              disabled={!canSendReminder}
+              title={!canSendReminder ? "Reminder feature is disabled" : "Send WhatsApp reminder"}
+            >
+              Send Reminder
+            </Button>
+            {isEditing ? (
+              <>
+                <Button size="sm" onClick={saveAndClose}>Save</Button>
+                <Button size="sm" variant="outline" onClick={() => setIsEditing(false)}>Cancel</Button>
+              </>
+            ) : (
+              <Button size="sm" variant="secondary" onClick={() => setIsEditing(true)}>Edit</Button>
+            )}
+            <Button size="sm" variant="ghost" onClick={onClose}>Close</Button>
+          </div>
+        </div>
+
+        {/* Body with tabs - scrolls within the dialog */}
+        <div className="p-4 flex-1 overflow-y-auto overflow-x-auto">
+          <Tabs defaultValue="overview" className="w-full">
+            <TabsList className="grid grid-cols-3 w-full mb-4">
+              <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="payments">Payments</TabsTrigger>
+              <TabsTrigger value="history">History</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="overview" className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  {Object.entries(editedInvoice)
+                    .slice(0, Math.ceil(Object.keys(editedInvoice).length / 2))
+                    .map(([key, value]) => renderField(key, value))}
+                </div>
+                <div>
+                  {Object.entries(editedInvoice)
+                    .slice(Math.ceil(Object.keys(editedInvoice).length / 2))
+                    .map(([key, value]) => renderField(key, value))}
+                </div>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="payments" className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {renderField("status", (editedInvoice as any).status)}
+                {renderField("paidAt", (editedInvoice as any).paidAt)}
+              </div>
+              <div className="max-w-xs">
+                <Label className="block mb-2">Payment Method</Label>
+                <Select value={paymentMethod} onValueChange={(v: any) => setPaymentMethod(v)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select payment method" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">Cash</SelectItem>
+                    <SelectItem value="pos">POS</SelectItem>
+                    <SelectItem value="transfer">Transfer</SelectItem>
+                    <SelectItem value="gateway">Gateway</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-2">
+                {editedInvoice.status !== "paid" ? (
+                  <Button onClick={markPaidLocal}>Mark Paid</Button>
+                ) : (
+                  <Button variant="outline" onClick={markUnpaidLocal}>Mark Unpaid</Button>
+                )}
+              </div>
+              <div className="rounded-md border p-3 space-y-2">
+                <div className="text-xs text-muted-foreground">Collection workflow</div>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="outline" onClick={() => workflowMutation.mutate({ stage: "reminded" })}>Set Reminded</Button>
+                  <Button size="sm" variant="outline" onClick={() => workflowMutation.mutate({ stage: "escalated" })}>Set Escalated</Button>
+                  <Button size="sm" variant="outline" onClick={() => workflowMutation.mutate({ stage: "resolved" })}>Set Resolved</Button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Input type="date" value={promiseDateInput} onChange={(e) => setPromiseDateInput(e.target.value)} />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => workflowMutation.mutate({ stage: "promise_to_pay", promiseDate: promiseDateInput || null })}
+                    disabled={!promiseDateInput}
+                  >
+                    Set Promise Date
+                  </Button>
+                </div>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="history" className="space-y-3">
+              {historyQuery.isLoading ? (
+                <div className="text-sm text-muted-foreground">Loading history...</div>
+              ) : null}
+              {!historyQuery.isLoading && timelineItems.length === 0 && (
+                <div className="text-sm text-muted-foreground">No history available.</div>
+              )}
+              <div className="space-y-3">
+                {timelineItems.map((h, idx) => (
+                  <div key={idx} className="flex items-center gap-3">
+                    <div className="h-2 w-2 rounded-full bg-primary" />
+                    <div className="text-sm">
+                      <span className="font-medium mr-2">{h.label}</span>
+                      <span className="text-muted-foreground">{h.date ? new Date(h.date).toLocaleString() : "—"}</span>
+                      {h.actor ? <span className="ml-2 text-xs text-muted-foreground">by {h.actor}</span> : null}
+                      {h.detail ? <div className="text-xs text-muted-foreground mt-0.5 break-all">{h.detail}</div> : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </TabsContent>
+
+          </Tabs>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+export default ExternalInvoiceDetailView;

@@ -1,50 +1,43 @@
-# Multi-stage Dockerfile for React + Vite + TypeScript
+# Next.js App Router — production (standalone Node server).
 
-# Build stage
 FROM node:20-alpine AS builder
-
-# Add dependencies for npm performance
 RUN apk add --no-cache libc6-compat
-
-# Set working directory
 WORKDIR /app
 
-# Build-time env (Vite only reads VITE_* at build time)
-ARG VITE_API_URL
-ENV VITE_API_URL=${VITE_API_URL}
-
-# Install dependencies separately to improve build caching
-COPY package.json package-lock.json* ./
-RUN npm ci || npm install
-
-# Copy source code and build
 COPY . .
+
+WORKDIR /app/next-app
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ARG NEXT_PUBLIC_WS_URL
+ENV NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL}
+ARG API_PROXY_TARGET=http://127.0.0.1:3000
+ENV API_PROXY_TARGET=${API_PROXY_TARGET}
+RUN npm ci --legacy-peer-deps
 RUN npm run build
 
-# Production stage
-FROM nginxinc/nginx-unprivileged:stable-alpine
+FROM node:20-alpine AS runner
+RUN apk add --no-cache gettext wget
+WORKDIR /app
 
-# Copy custom nginx config
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+ENV NODE_ENV=production
+ENV PORT=5173
+ENV HOSTNAME=0.0.0.0
 
-# Copy built assets from builder stage
-COPY --from=builder /app/dist /usr/share/nginx/html
+COPY --from=builder /app/next-app/.next/standalone ./
+COPY --from=builder /app/next-app/.next/static ./.next/static
+COPY --from=builder /app/next-app/public ./public
+COPY --from=builder /app/public/env.template.js ./public/env.template.js
 
-# Entrypoint to generate /env.js at runtime
-USER root
-RUN apk add --no-cache gettext wget \
-  && chmod -R g=u /usr/share/nginx/html \
-  && chown -R 101:101 /usr/share/nginx/html
-COPY docker/entrypoint.sh /entrypoint.sh
+COPY docker/entrypoint-next.sh /entrypoint.sh
 RUN sed -i 's/\r$//' /entrypoint.sh \
   && chmod +x /entrypoint.sh \
-  && chown 101:101 /entrypoint.sh
-USER 101
+  && chown -R node:node /app
 
-# Expose port
-EXPOSE 8080
+USER node
+EXPOSE 5173
 
-# Healthcheck (also used by docker-compose)
-HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD wget --spider -q http://127.0.0.1:8080/healthz || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+  CMD wget --spider -q http://127.0.0.1:5173/healthz || exit 1
 
 ENTRYPOINT ["sh", "/entrypoint.sh"]

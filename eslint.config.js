@@ -1,14 +1,12 @@
 import globals from 'globals'
 import * as reactHooksMod from 'eslint-plugin-react-hooks'
-import * as reactRefreshMod from 'eslint-plugin-react-refresh'
 import tsParser from '@typescript-eslint/parser'
 import tsPlugin from '@typescript-eslint/eslint-plugin'
 
 const reactHooks = reactHooksMod.default ?? reactHooksMod
-const reactRefresh = reactRefreshMod.default ?? reactRefreshMod
 
 export default [
-  { ignores: ['dist'] },
+  { ignores: ['dist', 'next-app/.next', '**/node_modules'] },
   {
     files: ['**/*.{ts,tsx}'],
     languageOptions: {
@@ -23,7 +21,6 @@ export default [
     plugins: {
       '@typescript-eslint': tsPlugin,
       'react-hooks': reactHooks,
-      'react-refresh': reactRefresh,
     },
     rules: {
       ...tsPlugin.configs.recommended.rules,
@@ -36,10 +33,6 @@ export default [
       ...reactHooks.configs.recommended.rules,
       'react-hooks/rules-of-hooks': 'warn',
       'react-hooks/exhaustive-deps': 'warn',
-      'react-refresh/only-export-components': [
-        'warn',
-        { allowConstantExport: true },
-      ],
     },
   },
 ]
