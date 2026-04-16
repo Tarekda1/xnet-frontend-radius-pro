@@ -246,11 +246,11 @@ export default function AddUserPage() {
                       onChange={(e) => setExpiresAtLocal(e.target.value)}
                     />
                     <p className="text-xs text-muted-foreground">
-                      After this time, RADIUS can mark the account expired and send users to the renewal page.
+                      After this time, the account becomes expired and cannot connect until staff renews it.
                     </p>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="expiryFramedIp">Expiry / walled-garden IP (optional)</Label>
+                    <Label htmlFor="expiryFramedIp">Optional framed IP (legacy)</Label>
                     <Input
                       id="expiryFramedIp"
                       value={expiryFramedIp}

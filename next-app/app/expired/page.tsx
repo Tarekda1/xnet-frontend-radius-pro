@@ -20,7 +20,7 @@ function ExpiredContent() {
           </div>
           <CardTitle className="text-xl">Account access has expired</CardTitle>
           <CardDescription>
-            Your internet access for this hotspot session is limited until your subscription is renewed.
+            Your subscription has ended. New logins are blocked until your provider renews your account.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4 text-center text-sm text-muted-foreground">

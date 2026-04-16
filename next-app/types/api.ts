@@ -9,9 +9,9 @@ export interface User {
   isMonthlyExceededComputed?: boolean;
   quotaResetDay: number;
   accountStatus: string;
-  /** ISO 8601 — subscription / access expiry (RADIUS may move user to `expired` when past). */
+  /** ISO 8601 — subscription / access expiry (past date ⇒ `expired` + RADIUS reject until renewed). */
   expiresAt?: string | null;
-  /** Optional walled-garden framed IP for expired sessions (overrides RADIUS EXPIRY_FRAMED_IP). */
+  /** Optional framed IP field (legacy; default policy rejects expired users instead of walled garden). */
   expiryFramedIp?: string | null;
   macAddress: {
     macAddress: string;

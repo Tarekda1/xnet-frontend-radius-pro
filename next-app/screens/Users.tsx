@@ -358,7 +358,13 @@ const UsersPage: React.FC = () => {
 
     const [searchParams, setSearchParams] = useSearchParams();
     const router = useRouter();
-    const savedViewsKeys = useMemo(() => ["q", "status", "profile", "quotaExceeded", "hasMacAddress", "hasContactInfo", "ps", "view", "p"], []);
+    const savedViewsKeys = useMemo(
+        () => ["q", "status", "account", "profile", "quotaExceeded", "hasMacAddress", "hasContactInfo", "ps", "view", "p"],
+        []
+    );
+
+    const [isFiltersDialogOpen, setIsFiltersDialogOpen] = useState(false);
+    const [filtersDraft, setFiltersDraft] = useState({ accountStatus: "" as string });
 
     const { user: authUser } = useAuth();
     const canSeeAudit = useMemo(() => canAny(authUser, ["users.view", "reseller.users.view"]), [authUser]);
@@ -423,6 +429,7 @@ const UsersPage: React.FC = () => {
     useEffect(() => {
         const q = searchParams.get("q") ?? "";
         const status = searchParams.get("status") ?? "";
+        const accountFromUrl = searchParams.get("account") ?? "";
         const profile = searchParams.get("profile") ?? "all";
         const quotaExceeded = searchParams.get("quotaExceeded") === "true";
         const hasMacAddress = searchParams.get("hasMacAddress") === "true";
@@ -431,9 +438,29 @@ const UsersPage: React.FC = () => {
         const view = (searchParams.get("view") ?? "table") as "table" | "cards" | "analytics";
         const p = parseInt(searchParams.get("p") ?? "", 10);
         if (q) setSearchQuery(q);
-        if (status) dispatch({ type: "SET_STATUS_FILTER", payload: status });
-        if (profile !== "all" || quotaExceeded || hasMacAddress || hasContactInfo) {
-            dispatch({ type: "SET_ADVANCED_FILTERS", payload: { profile, quotaExceeded, hasMacAddress, hasContactInfo } });
+
+        let accountStatus = accountFromUrl;
+        if (!accountStatus && (status === "active" || status === "suspended")) {
+            accountStatus = status;
+        }
+        const connectivityStatus =
+            status && status !== "active" && status !== "suspended" ? status : "";
+        if (connectivityStatus) dispatch({ type: "SET_STATUS_FILTER", payload: connectivityStatus });
+        else if (accountStatus) dispatch({ type: "SET_STATUS_FILTER", payload: "" });
+
+        if (
+            profile !== "all" ||
+            quotaExceeded ||
+            hasMacAddress ||
+            hasContactInfo ||
+            accountFromUrl ||
+            status === "active" ||
+            status === "suspended"
+        ) {
+            dispatch({
+                type: "SET_ADVANCED_FILTERS",
+                payload: { accountStatus, profile, quotaExceeded, hasMacAddress, hasContactInfo },
+            });
         }
         if (Number.isFinite(ps) && ps > 0) dispatch({ type: "SET_PAGE_SIZE", payload: ps });
         if (["table", "cards", "analytics"].includes(view)) dispatch({ type: "SET_VIEW_MODE", payload: view });
@@ -446,6 +473,7 @@ const UsersPage: React.FC = () => {
         setSearchParams((prev) => {
             const next = new URLSearchParams(prev);
             if (searchQuery) next.set("q", searchQuery); else next.delete("q");
+            if (advancedFilters.accountStatus) next.set("account", advancedFilters.accountStatus); else next.delete("account");
             if (statusFilter) next.set("status", statusFilter); else next.delete("status");
             if (advancedFilters.profile !== "all") next.set("profile", advancedFilters.profile); else next.delete("profile");
             if (advancedFilters.quotaExceeded) next.set("quotaExceeded", "true"); else next.delete("quotaExceeded");
@@ -462,24 +490,28 @@ const UsersPage: React.FC = () => {
     const filteredUsers = React.useMemo(() => {
         let filtered = serverUsers;
 
-        // Status filter
-        if (statusFilter) {
-            filtered = filtered.filter(user => {
+        const effectiveAccountStatus =
+            advancedFilters.accountStatus ||
+            (statusFilter === "active" || statusFilter === "suspended" ? statusFilter : "");
+        if (effectiveAccountStatus) {
+            const want = effectiveAccountStatus.toLowerCase();
+            filtered = filtered.filter((user) => String(user.accountStatus ?? "").toLowerCase() === want);
+        }
+
+        // Connectivity / risk / profile quick filters (not account status)
+        if (statusFilter && !["active", "suspended"].includes(statusFilter)) {
+            filtered = filtered.filter((user) => {
                 switch (statusFilter) {
-                    case 'active':
-                        return user.accountStatus === 'active';
-                    case 'suspended':
-                        return user.accountStatus === 'suspended';
-                    case 'risk':
+                    case "risk":
                         return isUserAtRisk(user);
-                    case 'online':
+                    case "online":
                         return user.isOnline === true;
-                    case 'offline':
+                    case "offline":
                         return user.isOnline === false;
-                    case 'profile:premium':
-                        return user.profile.profileName.toLowerCase() === 'premium';
-                    case 'profile:basic':
-                        return user.profile.profileName.toLowerCase() === 'basic';
+                    case "profile:premium":
+                        return user.profile.profileName.toLowerCase() === "premium";
+                    case "profile:basic":
+                        return user.profile.profileName.toLowerCase() === "basic";
                     default:
                         return true;
                 }
@@ -581,25 +613,54 @@ const UsersPage: React.FC = () => {
 
     const handleQuickFilter = useCallback((filter: string) => {
         switch (filter) {
-            case 'all':
-                dispatch({ type: "SET_STATUS_FILTER", payload: '' });
+            case "all":
+                dispatch({ type: "SET_STATUS_FILTER", payload: "" });
+                dispatch({
+                    type: "SET_ADVANCED_FILTERS",
+                    payload: { ...advancedFilters, accountStatus: "" },
+                });
                 break;
-            case 'suspended':
-                dispatch({ type: "SET_STATUS_FILTER", payload: 'suspended' });
+            case "suspended":
+                dispatch({ type: "SET_STATUS_FILTER", payload: "" });
+                dispatch({
+                    type: "SET_ADVANCED_FILTERS",
+                    payload: { ...advancedFilters, accountStatus: "suspended" },
+                });
                 break;
-            case 'online':
-                dispatch({ type: "SET_STATUS_FILTER", payload: 'online' });
+            case "online":
+                dispatch({ type: "SET_STATUS_FILTER", payload: "online" });
                 break;
-            case 'offline':
-                dispatch({ type: "SET_STATUS_FILTER", payload: 'offline' });
+            case "offline":
+                dispatch({ type: "SET_STATUS_FILTER", payload: "offline" });
                 break;
-            case 'risk':
-                dispatch({ type: "SET_STATUS_FILTER", payload: 'risk' });
+            case "risk":
+                dispatch({ type: "SET_STATUS_FILTER", payload: "risk" });
                 break;
             default:
-                dispatch({ type: "SET_STATUS_FILTER", payload: '' });
+                dispatch({ type: "SET_STATUS_FILTER", payload: "" });
         }
-    }, []);
+    }, [advancedFilters]);
+
+    const quickFilterPillValue = useMemo(() => {
+        if (statusFilter === "online") return "online";
+        if (statusFilter === "offline") return "offline";
+        if (statusFilter === "risk") return "risk";
+        if (advancedFilters.accountStatus === "suspended" || statusFilter === "suspended") return "suspended";
+        return "all";
+    }, [statusFilter, advancedFilters.accountStatus]);
+
+    const displayAccountFilter = useMemo(
+        () =>
+            advancedFilters.accountStatus ||
+            (statusFilter === "active" || statusFilter === "suspended" ? statusFilter : ""),
+        [advancedFilters.accountStatus, statusFilter]
+    );
+
+    useEffect(() => {
+        if (isFiltersDialogOpen) {
+            setFiltersDraft({ accountStatus: advancedFilters.accountStatus || "" });
+        }
+    }, [isFiltersDialogOpen, advancedFilters.accountStatus]);
 
     const currentAttributeFilter = advancedFilters.quotaExceeded
         ? "quota"
@@ -626,7 +687,13 @@ const UsersPage: React.FC = () => {
         dispatch({ type: "SET_STATUS_FILTER", payload: "" });
         dispatch({
             type: "SET_ADVANCED_FILTERS",
-            payload: { profile: "all", quotaExceeded: false, hasMacAddress: false, hasContactInfo: false },
+            payload: {
+                accountStatus: "",
+                profile: "all",
+                quotaExceeded: false,
+                hasMacAddress: false,
+                hasContactInfo: false,
+            },
         });
         setCurrentPage(1);
     }, [setSearchQuery, setCurrentPage]);
@@ -1113,7 +1180,7 @@ const UsersPage: React.FC = () => {
                             <Label className="hidden sm:inline text-sm font-medium">Filter:</Label>
                             <FilterPills
                                 name="users-quick-filter"
-                                value={["online", "offline", "suspended", "risk"].includes(statusFilter) ? statusFilter : "all"}
+                                value={quickFilterPillValue}
                                 onChange={handleQuickFilter}
                                 options={[
                                     { value: "all", label: "All" },
@@ -1131,6 +1198,7 @@ const UsersPage: React.FC = () => {
                                 getState={() => ({
                                     q: searchQuery || "",
                                     status: statusFilter || "",
+                                    account: advancedFilters.accountStatus || "",
                                     profile: advancedFilters.profile || "",
                                     quotaExceeded: advancedFilters.quotaExceeded ? "true" : "",
                                     hasMacAddress: advancedFilters.hasMacAddress ? "true" : "",
@@ -1142,6 +1210,12 @@ const UsersPage: React.FC = () => {
                                 applyState={(s) => {
                                     if (s.q !== undefined) setSearchQuery(s.q || "");
                                     if (s.status !== undefined) dispatch({ type: "SET_STATUS_FILTER", payload: s.status || "" });
+                                    if (s.account !== undefined) {
+                                        dispatch({
+                                            type: "SET_ADVANCED_FILTERS",
+                                            payload: { ...advancedFilters, accountStatus: s.account || "" },
+                                        });
+                                    }
                                     if (s.profile !== undefined) dispatch({ type: "SET_ADVANCED_FILTERS", payload: { ...advancedFilters, profile: s.profile || "all" } });
                                     if (s.quotaExceeded !== undefined) dispatch({ type: "SET_ADVANCED_FILTERS", payload: { ...advancedFilters, quotaExceeded: s.quotaExceeded === "true" } });
                                     if (s.hasMacAddress !== undefined) dispatch({ type: "SET_ADVANCED_FILTERS", payload: { ...advancedFilters, hasMacAddress: s.hasMacAddress === "true" } });
@@ -1153,6 +1227,7 @@ const UsersPage: React.FC = () => {
                                         const next = new URLSearchParams(prev);
                                         if (s.q) next.set("q", s.q); else next.delete("q");
                                         if (s.status) next.set("status", s.status); else next.delete("status");
+                                        if (s.account) next.set("account", s.account); else next.delete("account");
                                         if (s.profile) next.set("profile", s.profile); else next.delete("profile");
                                         if (s.quotaExceeded) next.set("quotaExceeded", s.quotaExceeded); else next.delete("quotaExceeded");
                                         if (s.hasMacAddress) next.set("hasMacAddress", s.hasMacAddress); else next.delete("hasMacAddress");
@@ -1229,6 +1304,7 @@ const UsersPage: React.FC = () => {
                                     dispatch({
                                         type: "SET_ADVANCED_FILTERS",
                                         payload: {
+                                            accountStatus: "",
                                             profile: "all",
                                             quotaExceeded: false,
                                             hasMacAddress: false,
@@ -1326,6 +1402,16 @@ const UsersPage: React.FC = () => {
                                             ]}
                                         />
                                     </div>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-8 gap-1.5"
+                                        onClick={() => setIsFiltersDialogOpen(true)}
+                                    >
+                                        <Filter className="h-3.5 w-3.5" />
+                                        Account status
+                                    </Button>
                                 </div>
                             </div>
                         </div>
@@ -1334,7 +1420,8 @@ const UsersPage: React.FC = () => {
             </div>
 
             {(searchQuery ||
-                statusFilter ||
+                displayAccountFilter ||
+                (statusFilter && !["active", "suspended"].includes(statusFilter)) ||
                 advancedFilters.profile !== "all" ||
                 advancedFilters.quotaExceeded ||
                 advancedFilters.hasMacAddress ||
@@ -1359,7 +1446,32 @@ const UsersPage: React.FC = () => {
                                     </button>
                                 </Badge>
                             ) : null}
-                            {statusFilter ? (
+                            {displayAccountFilter ? (
+                                <Badge variant="secondary" className="gap-1">
+                                    Account:{" "}
+                                    {displayAccountFilter === "inactive"
+                                        ? "Inactive"
+                                        : displayAccountFilter.charAt(0).toUpperCase() + displayAccountFilter.slice(1)}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            dispatch({
+                                                type: "SET_ADVANCED_FILTERS",
+                                                payload: { ...advancedFilters, accountStatus: "" },
+                                            });
+                                            if (statusFilter === "active" || statusFilter === "suspended") {
+                                                dispatch({ type: "SET_STATUS_FILTER", payload: "" });
+                                            }
+                                            setCurrentPage(1);
+                                        }}
+                                        className="inline-flex items-center"
+                                        aria-label="Remove account status filter"
+                                    >
+                                        <X className="h-3 w-3" />
+                                    </button>
+                                </Badge>
+                            ) : null}
+                            {statusFilter && !["active", "suspended"].includes(statusFilter) ? (
                                 <Badge variant="secondary" className="gap-1">
                                     Status: {statusFilter}
                                     <button
@@ -1451,7 +1563,15 @@ const UsersPage: React.FC = () => {
             ) : null}
 
             {/* Clear filters CTA when no results */}
-            {filteredUsers.length === 0 && !isLoading && (searchQuery || statusFilter || advancedFilters.profile !== "all" || advancedFilters.quotaExceeded || advancedFilters.hasMacAddress || advancedFilters.hasContactInfo) && (
+            {filteredUsers.length === 0 &&
+                !isLoading &&
+                (searchQuery ||
+                    displayAccountFilter ||
+                    (statusFilter && !["active", "suspended"].includes(statusFilter)) ||
+                    advancedFilters.profile !== "all" ||
+                    advancedFilters.quotaExceeded ||
+                    advancedFilters.hasMacAddress ||
+                    advancedFilters.hasContactInfo) && (
                 <Card className="border bg-card/60">
                     <CardContent className="flex flex-col items-center justify-between gap-3 p-4 sm:flex-row">
                         <p className="text-sm text-muted-foreground">
@@ -1699,6 +1819,61 @@ const UsersPage: React.FC = () => {
                             disabled={isImporting || importRows.filter((r) => r.errors.length === 0).length === 0}
                         >
                             {isImporting ? "Importing..." : "Create valid users"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Account status & related filters */}
+            <Dialog open={isFiltersDialogOpen} onOpenChange={setIsFiltersDialogOpen}>
+                <DialogContent className="sm:max-w-[440px]">
+                    <DialogHeader>
+                        <DialogTitle>Filters</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                        <div className="space-y-2">
+                            <Label>Account status</Label>
+                            <Select
+                                value={filtersDraft.accountStatus || "all"}
+                                onValueChange={(v) =>
+                                    setFiltersDraft({ accountStatus: v === "all" ? "" : v })
+                                }
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="All statuses" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All</SelectItem>
+                                    <SelectItem value="active">Active</SelectItem>
+                                    <SelectItem value="suspended">Suspended</SelectItem>
+                                    <SelectItem value="inactive">Inactive (disabled)</SelectItem>
+                                    <SelectItem value="terminated">Terminated</SelectItem>
+                                    <SelectItem value="expired">Expired</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <p className="text-xs text-muted-foreground">
+                                Matches the user&apos;s account status from RADIUS. Inactive covers legacy &quot;disabled&quot; rows in your data.
+                            </p>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsFiltersDialogOpen(false)}>
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={() => {
+                                dispatch({
+                                    type: "SET_ADVANCED_FILTERS",
+                                    payload: { ...advancedFilters, accountStatus: filtersDraft.accountStatus },
+                                });
+                                if (statusFilter === "active" || statusFilter === "suspended") {
+                                    dispatch({ type: "SET_STATUS_FILTER", payload: "" });
+                                }
+                                setCurrentPage(1);
+                                setIsFiltersDialogOpen(false);
+                            }}
+                        >
+                            Apply
                         </Button>
                     </DialogFooter>
                 </DialogContent>

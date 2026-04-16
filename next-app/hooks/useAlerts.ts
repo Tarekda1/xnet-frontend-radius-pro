@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import axios from 'axios';
+import { apiClient } from '@/api/client';
 import { notify } from '@/lib/notify';
 import { MESSAGES } from '@/constants/messages';
 import { 
@@ -113,11 +112,27 @@ const generateMockSettings = (): AlertSettings => ({
   }
 });
 
+// API envelope `{ success, data }` from backend; support raw arrays for compatibility.
+function unwrapList<T>(raw: unknown): T[] {
+  if (Array.isArray(raw)) return raw as T[];
+  if (raw && typeof raw === "object" && Array.isArray((raw as { data?: unknown }).data)) {
+    return (raw as { data: T[] }).data;
+  }
+  return [];
+}
+
+function unwrapEntity<T>(raw: unknown): T {
+  if (raw && typeof raw === "object" && "data" in raw && (raw as { data: unknown }).data !== undefined) {
+    return (raw as { data: T }).data;
+  }
+  return raw as T;
+}
+
 // API functions
 const fetchAlertRules = async (): Promise<AlertRule[]> => {
   try {
-    const response = await axios.get('/api/alerts/rules');
-    return response.data;
+    const response = await apiClient.get('/alerts/rules');
+    return unwrapList<AlertRule>(response.data);
   } catch (error) {
     console.warn('Using mock data for alert rules:', error);
     return generateMockAlertRules();
@@ -126,8 +141,8 @@ const fetchAlertRules = async (): Promise<AlertRule[]> => {
 
 const fetchAlerts = async (): Promise<Alert[]> => {
   try {
-    const response = await axios.get('/api/alerts');
-    return response.data;
+    const response = await apiClient.get('/alerts');
+    return unwrapList<Alert>(response.data);
   } catch (error) {
     console.warn('Using mock data for alerts:', error);
     return generateMockAlerts();
@@ -136,8 +151,8 @@ const fetchAlerts = async (): Promise<Alert[]> => {
 
 const fetchAlertSettings = async (): Promise<AlertSettings> => {
   try {
-    const response = await axios.get('/api/alerts/settings');
-    return response.data;
+    const response = await apiClient.get('/alerts/settings');
+    return unwrapEntity<AlertSettings>(response.data);
   } catch (error) {
     console.warn('Using mock data for alert settings:', error);
     return generateMockSettings();
@@ -146,8 +161,8 @@ const fetchAlertSettings = async (): Promise<AlertSettings> => {
 
 const createAlertRule = async (rule: Omit<AlertRule, 'id' | 'createdAt' | 'updatedAt' | 'triggerCount'>): Promise<AlertRule> => {
   try {
-    const response = await axios.post('/api/alerts/rules', rule);
-    return response.data;
+    const response = await apiClient.post('/alerts/rules', rule);
+    return unwrapEntity<AlertRule>(response.data);
   } catch (error) {
     console.error('Failed to create alert rule:', error);
     throw error;
@@ -156,8 +171,8 @@ const createAlertRule = async (rule: Omit<AlertRule, 'id' | 'createdAt' | 'updat
 
 const updateAlertRule = async (id: string, updates: Partial<AlertRule>): Promise<AlertRule> => {
   try {
-    const response = await axios.put(`/api/alerts/rules/${id}`, updates);
-    return response.data;
+    const response = await apiClient.put(`/alerts/rules/${id}`, updates);
+    return unwrapEntity<AlertRule>(response.data);
   } catch (error) {
     console.error('Failed to update alert rule:', error);
     throw error;
@@ -166,7 +181,7 @@ const updateAlertRule = async (id: string, updates: Partial<AlertRule>): Promise
 
 const deleteAlertRule = async (id: string): Promise<void> => {
   try {
-    await axios.delete(`/api/alerts/rules/${id}`);
+    await apiClient.delete(`/alerts/rules/${id}`);
   } catch (error) {
     console.error('Failed to delete alert rule:', error);
     throw error;
@@ -175,8 +190,8 @@ const deleteAlertRule = async (id: string): Promise<void> => {
 
 const acknowledgeAlert = async (id: string, acknowledgedBy: string): Promise<Alert> => {
   try {
-    const response = await axios.post(`/api/alerts/${id}/acknowledge`, { acknowledgedBy });
-    return response.data;
+    const response = await apiClient.post(`/alerts/${id}/acknowledge`, { acknowledgedBy });
+    return unwrapEntity<Alert>(response.data);
   } catch (error) {
     console.error('Failed to acknowledge alert:', error);
     throw error;
@@ -185,8 +200,8 @@ const acknowledgeAlert = async (id: string, acknowledgedBy: string): Promise<Ale
 
 const resolveAlert = async (id: string): Promise<Alert> => {
   try {
-    const response = await axios.post(`/api/alerts/${id}/resolve`);
-    return response.data;
+    const response = await apiClient.post(`/alerts/${id}/resolve`);
+    return unwrapEntity<Alert>(response.data);
   } catch (error) {
     console.error('Failed to resolve alert:', error);
     throw error;
@@ -195,8 +210,8 @@ const resolveAlert = async (id: string): Promise<Alert> => {
 
 const updateAlertSettings = async (settings: AlertSettings): Promise<AlertSettings> => {
   try {
-    const response = await axios.put('/api/alerts/settings', settings);
-    return response.data;
+    const response = await apiClient.put('/alerts/settings', settings);
+    return unwrapEntity<AlertSettings>(response.data);
   } catch (error) {
     console.error('Failed to update alert settings:', error);
     throw error;

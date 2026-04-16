@@ -3,6 +3,8 @@ import { User } from "../types/api";
 export type ImportPreviewRow = { raw: Record<string, string>; errors: string[] };
 export type ExportStatus = "all" | "active" | "suspended";
 export type AdvancedFiltersState = {
+  /** Empty string = all account statuses */
+  accountStatus: string;
   profile: string;
   quotaExceeded: boolean;
   hasMacAddress: boolean;
@@ -73,6 +75,7 @@ export const usersPageInitialState: UsersPageState = {
   selectedUsers: new Set<number>(),
   viewMode: "table",
   advancedFilters: {
+    accountStatus: "",
     profile: "all",
     quotaExceeded: false,
     hasMacAddress: false,

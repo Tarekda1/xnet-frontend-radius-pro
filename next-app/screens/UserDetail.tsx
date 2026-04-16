@@ -130,6 +130,22 @@ export default function UserDetailPage() {
     onError: (e: any) => notify.error("Save failed", e?.message),
   });
 
+  const renewSubscriptionMutation = useMutation({
+    mutationFn: async () =>
+      apiClient.post(`/radius/users/${encodeURIComponent(username)}/renew`, { months: 1 }),
+    onSuccess: () => {
+      notify.success("Renewed", "Added 1 month from today (or from current end date) and set account to active.");
+      qc.invalidateQueries({ queryKey: ["users"] });
+      qc.invalidateQueries({ queryKey: ["onlineUsers"] });
+      qc.invalidateQueries({ queryKey: ["userDetail", username] });
+    },
+    onError: (e: any) => {
+      const msg =
+        e?.response?.data?.message ?? e?.response?.data?.error ?? e?.message ?? "Request failed";
+      notify.error("Renew failed", String(msg));
+    },
+  });
+
   const disconnectMutation = useMutation({
     mutationFn: async () => {
       // Backend will disconnect from MikroTik (PPPoE/Hotspot) and/or fall back to RADIUS DM if configured server-side.
@@ -150,6 +166,15 @@ export default function UserDetailPage() {
     const online = Boolean(user?.isOnline);
     const last = user?.lastTimeActive ?? null;
     return { fullName, profileName, mac, status, online, last };
+  }, [user]);
+
+  const canRenewSubscription = useMemo(() => {
+    if (!user) return false;
+    const st = String(user.accountStatus ?? "").trim();
+    if (st === "suspended" || st === "terminated") return false;
+    if (st === "expired") return true;
+    if (user.expiresAt && new Date(user.expiresAt).getTime() < Date.now()) return true;
+    return false;
   }, [user]);
 
   const [auditActor, setAuditActor] = useState<string>("");
@@ -377,16 +402,19 @@ export default function UserDetailPage() {
                 <p className="text-xs text-muted-foreground">Clear the field and save to remove expiry.</p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="expiryFramedIp">Walled-garden IP (optional)</Label>
+                <Label htmlFor="expiryFramedIp">Optional framed IP (legacy)</Label>
                 <Input
                   id="expiryFramedIp"
                   value={expiryFramedIpLocal}
                   onChange={(e) => setExpiryFramedIpLocal(e.target.value)}
-                  placeholder="Uses server default if empty"
+                  placeholder="Rarely needed"
                   className="font-mono"
                 />
+                <p className="text-xs text-muted-foreground">
+                  Expired accounts cannot log in until staff renews or extends expiry below.
+                </p>
               </div>
-              <div className="md:col-span-2">
+              <div className="md:col-span-2 flex flex-wrap gap-2 items-center">
                 <Button
                   type="button"
                   onClick={() =>
@@ -398,6 +426,19 @@ export default function UserDetailPage() {
                   disabled={updateUserMutation.isPending}
                 >
                   Save expiry
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={!canRenewSubscription || renewSubscriptionMutation.isPending}
+                  onClick={() => renewSubscriptionMutation.mutate()}
+                  title={
+                    canRenewSubscription
+                      ? "Add 1 calendar month from now or from current end date, set active, and request disconnect"
+                      : "Only for expired or past-due subscriptions"
+                  }
+                >
+                  Renew +1 month
                 </Button>
               </div>
             </CardContent>

@@ -3,7 +3,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import axios from "axios";
 import {
   FaBars,
   FaTimes,
@@ -171,8 +170,9 @@ const Sidebar: React.FC = () => {
     const alertsQuery = useQuery({
       queryKey: ["alerts"],
       queryFn: async () => {
-        const resp = await axios.get("/api/alerts");
-        return resp.data as Alert[];
+               const resp = await apiClient.get("/alerts");
+        const raw = resp.data as Alert[] | { data?: Alert[] };
+        return (Array.isArray(raw) ? raw : raw?.data ?? []) as Alert[];
       },
       enabled: Boolean(canSeeAlerts),
       refetchInterval: 15000,
