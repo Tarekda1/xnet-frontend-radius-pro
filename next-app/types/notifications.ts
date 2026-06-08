@@ -1,5 +1,5 @@
 /** Unified inbox row (WebSocket + persisted). */
-export type InboxNotificationCategory = "invoice" | "external_invoice" | "user_status" | "system";
+export type InboxNotificationCategory = "invoice" | "external_invoice" | "pay_due" | "user_status" | "system";
 
 export interface InboxNotification {
   id: string;

@@ -144,8 +144,8 @@ const fetchAlerts = async (): Promise<Alert[]> => {
     const response = await apiClient.get('/alerts');
     return unwrapList<Alert>(response.data);
   } catch (error) {
-    console.warn('Using mock data for alerts:', error);
-    return generateMockAlerts();
+    console.warn('Failed to fetch alerts:', error);
+    return [];
   }
 };
 

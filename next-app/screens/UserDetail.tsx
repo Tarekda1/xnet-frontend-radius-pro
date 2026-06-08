@@ -24,6 +24,7 @@ import { downloadTextFile, toCsv } from "@/lib/csv";
 
 import type { User } from "@/types/api";
 import type { DateRange } from "react-day-picker";
+import { monthlyCycleSummary } from "@/lib/quotaCycle";
 import { ArrowLeft, History, Settings, Trash2, Wifi, KeyRound, Activity, Download, RefreshCw } from "lucide-react";
 
 type AuditLogRow = {
@@ -77,6 +78,8 @@ export default function UserDetailPage() {
   const [selectedStatus, setSelectedStatus] = useState<string>("");
   const [expiresAtLocal, setExpiresAtLocal] = useState("");
   const [expiryFramedIpLocal, setExpiryFramedIpLocal] = useState("");
+  const [quotaResetDayLocal, setQuotaResetDayLocal] = useState("1");
+  const [quotaCycleStartDateLocal, setQuotaCycleStartDateLocal] = useState("");
 
   const [confirm, setConfirm] = useState<
     null | { kind: "reset-quota" | "reset-mac" | "disconnect" | "delete-user" }
@@ -120,6 +123,8 @@ export default function UserDetailPage() {
       accountStatus?: string;
       expiresAt?: string | null;
       expiryFramedIp?: string | null;
+      quotaResetDay?: number;
+      quotaCycleStartDate?: string | null;
     }) => apiClient.put(`/radius/users/${encodeURIComponent(username)}`, { username, ...payload }),
     onSuccess: () => {
       notify.success("Saved", "User updated.");
@@ -251,7 +256,11 @@ export default function UserDetailPage() {
       setExpiresAtLocal("");
     }
     setExpiryFramedIpLocal(user.expiryFramedIp ?? "");
-  }, [user?.expiresAt, user?.expiryFramedIp, user?.username]);
+    setQuotaResetDayLocal(String(user.quotaResetDay ?? 1));
+    setQuotaCycleStartDateLocal(user.quotaCycleStartDate?.slice(0, 10) ?? "");
+  }, [user?.expiresAt, user?.expiryFramedIp, user?.quotaResetDay, user?.quotaCycleStartDate, user?.username]);
+
+  const cycle = user ? monthlyCycleSummary(user) : null;
 
   return (
     <div className="w-full py-6 space-y-6">
@@ -382,6 +391,71 @@ export default function UserDetailPage() {
                 <Button className="mt-2" disabled={!selectedStatus} onClick={() => updateUserMutation.mutate({ accountStatus: selectedStatus })}>
                   Save status
                 </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Monthly quota cycle</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {cycle ? (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+                  <div>
+                    <div className="text-muted-foreground">Usage this cycle</div>
+                    <div className="font-mono font-medium">{cycle.usageLabel}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">Status</div>
+                    <Badge variant="outline" className={cycle.exceeded ? "border-red-500 text-red-600" : "border-green-500 text-green-600"}>
+                      {cycle.exceeded ? "Exceeded" : `${cycle.pct}% used`}
+                    </Badge>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">Resets on</div>
+                    <div className="font-medium">{cycle.resetLabel}</div>
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-border/60">
+                <div className="space-y-2">
+                  <Label htmlFor="quotaResetDay">Reset day (1–31)</Label>
+                  <Input
+                    id="quotaResetDay"
+                    type="number"
+                    min={1}
+                    max={31}
+                    value={quotaResetDayLocal}
+                    onChange={(e) => setQuotaResetDayLocal(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">Recurring day each month when the quota window rolls over (if no manual date is set).</p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="quotaCycleStartDate">Manual cycle start</Label>
+                  <Input
+                    id="quotaCycleStartDate"
+                    type="date"
+                    value={quotaCycleStartDateLocal}
+                    onChange={(e) => setQuotaCycleStartDateLocal(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">Optional override. Clear to use reset day only.</p>
+                </div>
+                <div className="md:col-span-2">
+                  <Button
+                    type="button"
+                    disabled={updateUserMutation.isPending}
+                    onClick={() =>
+                      updateUserMutation.mutate({
+                        quotaResetDay: parseInt(quotaResetDayLocal, 10),
+                        quotaCycleStartDate: quotaCycleStartDateLocal.trim() ? quotaCycleStartDateLocal.trim() : null,
+                      })
+                    }
+                  >
+                    Save quota cycle
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>

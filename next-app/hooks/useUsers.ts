@@ -23,6 +23,8 @@ interface UserMutationData {
   expiryFramedIp?: string | null;
   freenight?: boolean;
   quotaResetDay?: number;
+  /** YYYY-MM-DD manual cycle anchor, or null to clear */
+  quotaCycleStartDate?: string | null;
   fullName?: string;
   address?: string;
   phoneNumber?: string;

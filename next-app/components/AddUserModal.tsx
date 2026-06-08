@@ -26,6 +26,7 @@ type State = {
     accountStatus: string;
     freenight: boolean;
     quotaResetDay: string;
+    quotaCycleStartDate: string;
     showPassword: boolean;
     fullName: string;
     address: string;
@@ -47,6 +48,7 @@ const initialState: State = {
     accountStatus: 'active',
     freenight: false,
     quotaResetDay: '1',
+    quotaCycleStartDate: '',
     showPassword: false,
     fullName: '',
     address: '',
@@ -73,6 +75,7 @@ function reducer(state: State, action: Action): State {
                 accountStatus: action.user.accountStatus,
                 freenight: Boolean((action.user as any).freenight),
                 quotaResetDay: action.user.quotaResetDay?.toString() || '1',
+                quotaCycleStartDate: action.user.quotaCycleStartDate?.slice(0, 10) || '',
                 fullName: action.user.userDetails?.fullName || '',
                 address: action.user.userDetails?.address || '',
                 phoneNumber: action.user.userDetails?.phoneNumber || '',
@@ -127,6 +130,7 @@ const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onUserAdde
             accountStatus: state.accountStatus as AccountStatus,
             freenight: state.freenight,
             quotaResetDay: parseInt(state.quotaResetDay, 10),
+            quotaCycleStartDate: state.quotaCycleStartDate.trim() ? state.quotaCycleStartDate.trim() : null,
             fullName: state.fullName,
             address: state.address,
             phoneNumber: state.phoneNumber,
@@ -271,6 +275,21 @@ const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onUserAdde
                                     onChange={(e) => dispatch({ type: 'SET_FIELD', field: 'quotaResetDay', value: e.target.value })}
                                     className="col-span-1 sm:col-span-3"
                                 />
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
+                                <Label htmlFor="quotaCycleStartDate" className="sm:text-right">Manual cycle start</Label>
+                                <div className="col-span-1 sm:col-span-3 space-y-1">
+                                    <Input
+                                        id="quotaCycleStartDate"
+                                        type="date"
+                                        value={state.quotaCycleStartDate}
+                                        onChange={(e) => dispatch({ type: 'SET_FIELD', field: 'quotaCycleStartDate', value: e.target.value })}
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                        Optional. When set, monthly usage counts from this date; next reset is one month later. Leave empty to use reset day only.
+                                    </p>
+                                </div>
                             </div>
 
                             {/* Full Name field */}

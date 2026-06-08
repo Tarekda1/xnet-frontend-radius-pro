@@ -73,6 +73,11 @@ const ExternalInvoiceCard: React.FC<Props> = ({ invoice, onSetPaid, onViewDetail
             })}
           </div>
         </div>
+        {invoice.address ? (
+          <div title={invoice.address} className="text-xs text-muted-foreground line-clamp-2 mb-2">
+            <span className="font-semibold text-foreground">Address:</span> {invoice.address}
+          </div>
+        ) : null}
         <div className="text-lg font-bold flex items-center">
           <DollarSign className="h-4 w-4 mr-1" />
           {invoice.amount.toFixed(2)}

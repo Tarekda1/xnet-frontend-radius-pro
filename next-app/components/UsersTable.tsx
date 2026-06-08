@@ -18,6 +18,7 @@ import { useRouter } from "next/navigation";
 import { Checkbox } from "@/components/ui/checkbox";
 import { notify } from "@/lib/notify";
 import { getUserHealth } from "@/lib/userHealth";
+import MonthlyCycleCell from "@/components/MonthlyCycleCell";
 
 interface UsersTableProps {
     users: User[];
@@ -200,15 +201,21 @@ const UserRow: React.FC<{
                                 </TooltipContent>
                             </Tooltip>
                         </TooltipProvider>
-                        <Badge variant="outline" className={cn(
-                            "transition-colors duration-200",
-                            user.isMonthlyExceeded 
-                                ? "border-red-500 text-red-500 hover:bg-red-50" 
-                                : "border-green-500 text-green-500 hover:bg-green-50"
-                        )}>
-                            {user.isMonthlyExceeded ? 'Exceeded' : 'Within Limit'}
-                        </Badge>
                     </div>
+                </TableCell>
+
+                <TableCell>
+                    <MonthlyCycleCell
+                        monthlyUsage={user.monthlyUsage}
+                        monthlyQuota={user.profile?.monthlyQuota}
+                        monthlyCycleStart={user.monthlyCycleStart}
+                        monthlyCycleResetAt={user.monthlyCycleResetAt}
+                        quotaResetDay={user.quotaResetDay}
+                        quotaCycleStartDate={user.quotaCycleStartDate}
+                        isMonthlyExceeded={user.isMonthlyExceeded}
+                        isMonthlyExceededComputed={user.isMonthlyExceededComputed}
+                        monthlyUsagePct={user.monthlyUsagePct}
+                    />
                 </TableCell>
 
                 <TableCell>
@@ -279,7 +286,7 @@ const UserRow: React.FC<{
 
             {isExpanded && (
                 <TableRow className="border-y border-border bg-muted/40 dark:bg-muted/30">
-                    <TableCell colSpan={9}>
+                    <TableCell colSpan={10}>
                         <div className="space-y-4 p-4">
                             <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
                                 <div className="space-y-2 rounded-lg border border-border/60 bg-card p-3 shadow-sm">
@@ -294,6 +301,19 @@ const UserRow: React.FC<{
                                         <p className="text-sm text-muted-foreground">
                                             Quota Reset Day: {user.quotaResetDay}
                                         </p>
+                                        <p className="text-sm text-muted-foreground">
+                                            Monthly usage: {user.monthlyUsage && user.profile?.monthlyQuota
+                                                ? `${user.monthlyUsage} / ${user.profile.monthlyQuota}`
+                                                : "—"}
+                                        </p>
+                                        <p className="text-sm text-muted-foreground">
+                                            Resets: {user.monthlyCycleResetAt ?? "—"}
+                                        </p>
+                                        {user.quotaCycleStartDate ? (
+                                            <p className="text-sm text-muted-foreground">
+                                                Manual cycle start: {user.quotaCycleStartDate}
+                                            </p>
+                                        ) : null}
                                     </div>
                                 </div>
 
@@ -434,6 +454,20 @@ const UsersTable: React.FC<UsersTableProps> = ({
                     </Button>
                 )
             },
+        },
+        {
+            id: "monthlyCycle",
+            accessorFn: (row) => row.monthlyUsagePct ?? 0,
+            header: ({ column }) => (
+                <Button
+                    variant="ghost"
+                    onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+                    className={sortHeaderButtonClass}
+                >
+                    Monthly Cycle
+                    <ArrowUpDown className="ml-2 h-4 w-4 opacity-70" />
+                </Button>
+            ),
         },
         {
             accessorKey: "accountStatus",

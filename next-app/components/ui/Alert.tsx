@@ -222,6 +222,7 @@ export type QuotaExceededSummaryAlertProps = {
   totalUsers?: number;
   onClose?: () => void;
   className?: string;
+  detailHref?: string;
 };
 
 /**
@@ -236,6 +237,7 @@ export const QuotaExceededSummaryAlert: React.FC<QuotaExceededSummaryAlertProps>
   totalUsers,
   onClose,
   className,
+  detailHref,
 }) => {
   const m = Number.isFinite(monthlyCount) ? monthlyCount : 0;
   const d = Number.isFinite(dailyCount) ? dailyCount : 0;
@@ -249,43 +251,58 @@ export const QuotaExceededSummaryAlert: React.FC<QuotaExceededSummaryAlertProps>
   return (
     <div
       className={[
-        "border-l-4 p-4 bg-orange-100 border-orange-400 text-orange-800 relative",
+        "relative overflow-hidden rounded-xl border border-amber-200/80 bg-gradient-to-r from-amber-50 via-orange-50/90 to-amber-50 p-4 shadow-sm dark:border-amber-900/50 dark:from-amber-950/40 dark:via-orange-950/30 dark:to-amber-950/40",
         className || "",
       ].join(" ")}
       role="alert"
     >
-      <div className="flex items-start gap-3">
-        <div className="mt-0.5">
+      <div className="pointer-events-none absolute -right-8 -top-8 h-28 w-28 rounded-full bg-amber-400/10 blur-2xl" />
+      <div className="relative flex items-start gap-3">
+        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-300">
           <AlertTriangle className="h-5 w-5" />
         </div>
-        <div className="min-w-0 flex-1 space-y-2">
-          <div className="font-semibold">Quota exceeded</div>
+        <div className="min-w-0 flex-1 space-y-3">
+          <div>
+            <div className="font-semibold text-amber-950 dark:text-amber-100">Quota exceeded</div>
+            <p className="mt-0.5 text-sm text-amber-800/80 dark:text-amber-200/70">
+              Users over their daily or monthly data limits.
+            </p>
+          </div>
           <div className="grid gap-2 sm:grid-cols-2">
-            <div className="rounded border border-orange-200 bg-card/90 p-2 dark:border-orange-900/50">
-              <div className="text-xs text-orange-800/80">Monthly ({monthLabel})</div>
-              <div className="text-lg font-bold tabular-nums">
+            <div className="rounded-lg border border-amber-200/70 bg-background/70 p-3 backdrop-blur-sm dark:border-amber-900/40">
+              <div className="text-xs font-medium text-muted-foreground">Monthly ({monthLabel})</div>
+              <div className="mt-1 text-2xl font-bold tabular-nums text-foreground">
                 {m}
-                {mp !== null ? <span className="ml-2 text-sm font-medium text-orange-800/70">({mp}%)</span> : null}
+                {mp !== null ? <span className="ml-2 text-sm font-medium text-muted-foreground">({mp}%)</span> : null}
               </div>
             </div>
-            <div className="rounded border border-orange-200 bg-card/90 p-2 dark:border-orange-900/50">
-              <div className="text-xs text-orange-800/80">Daily ({dayLabel})</div>
-              <div className="text-lg font-bold tabular-nums">
+            <div className="rounded-lg border border-amber-200/70 bg-background/70 p-3 backdrop-blur-sm dark:border-amber-900/40">
+              <div className="text-xs font-medium text-muted-foreground">Daily ({dayLabel})</div>
+              <div className="mt-1 text-2xl font-bold tabular-nums text-foreground">
                 {d}
-                {dp !== null ? <span className="ml-2 text-sm font-medium text-orange-800/70">({dp}%)</span> : null}
+                {dp !== null ? <span className="ml-2 text-sm font-medium text-muted-foreground">({dp}%)</span> : null}
               </div>
             </div>
           </div>
+          {detailHref ? (
+            <a
+              href={detailHref}
+              className="inline-flex text-sm font-medium text-amber-800 underline-offset-4 hover:underline dark:text-amber-200"
+            >
+              View affected users
+            </a>
+          ) : null}
         </div>
       </div>
 
       {onClose ? (
         <button
+          type="button"
           onClick={onClose}
-          className="absolute top-0 right-0 mt-4 mr-4 text-orange-700/60 hover:text-orange-900"
-          aria-label="Close"
+          className="absolute right-3 top-3 rounded-md p-1 text-amber-700/60 transition-colors hover:bg-amber-500/10 hover:text-amber-900 dark:text-amber-300/70 dark:hover:text-amber-100"
+          aria-label="Dismiss quota alert"
         >
-          <span className="text-2xl">&times;</span>
+          <span className="text-xl leading-none">&times;</span>
         </button>
       ) : null}
     </div>

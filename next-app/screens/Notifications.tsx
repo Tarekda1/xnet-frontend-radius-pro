@@ -33,6 +33,8 @@ function categoryLabel(c: InboxNotificationCategory): string {
       return "Invoice";
     case "external_invoice":
       return "External";
+    case "pay_due":
+      return "Pay due";
     case "user_status":
       return "User status";
     default:
@@ -61,7 +63,7 @@ export default function NotificationsPage() {
     <div className="w-full space-y-8 py-5">
       <PageHeader
         title={t("notifications_title")}
-        subtitle="Live feed from billing queue and user status topic. Stored locally in your browser."
+        subtitle="Live feed from billing queue and user status topic. Pay-due reminders appear when you have permission to view external invoices. Stored locally in your browser."
         icon={Bell}
         actions={
           <div className="flex flex-wrap items-center gap-2 justify-end">
@@ -105,6 +107,7 @@ export default function NotificationsPage() {
             <TabsTrigger value="all">All ({items.length})</TabsTrigger>
             <TabsTrigger value="invoice">Invoice</TabsTrigger>
             <TabsTrigger value="external_invoice">External</TabsTrigger>
+            <TabsTrigger value="pay_due">Pay due</TabsTrigger>
             <TabsTrigger value="user_status">Status</TabsTrigger>
             <TabsTrigger value="system">System</TabsTrigger>
           </TabsList>

@@ -23,6 +23,12 @@ export interface OnlineUser {
   real_time_data_usage: string;
   remaining_daily_quota: string;
   remaining_monthly_quota: string;
+  monthly_cycle_start?: string | null;
+  monthly_cycle_reset_at?: string | null;
+  quota_reset_day?: number | null;
+  quota_cycle_start_date?: string | null;
+  is_monthly_exceeded?: number;
+  monthly_usage_pct?: number;
   userDetails_full_name: string;
   is_fallback: number;
 }

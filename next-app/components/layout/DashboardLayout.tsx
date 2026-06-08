@@ -5,6 +5,7 @@ import Breadcrumb from "@/components/ui/Breadcrumbs";
 import { cn } from "@/lib/utils";
 import { useAppPreferences } from "@/context/AppPreferencesContext";
 import SystemHealthStrip from "@/components/SystemHealthStrip";
+import ExternalInvoicePayDueInboxSync from "@/components/ExternalInvoicePayDueInboxSync";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { density } = useAppPreferences();
@@ -24,6 +25,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </a>
       <Navbar />
       <SystemHealthStrip />
+      <ExternalInvoicePayDueInboxSync />
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <Sidebar />

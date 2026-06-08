@@ -19,10 +19,6 @@ import {
   AlertTriangle, 
   Activity, 
   RefreshCw,
-  Cpu,
-  CircuitBoard,
-  HardDrive,
-  MoreHorizontal,
   Bell,
   Settings,
   LineChart,
@@ -30,14 +26,11 @@ import {
   DollarSign,
   Clock,
   User as UserIcon,
-  Server
+  Server,
+  ArrowUpRight,
+  Gauge,
+  Wifi,
 } from 'lucide-react';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
  
 import AnalyticsWidget from '@/components/AnalyticsWidget';
 import AlertNotification from '@/components/AlertNotification';
@@ -79,6 +72,7 @@ const DASHBOARD_WATCHLIST_DEFAULT_FILTER_KEY = "dashboard.watchlist.defaultFilte
 const DASHBOARD_WATCHLIST_STALE_THRESHOLD_KEY = "dashboard.watchlist.staleAfterSeconds";
 const DASHBOARD_AUTO_REFRESH_SECONDS_KEY = "dashboard.autoRefreshSeconds";
 const DASHBOARD_WIDGET_SURFACE_KEY = "dashboard.widgetSurface";
+const DASHBOARD_QUOTA_ALERT_DISMISS_KEY = "dashboard.quotaAlert.dismissedCounts";
 
 const getStoredWatchlistFilter = (): WatchlistFilter => {
   const raw = localStorage.getItem(DASHBOARD_WATCHLIST_DEFAULT_FILTER_KEY);
@@ -96,6 +90,39 @@ const getStoredWidgetSurface = (): DashboardWidgetSurface => {
   const raw = localStorage.getItem(DASHBOARD_WIDGET_SURFACE_KEY);
   return raw === "theme" || raw === "white" ? raw : "white";
 };
+
+function isQuotaAlertDismissed(monthlyCount: number, dailyCount: number): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const raw = localStorage.getItem(DASHBOARD_QUOTA_ALERT_DISMISS_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw) as { monthly?: number; daily?: number };
+    return parsed.monthly === monthlyCount && parsed.daily === dailyCount;
+  } catch {
+    return false;
+  }
+}
+
+function dismissQuotaAlert(monthlyCount: number, dailyCount: number): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(
+    DASHBOARD_QUOTA_ALERT_DISMISS_KEY,
+    JSON.stringify({ monthly: monthlyCount, daily: dailyCount })
+  );
+}
+
+function healthBarTone(pct: number): string {
+  if (pct >= 85) return "bg-red-500";
+  if (pct >= 60) return "bg-amber-500";
+  return "bg-emerald-500";
+}
+
+function latencyLoadPct(ms: number, warnAt: number, criticalAt: number): number {
+  if (!Number.isFinite(ms) || ms <= 0) return 0;
+  if (ms >= criticalAt) return 100;
+  if (ms <= warnAt) return Math.round((ms / warnAt) * 45);
+  return Math.round(45 + ((ms - warnAt) / (criticalAt - warnAt)) * 55);
+}
 
 const formatAgo = (iso: string | null | undefined) => {
   const t = iso ? Date.parse(iso) : NaN;
@@ -165,24 +192,33 @@ const DashboardMiniWidget = ({
   subtitle,
   to,
   icon: Icon,
-  valueClassName = "text-foreground",
-  surfaceClassName = "bg-card/90 border border-border/70 dark:border-border/80",
+  accentClass = "text-blue-600 dark:text-blue-400",
+  glowClass = "bg-blue-500",
 }: {
   title: string;
   value: string;
   subtitle: string;
   to: string;
   icon: React.ElementType;
-  valueClassName?: string;
-  surfaceClassName?: string;
+  accentClass?: string;
+  glowClass?: string;
 }) => (
-  <Link href={to} className={`group block rounded-lg border p-3 transition-colors hover:bg-accent/40 ${surfaceClassName}`}>
-    <div className="flex items-center justify-between">
-      <span className="text-[11px] sm:text-xs text-muted-foreground">{title}</span>
-      <Icon className={`h-4 w-4 ${valueClassName}`} />
+  <Link
+    href={to}
+    className="group relative block overflow-hidden rounded-xl border border-border/70 bg-card/90 p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-border hover:shadow-md dark:bg-card/80"
+  >
+    <div className={`pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full opacity-[0.08] ${glowClass}`} />
+    <div className="relative flex items-start justify-between gap-2">
+      <div className="min-w-0 flex-1">
+        <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground sm:text-xs">{title}</span>
+        <div className={`mt-1.5 text-xl font-bold tabular-nums tracking-tight sm:text-2xl ${accentClass}`}>{value}</div>
+        <div className="mt-1 truncate text-[11px] text-muted-foreground">{subtitle}</div>
+      </div>
+      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted/60 ${accentClass}`}>
+        <Icon className="h-4 w-4" />
+      </div>
     </div>
-    <div className={`mt-1 text-base sm:text-lg font-semibold ${valueClassName}`}>{value}</div>
-    <div className="text-[11px] text-muted-foreground truncate">{subtitle}</div>
+    <ArrowUpRight className="absolute bottom-3 right-3 h-3.5 w-3.5 text-muted-foreground/0 transition-all group-hover:text-muted-foreground" />
   </Link>
 );
 
@@ -190,7 +226,7 @@ const Dashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [showQuotaExceeded, setShowQuotaExceeded] = useState(true);
+  const [quotaAlertDismissed, setQuotaAlertDismissed] = useState(false);
   const [watchlistDefaultFilter, setWatchlistDefaultFilter] = useState<WatchlistFilter>(() => getStoredWatchlistFilter());
   const [watchlistFilter, setWatchlistFilter] = useState<WatchlistFilter>(() => getStoredWatchlistFilter());
   const [watchlistStaleThresholdSec, setWatchlistStaleThresholdSec] = useState<WatchlistStaleThresholdSeconds>(() => getStoredStaleThreshold());
@@ -447,6 +483,13 @@ const Dashboard: React.FC = () => {
   const unresolvedAlertsCount = alerts && Array.isArray(alerts) ? alerts.filter((a) => !a.resolved).length : 0;
   const unacknowledgedAlertsCount = alerts && Array.isArray(alerts) ? alerts.filter((a) => !a.acknowledged && !a.resolved).length : 0;
   const fupUsersCount = (quotaExceededQuery.data?.dailyCount ?? 0) + (quotaExceededQuery.data?.monthlyCount ?? 0);
+  const quotaMonthlyCount = quotaExceededQuery.data?.monthlyCount ?? 0;
+  const quotaDailyCount = quotaExceededQuery.data?.dailyCount ?? 0;
+  const showQuotaExceededBanner =
+    canSeeQuotaExceeded &&
+    !quotaAlertDismissed &&
+    quotaMonthlyCount + quotaDailyCount > 0 &&
+    !isQuotaAlertDismissed(quotaMonthlyCount, quotaDailyCount);
 
   const now = new Date();
   const todayLabel = now.toISOString().slice(0, 10); // YYYY-MM-DD
@@ -462,10 +505,6 @@ const Dashboard: React.FC = () => {
   const spendGrowth = spendPrev > 0 ? ((spendThis - spendPrev) / spendPrev) * 100 : (spendThis > 0 ? 100 : 0);
   const totalCollectedInvoices = collectedMetricsQuery.data?.totalCollectedInvoices ?? 0;
   const totalCollectedCash = collectedMetricsQuery.data?.totalCashCollected ?? 0;
-  const widgetSurfaceClassName =
-    widgetSurface === "white"
-      ? "bg-card/95 border border-border/70 dark:border-border/80"
-      : "bg-card border border-border/50";
 
   const dashboardWidgets = useMemo(() => {
     const items: Array<{
@@ -475,7 +514,8 @@ const Dashboard: React.FC = () => {
       subtitle: string;
       to: string;
       icon: React.ElementType;
-      valueClassName?: string;
+      accentClass?: string;
+      glowClass?: string;
     }> = [];
 
     if (isReseller) {
@@ -486,7 +526,8 @@ const Dashboard: React.FC = () => {
         subtitle: "Reseller wallet",
         to: "/dashboard/widgets/reseller-balance",
         icon: Receipt,
-        valueClassName: "text-emerald-600",
+        accentClass: "text-emerald-600 dark:text-emerald-400",
+        glowClass: "bg-emerald-500",
       });
       items.push({
         key: "reseller-users",
@@ -495,7 +536,8 @@ const Dashboard: React.FC = () => {
         subtitle: "Owned users",
         to: "/dashboard/widgets/reseller-users",
         icon: Users,
-        valueClassName: "text-blue-600",
+        accentClass: "text-blue-600 dark:text-blue-400",
+        glowClass: "bg-blue-500",
       });
     }
 
@@ -507,7 +549,8 @@ const Dashboard: React.FC = () => {
         subtitle: "Current online users",
         to: "/dashboard/widgets/live-sessions",
         icon: Activity,
-        valueClassName: "text-blue-600",
+        accentClass: "text-sky-600 dark:text-sky-400",
+        glowClass: "bg-sky-500",
       });
       items.push({
         key: "active-users",
@@ -516,7 +559,8 @@ const Dashboard: React.FC = () => {
         subtitle: "Real-time active accounts",
         to: "/dashboard/widgets/active-users",
         icon: UserCheck,
-        valueClassName: "text-green-600",
+        accentClass: "text-emerald-600 dark:text-emerald-400",
+        glowClass: "bg-emerald-500",
       });
     }
 
@@ -528,7 +572,8 @@ const Dashboard: React.FC = () => {
         subtitle: `${thisMonthKey} (${Math.abs(spendGrowth).toFixed(1)}%)`,
         to: "/dashboard/widgets/expenses-month",
         icon: Receipt,
-        valueClassName: "text-indigo-600",
+        accentClass: "text-indigo-600 dark:text-indigo-400",
+        glowClass: "bg-indigo-500",
       });
     }
 
@@ -542,7 +587,8 @@ const Dashboard: React.FC = () => {
         subtitle: "Past 24h attempts",
         to: "/dashboard/widgets/auth-requests",
         icon: Shield,
-        valueClassName: "text-purple-600",
+        accentClass: "text-violet-600 dark:text-violet-400",
+        glowClass: "bg-violet-500",
       });
     }
 
@@ -554,7 +600,8 @@ const Dashboard: React.FC = () => {
         subtitle: "Per-collector breakdown",
         to: "/collections?view=breakdown",
         icon: Receipt,
-        valueClassName: "text-blue-600",
+        accentClass: "text-blue-600 dark:text-blue-400",
+        glowClass: "bg-blue-500",
       });
       items.push({
         key: "total-cash-collected",
@@ -563,7 +610,8 @@ const Dashboard: React.FC = () => {
         subtitle: "Collected invoices list",
         to: "/collections?view=list",
         icon: DollarSign,
-        valueClassName: "text-green-600",
+        accentClass: "text-emerald-600 dark:text-emerald-400",
+        glowClass: "bg-emerald-500",
       });
     }
 
@@ -575,7 +623,8 @@ const Dashboard: React.FC = () => {
         subtitle: `${quotaExceededQuery.data?.dailyCount ?? 0} daily / ${quotaExceededQuery.data?.monthlyCount ?? 0} monthly`,
         to: "/dashboard/widgets/fup-users",
         icon: AlertTriangle,
-        valueClassName: "text-amber-600",
+        accentClass: "text-amber-600 dark:text-amber-400",
+        glowClass: "bg-amber-500",
       });
     }
 
@@ -587,7 +636,8 @@ const Dashboard: React.FC = () => {
         subtitle: `${unacknowledgedAlertsCount} unacknowledged`,
         to: "/dashboard/widgets/active-alerts",
         icon: Bell,
-        valueClassName: "text-red-600",
+        accentClass: "text-red-600 dark:text-red-400",
+        glowClass: "bg-red-500",
       });
     }
 
@@ -630,13 +680,20 @@ const Dashboard: React.FC = () => {
   );
 
   useEffect(() => {
-    // Simulate initial loading
     const timer = setTimeout(() => {
       setIsLoading(false);
-    }, 1500);
+    }, 200);
 
     return () => clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    if (quotaMonthlyCount + quotaDailyCount === 0) {
+      setQuotaAlertDismissed(false);
+      return;
+    }
+    setQuotaAlertDismissed(isQuotaAlertDismissed(quotaMonthlyCount, quotaDailyCount));
+  }, [quotaMonthlyCount, quotaDailyCount]);
 
   useEffect(() => {
     const value = Math.min(Math.max(Math.round(Number(rejectAlertThreshold) || 15), 1), 100);
@@ -842,8 +899,9 @@ const Dashboard: React.FC = () => {
   return (
     <div className="w-full space-y-6 px-4 py-6 sm:px-0 animate-in fade-in-50">
       <PageHeader
+        variant="gradient"
         title="Dashboard"
-        subtitle="Monitor your system's performance and user activity."
+        subtitle="Live network health, sessions, billing, and operational alerts in one place."
         icon={Activity}
         actions={(
           <div className="flex w-full flex-wrap justify-end gap-2">
@@ -851,28 +909,28 @@ const Dashboard: React.FC = () => {
               label={isRefreshing ? "Refreshing..." : "Refresh Data"}
               onClick={handleRefresh}
               disabled={isLoading || isRefreshing}
-              className="border-border bg-background/90 text-foreground shadow-sm hover:bg-accent dark:bg-card/90"
+              className="border-white/25 bg-white/15 text-white shadow-sm hover:bg-white/25"
               icon={<RefreshCw className={`h-4 w-4 ${isLoading || isRefreshing ? "animate-spin" : ""}`} />}
             />
             {canSeeAnalytics ? (
               <IconActionButton
                 label="View Analytics"
                 to="/analytics"
-                className="border-border bg-background/90 text-foreground shadow-sm hover:bg-accent dark:bg-card/90"
+                className="border-white/25 bg-white/15 text-white shadow-sm hover:bg-white/25"
                 icon={<LineChart className="h-4 w-4" />}
               />
             ) : null}
             <IconActionButton
               label="Dashboard settings"
               onClick={() => setIsSettingsOpen(true)}
-              className="border-border bg-background/90 text-foreground shadow-sm hover:bg-accent dark:bg-card/90"
+              className="border-white/25 bg-white/15 text-white shadow-sm hover:bg-white/25"
               icon={<Settings className="h-4 w-4" />}
             />
             {canSeeAlerts ? (
               <IconActionButton
                 label="Alerts"
                 to="/alerts"
-                className="border-border bg-background/90 text-foreground shadow-sm hover:bg-accent dark:bg-card/90"
+                className="border-white/25 bg-white/15 text-white shadow-sm hover:bg-white/25"
                 icon={<Bell className="h-4 w-4" />}
               />
             ) : null}
@@ -880,63 +938,59 @@ const Dashboard: React.FC = () => {
         )}
       />
 
-      <div className="grid grid-cols-1 items-center gap-2 sm:grid-cols-2 lg:flex lg:flex-wrap">
+      <div className="flex flex-wrap items-center gap-2">
         {((!isReseller && canSeeOnline) || isReseller) ? (
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full border-border bg-background/90 text-foreground shadow-sm hover:bg-accent dark:bg-card/90 lg:w-auto"
-            asChild
-          >
-            <Link href="/online-users">Open Live Sessions</Link>
+          <Button variant="secondary" size="sm" className="rounded-full shadow-sm" asChild>
+            <Link href="/online-users">
+              <Wifi className="mr-2 h-4 w-4" />
+              Live Sessions
+            </Link>
           </Button>
         ) : null}
         {canAny(user, ["users.view", "reseller.users.view"]) ? (
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full border-border bg-background/90 text-foreground shadow-sm hover:bg-accent dark:bg-card/90 lg:w-auto"
-            asChild
-          >
-            <Link href="/users/list">Open Users</Link>
+          <Button variant="secondary" size="sm" className="rounded-full shadow-sm" asChild>
+            <Link href="/users/list">
+              <Users className="mr-2 h-4 w-4" />
+              Users
+            </Link>
           </Button>
         ) : null}
         {can(user, "radius.profiles.view") ? (
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full border-border bg-background/90 text-foreground shadow-sm hover:bg-accent dark:bg-card/90 sm:col-span-2 lg:col-span-1"
-            asChild
-          >
-            <Link href="/profiles/list">Open Profiles</Link>
+          <Button variant="secondary" size="sm" className="rounded-full shadow-sm" asChild>
+            <Link href="/profiles/list">
+              <Gauge className="mr-2 h-4 w-4" />
+              Profiles
+            </Link>
           </Button>
         ) : null}
-        <div className="hidden md:flex md:ml-auto text-xs text-muted-foreground items-center gap-1">
-          Tip: Press <span className="font-mono rounded border px-1.5 py-0.5 bg-background">Ctrl</span>+
-          <span className="font-mono rounded border px-1.5 py-0.5 bg-background">K</span> to search commands
-        </div>
+        {dashboardAutoRefreshSec > 0 ? (
+          <Badge variant="outline" className="ml-auto hidden md:inline-flex">
+            Auto-refresh every {dashboardAutoRefreshSec}s
+          </Badge>
+        ) : null}
       </div>
 
       {isLoading ? (
         <LoadingSkeleton />
       ) : (
         <>
-          {canSeeQuotaExceeded && showQuotaExceeded ? (
-            (quotaExceededQuery.data?.monthlyCount || 0) + (quotaExceededQuery.data?.dailyCount || 0) > 0 ? (
-              <QuotaExceededSummaryAlert
-                monthLabel={thisMonthKey}
-                dayLabel={todayLabel}
-                monthlyCount={quotaExceededQuery.data?.monthlyCount ?? 0}
-                dailyCount={quotaExceededQuery.data?.dailyCount ?? 0}
-                totalUsers={quotaExceededQuery.data?.totalUsers}
-                onClose={() => setShowQuotaExceeded(false)}
-                className="rounded-md"
-              />
-            ) : null
+          {showQuotaExceededBanner ? (
+            <QuotaExceededSummaryAlert
+              monthLabel={thisMonthKey}
+              dayLabel={todayLabel}
+              monthlyCount={quotaMonthlyCount}
+              dailyCount={quotaDailyCount}
+              totalUsers={quotaExceededQuery.data?.totalUsers}
+              detailHref="/dashboard/widgets/fup-users"
+              onClose={() => {
+                dismissQuotaAlert(quotaMonthlyCount, quotaDailyCount);
+                setQuotaAlertDismissed(true);
+              }}
+            />
           ) : null}
 
-          {/* Compact Widget Grid */}
-          <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          {/* KPI widgets */}
+          <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {orderedDashboardWidgets.map((widget) => (
               <DashboardMiniWidget
                 key={widget.key}
@@ -945,8 +999,8 @@ const Dashboard: React.FC = () => {
                 subtitle={widget.subtitle}
                 to={widget.to}
                 icon={widget.icon}
-                valueClassName={widget.valueClassName}
-                surfaceClassName={widgetSurfaceClassName}
+                accentClass={widget.accentClass}
+                glowClass={widget.glowClass}
               />
             ))}
           </div>
@@ -954,7 +1008,7 @@ const Dashboard: React.FC = () => {
           {/* NOC Snapshot */}
           {((!isReseller && canSeeOnline) || isReseller) ? (
             <div className="grid gap-4 lg:grid-cols-7">
-              <Card className="lg:col-span-4 hover:shadow-lg transition-shadow">
+              <Card className="lg:col-span-4 border-border/70 shadow-sm">
                 <CardHeader>
                   <div className="flex items-center justify-between gap-2">
                     <div>
@@ -1108,7 +1162,7 @@ const Dashboard: React.FC = () => {
                 </CardContent>
               </Card>
 
-              <Card className="lg:col-span-3 hover:shadow-lg transition-shadow">
+              <Card className="lg:col-span-3 border-border/70 shadow-sm">
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div>
@@ -1316,114 +1370,112 @@ const Dashboard: React.FC = () => {
 
           {/* System Stats and Activity */}
           <div className="grid w-full min-w-0 gap-4 md:grid-cols-2 lg:grid-cols-7">
-            {/* System Health */}
-            <Card className="w-full min-w-0 md:col-span-4 hover:shadow-lg transition-shadow">
-              <CardHeader>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <CardTitle>System Health</CardTitle>
-                    <CardDescription>Real-time system metrics and performance indicators</CardDescription>
+            {/* Platform health — real API / auth metrics (replaces static placeholder bars) */}
+            {((!isReseller && canSeeOnline) || isReseller) ? (
+              <Card className="w-full min-w-0 md:col-span-4 border-border/70 shadow-sm">
+                <CardHeader>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <CardTitle>Platform Health</CardTitle>
+                      <CardDescription>Authentication quality and API latency from live probes</CardDescription>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="outline" className={authHealthBadgeClass}>
+                        Auth {authHealthLabel}
+                      </Badge>
+                      <Badge variant="outline" className={healthBadgeClass}>
+                        API {healthState}
+                      </Badge>
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between gap-2 sm:justify-end">
-                    <Badge variant="outline" className="hidden sm:inline-flex items-center gap-1">
-                      <Activity className="h-3 w-3 text-green-500" />
-                      All Systems Operational
-                    </Badge>
-                    <Button variant="ghost" size="icon">
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <TooltipProvider>
-                  {/* CPU Usage */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Cpu className="h-4 w-4 text-blue-600" />
-                        <span className="text-sm font-medium">CPU Usage</span>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  <div className="space-y-5">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-2">
+                          <Shield className="h-4 w-4 text-violet-600" />
+                          <span className="font-medium">Auth success rate (24h)</span>
+                        </div>
+                        <span className="font-semibold tabular-nums">{authSuccessRate.toFixed(1)}%</span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">45%</span>
-                        <Badge variant="secondary" className="text-xs">Normal</Badge>
+                      <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                        <div
+                          className={`h-full rounded-full transition-all ${healthBarTone(100 - authSuccessRate)}`}
+                          style={{ width: `${Math.min(100, Math.max(0, authSuccessRate))}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {authAccepted.toLocaleString()} accepted · {authRejected.toLocaleString()} rejected
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-2">
+                          <Server className="h-4 w-4 text-blue-600" />
+                          <span className="font-medium">Database latency</span>
+                        </div>
+                        <span className="font-semibold tabular-nums">{Math.round(nocHealth.dbLatencyMs)} ms</span>
+                      </div>
+                      <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                        <div
+                          className={`h-full rounded-full transition-all ${healthBarTone(latencyLoadPct(nocHealth.dbLatencyMs, 120, 400))}`}
+                          style={{ width: `${latencyLoadPct(nocHealth.dbLatencyMs, 120, 400)}%` }}
+                        />
                       </div>
                     </div>
-                    <Tooltip>
-                      <TooltipTrigger>
-                        <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                          <div
-                            className="h-full animate-pulse rounded-full bg-blue-600 dark:bg-blue-500"
-                            style={{ width: "45%" }}
-                          />
+
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-2">
+                          <Activity className="h-4 w-4 text-emerald-600" />
+                          <span className="font-medium">Client round-trip</span>
                         </div>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>CPU Usage: 45% - Within normal operating range</p>
-                      </TooltipContent>
-                    </Tooltip>
+                        <span className="font-semibold tabular-nums">{Math.round(nocHealth.clientRttMs)} ms</span>
+                      </div>
+                      <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                        <div
+                          className={`h-full rounded-full transition-all ${healthBarTone(latencyLoadPct(nocHealth.clientRttMs, 800, 2000))}`}
+                          style={{ width: `${latencyLoadPct(nocHealth.clientRttMs, 800, 2000)}%` }}
+                        />
+                      </div>
+                    </div>
                   </div>
 
-                  {/* Memory Usage */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <CircuitBoard className="h-4 w-4 text-purple-600" />
-                        <span className="text-sm font-medium">Memory Usage</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">60%</span>
-                        <Badge variant="secondary" className="text-xs">Moderate</Badge>
-                      </div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-lg border bg-muted/30 p-3">
+                      <div className="text-xs text-muted-foreground">Active sessions</div>
+                      <div className="mt-1 text-xl font-bold tabular-nums">{Number(nocHealth.activeSessions ?? 0)}</div>
                     </div>
-                    <Tooltip>
-                      <TooltipTrigger>
-                        <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                          <div
-                            className="h-full animate-pulse rounded-full bg-purple-600 dark:bg-purple-500"
-                            style={{ width: "60%" }}
-                          />
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Memory Usage: 60% - Moderate load, monitoring recommended</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
-
-                  {/* Disk Space */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <HardDrive className="h-4 w-4 text-green-600" />
-                        <span className="text-sm font-medium">Disk Space</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">25%</span>
-                        <Badge variant="secondary" className="text-xs">Optimal</Badge>
-                      </div>
+                    <div className="rounded-lg border bg-muted/30 p-3">
+                      <div className="text-xs text-muted-foreground">NAS devices</div>
+                      <div className="mt-1 text-xl font-bold tabular-nums">{totalNas}</div>
                     </div>
-                    <Tooltip>
-                      <TooltipTrigger>
-                        <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                          <div
-                            className="h-full animate-pulse rounded-full bg-green-600 dark:bg-green-500"
-                            style={{ width: "25%" }}
-                          />
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Disk Usage: 25% - Optimal storage capacity</p>
-                      </TooltipContent>
-                    </Tooltip>
+                    <div className="rounded-lg border bg-muted/30 p-3">
+                      <div className="text-xs text-muted-foreground">Users in FUP</div>
+                      <div className="mt-1 text-xl font-bold tabular-nums text-amber-600">{fupUsersCount}</div>
+                    </div>
                   </div>
-                </TooltipProvider>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card className="w-full min-w-0 md:col-span-4 border-border/70 shadow-sm">
+                <CardHeader>
+                  <CardTitle>Overview</CardTitle>
+                  <CardDescription>Key metrics from your assigned widgets above</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground">
+                    Use the KPI cards above for quick access to sessions, users, billing, and alerts.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Recent Activity */}
             {canSeeAudit ? (
-              <Card className="w-full min-w-0 md:col-span-3 hover:shadow-lg transition-shadow">
+              <Card className="w-full min-w-0 md:col-span-3 border-border/70 shadow-sm">
                 <CardHeader>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>

@@ -18,6 +18,8 @@ function categoryLabel(c: InboxNotificationCategory): string {
       return 'Invoice';
     case 'external_invoice':
       return 'External';
+    case 'pay_due':
+      return 'Pay due';
     case 'user_status':
       return 'Status';
     default:

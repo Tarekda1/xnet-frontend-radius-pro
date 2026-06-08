@@ -1,8 +1,8 @@
 // OnlineUsersPage.tsx (or wherever you host the page)
 import { useMemo, useState, useCallback, useEffect } from "react";
 import SearchBar from "../components/SearchBar";
-import OnlineUsersTable from "../components/OnlineUsersTable";
-import { RefreshCw, Users, Clock, Activity } from "lucide-react";
+import OnlineUsersTable, { type OnlineSessionStats } from "../components/OnlineUsersTable";
+import { RefreshCw, Users, Activity, AlertTriangle, Gauge, Wifi, Server } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import PageHeader from "@/components/PageHeader";
 import IconActionButton from "@/components/IconActionButton";
@@ -25,6 +25,7 @@ import type { SavedViewState } from "@/lib/savedViews";
 import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "@/api/client";
 import { useSearchParams } from "@/navigation/urlSearchParams";
+import Link from "next/link";
 
 type OnlineUsersMetrics = { totalOnlineUsers: number; totalActiveUsers: number };
 
@@ -35,9 +36,22 @@ export default function OnlineUsersPage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [onlineCount, setOnlineCount] = useState(0);
+  const [sessionStats, setSessionStats] = useState({ fup: 0, monthlyExceeded: 0, total: 0 });
   const [refreshToken, setRefreshToken] = useState(0);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date>(() => new Date());
   const [nowTick, setNowTick] = useState<number>(() => Date.now());
+
+  const handleSessionStats = useCallback((stats: OnlineSessionStats) => {
+    setSessionStats((prev) =>
+      prev.fup === stats.fup && prev.monthlyExceeded === stats.monthlyExceeded && prev.total === stats.total
+        ? prev
+        : stats
+    );
+  }, []);
+
+  const handleOnlineCountChange = useCallback((count: number) => {
+    setOnlineCount((prev) => (prev === count ? prev : count));
+  }, []);
 
   // Change profile modal
   const [profileUsername, setProfileUsername] = useState<string | null>(null);
@@ -284,59 +298,50 @@ export default function OnlineUsersPage() {
 
   if (isLoading) {
     return (
-      <div className="w-full py-6 space-y-6">
+      <div className="w-full space-y-6 px-4 py-6 sm:px-0 animate-in fade-in-50">
         <PageHeader
+          variant="gradient"
           title="Live Sessions"
           subtitle="Monitor and manage active RADIUS sessions"
           icon={Users}
-          rightContent={<Skeleton className="h-10 w-full md:w-[300px]" />}
           actions={
             <div className="flex gap-2">
-              <Skeleton className="h-10 w-24" />
+              <Skeleton className="h-10 w-28 bg-white/20" />
             </div>
           }
         />
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <Card className="p-0">
-            <CardContent className="p-4">
-              <Skeleton className="h-4 w-24" />
-              <Skeleton className="h-8 w-20 mt-2" />
-              <Skeleton className="h-3 w-28 mt-2" />
-            </CardContent>
-          </Card>
-          <Card className="p-0">
-            <CardContent className="p-4">
-              <Skeleton className="h-4 w-24" />
-              <Skeleton className="h-8 w-20 mt-2" />
-              <Skeleton className="h-3 w-28 mt-2" />
-            </CardContent>
-          </Card>
-          <Card className="p-0">
-            <CardContent className="p-4">
-              <Skeleton className="h-4 w-24" />
-              <Skeleton className="h-8 w-32 mt-2" />
-              <Skeleton className="h-3 w-28 mt-2" />
-            </CardContent>
-          </Card>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Card key={i} className="border-border/60">
+              <CardContent className="p-4 space-y-2">
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-8 w-20" />
+                <Skeleton className="h-3 w-28" />
+              </CardContent>
+            </Card>
+          ))}
         </div>
-
-        <Card className="border-none shadow-none">
-          <CardContent className="px-0">
-            <div className="space-y-2">
-              <Skeleton className="h-12 w-full" />
-              <Skeleton className="h-16 w-full" />
-              <Skeleton className="h-16 w-full" />
-              <Skeleton className="h-16 w-full" />
-            </div>
+        <Card className="border-border/60">
+          <CardContent className="p-4 space-y-2">
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-16 w-full" />
+            <Skeleton className="h-16 w-full" />
           </CardContent>
         </Card>
       </div>
     );
   }
 
-  const totalOnline = Number(metricsQuery.data?.totalOnlineUsers ?? onlineCount) || 0;
-  const activeOnline = Number(metricsQuery.data?.totalActiveUsers ?? onlineCount) || 0;
+  const metricsOnline = metricsQuery.data?.totalOnlineUsers;
+  const metricsActive = metricsQuery.data?.totalActiveUsers;
+  const totalOnline = Math.max(onlineCount, typeof metricsOnline === "number" ? metricsOnline : 0);
+  const activeOnline = Math.max(
+    0,
+    Math.min(
+      totalOnline,
+      typeof metricsActive === "number" && metricsActive > 0 ? metricsActive : totalOnline
+    )
+  );
   const idleOnline = Math.max(totalOnline - activeOnline, 0);
   const secondsSinceRefresh = Math.max(0, Math.floor((nowTick - lastRefreshedAt.getTime()) / 1000));
   const autoRefreshEverySec = 15;
@@ -346,89 +351,155 @@ export default function OnlineUsersPage() {
   const isDataStale = secondsSinceRefresh > 60;
 
   return (
-    <div className="w-full py-6 space-y-6">
+    <div className="w-full space-y-6 px-4 py-6 sm:px-0 animate-in fade-in-50">
       <PageHeader
+        variant="gradient"
         title="Live Sessions"
-        subtitle="Monitor and manage active RADIUS sessions"
-        icon={Users}
+        subtitle="Active RADIUS sessions with daily and monthly quota cycles — same billing window as the Users list"
+        icon={Activity}
         actions={(
-          <div className="flex gap-2 items-center">
-            <Badge className="h-7 text-[11px]" variant={isDataStale ? "destructive" : "secondary"}>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Badge
+              className="h-7 border-white/20 bg-white/15 text-[11px] text-white"
+              variant={isDataStale ? "destructive" : "secondary"}
+            >
               {isDataStale ? `Stale ${secondsSinceRefresh}s` : `Fresh ${secondsSinceRefresh}s`}
             </Badge>
-            <Badge className="h-7 text-[11px]" variant="outline">
-              {metricsQuery.isFetching ? "Auto refresh..." : `Auto in ${autoRefreshIn}s`}
+            <Badge className="h-7 border-white/25 bg-white/10 text-[11px] text-white/90" variant="outline">
+              {metricsQuery.isFetching ? "Auto refresh…" : `Auto in ${autoRefreshIn}s`}
             </Badge>
+            {sessionStats.monthlyExceeded > 0 ? (
+              <Badge variant="destructive" className="h-7 text-[11px]">
+                {sessionStats.monthlyExceeded} over quota
+              </Badge>
+            ) : null}
             <IconActionButton
-              label={isRefreshing ? "Refreshing..." : "Refresh"}
+              label={isRefreshing ? "Refreshing…" : "Refresh"}
               onClick={handleRefresh}
               disabled={isRefreshing}
-              icon={<RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />}
+              className="border-white/25 bg-white/15 text-white shadow-sm hover:bg-white/25"
+              icon={<RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />}
             />
           </div>
         )}
       />
 
-      {/* Summary + controls */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        <div className="lg:col-span-4">
-          <StatCard
-            label="Active"
-            value={activeOnline}
-            sublabel="Currently active sessions"
-            icon={<div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center"><Activity className="h-5 w-5" /></div>}
-          />
-        </div>
-        <div className="lg:col-span-4">
-          <StatCard
-            label="Total online"
-            value={totalOnline}
-            sublabel={idleOnline ? `${idleOnline} idle / stale` : "No idle sessions"}
-            icon={<div className="h-10 w-10 rounded-full bg-blue-500/10 flex items-center justify-center"><Users className="h-5 w-5 text-blue-600 dark:text-blue-400" /></div>}
-          />
-        </div>
-        <div className="lg:col-span-4">
-          <StatCard
-            label="Last refresh"
-            value={`${secondsSinceRefresh}s ago`}
-            sublabel={metricsQuery.isFetching ? "Updating metrics..." : `at ${lastRefreshedAt.toLocaleTimeString()}`}
-            icon={<div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center"><Clock className="h-5 w-5 text-muted-foreground" /></div>}
-          />
-        </div>
-
-        <Card className="lg:col-span-12">
-          <CardContent className="p-4">
-            <div className="flex flex-col lg:flex-row gap-3 items-start lg:items-center justify-between">
-              <div className="flex-1 min-w-0 lg:max-w-xl">
-                <SearchBar 
-                  currentSearchTerm={search} 
-                  onSearch={handleSearch}
-                  placeholder="Search by username or full name…"
-                  className="w-full"
-                  autoSearch={false}
-                  showButton
-                />
-              </div>
-
-              <div className="flex items-center gap-2">
-                <SavedViews
-                  storageKey="savedViews:liveSessions"
-                  keys={sessionsSavedViewsKeys}
-                  getState={getSessionsViewState}
-                  applyState={applySessionsViewState}
-                  compact
-                  onSaved={() => notify.success("View saved")}
-                  onDeleted={() => notify.success("View deleted")}
-                />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="flex flex-wrap gap-2">
+        <Button variant="secondary" size="sm" className="rounded-full shadow-sm" asChild>
+          <Link href="/users/list">
+            <Users className="mr-2 h-4 w-4" />
+            Users list
+          </Link>
+        </Button>
+        <Button variant="secondary" size="sm" className="rounded-full shadow-sm" asChild>
+          <Link href="/users/list?status=online">
+            <Wifi className="mr-2 h-4 w-4" />
+            Online filter
+          </Link>
+        </Button>
+        <Button variant="secondary" size="sm" className="rounded-full shadow-sm" asChild>
+          <Link href="/nas">
+            <Server className="mr-2 h-4 w-4" />
+            NAS devices
+          </Link>
+        </Button>
       </div>
 
-      <OnlineUsersTable 
-        search={search} 
-        onCountChange={setOnlineCount}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Active now"
+          value={activeOnline.toLocaleString()}
+          sublabel="Recent accounting updates"
+          icon={
+            <div className="relative flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/10">
+              <Activity className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+              {activeOnline > 0 ? (
+                <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-500 ring-2 ring-background" />
+              ) : null}
+            </div>
+          }
+        />
+        <StatCard
+          label="Total online"
+          value={totalOnline.toLocaleString()}
+          sublabel={idleOnline ? `${idleOnline.toLocaleString()} idle / no recent update` : "All open sessions"}
+          icon={
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-500/10">
+              <Users className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+            </div>
+          }
+        />
+        <StatCard
+          label="FUP / throttled"
+          value={sessionStats.fup.toLocaleString()}
+          sublabel={
+            sessionStats.fup
+              ? `${Math.round((sessionStats.fup / Math.max(sessionStats.total, 1)) * 100)}% on current page`
+              : "No fallback profiles"
+          }
+          icon={
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-500/10">
+              <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
+            </div>
+          }
+        />
+        <StatCard
+          label="Monthly exceeded"
+          value={sessionStats.monthlyExceeded.toLocaleString()}
+          sublabel="Over quota this billing cycle"
+          icon={
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/10">
+              <Gauge className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+            </div>
+          }
+        />
+      </div>
+
+      <Card className="overflow-hidden border-border/70 shadow-sm">
+        <CardContent className="space-y-4 p-4 sm:p-5">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold">Search sessions</h2>
+              <p className="text-xs text-muted-foreground">
+                Last refresh {secondsSinceRefresh}s ago · {lastRefreshedAt.toLocaleTimeString()}
+                {totalOnline > 0 ? ` · ${totalOnline.toLocaleString()} total online` : ""}
+              </p>
+            </div>
+            <SavedViews
+              storageKey="savedViews:liveSessions"
+              keys={sessionsSavedViewsKeys}
+              getState={getSessionsViewState}
+              applyState={applySessionsViewState}
+              compact
+              onSaved={() => notify.success("View saved")}
+              onDeleted={() => notify.success("View deleted")}
+            />
+          </div>
+          <SearchBar
+            currentSearchTerm={search}
+            onSearch={handleSearch}
+            placeholder="Search by username, full name, NAS IP or name…"
+            className="w-full max-w-2xl"
+            autoSearch={false}
+            showButton
+          />
+          {search.trim() ? (
+            <div className="flex flex-wrap items-center gap-2 border-t border-border/60 pt-3">
+              <Badge variant="secondary" className="gap-1">
+                Search: {search}
+                <button type="button" onClick={() => setSearch("")} className="inline-flex" aria-label="Clear search">
+                  ×
+                </button>
+              </Badge>
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <OnlineUsersTable
+        search={search}
+        onCountChange={handleOnlineCountChange}
+        onStatsChange={handleSessionStats}
         isRefreshing={isRefreshing}
         refreshToken={refreshToken}
         onChangeProfile={openChangeProfile}
@@ -494,6 +565,9 @@ export default function OnlineUsersPage() {
                   <div className="text-sm font-medium">{p.profileName}</div>
                   <div className="text-xs text-muted-foreground">
                     Daily: {p.dailyQuota} · Monthly: {p.monthlyQuota}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Monthly cycle follows each user&apos;s reset day or manual start date.
                   </div>
                   <div className="text-xs text-muted-foreground">
                     Down: {p.speedDown ?? "—"} · Up: {p.speedUp ?? "—"} · Max: {p.maxSessions ?? "—"}

@@ -96,7 +96,7 @@ const ExternalInvoiceDetailView: React.FC<Props> = ({
   const renderField = (key: string, value: any) => (
     <div key={key} className="mb-4">
       <Label htmlFor={key} className="block mb-2 capitalize">
-        {key}
+        {key === "payDueDate" ? "Pay due date" : key}
       </Label>
       {key === "status" && isEditing ? (
         <Select
@@ -135,15 +135,30 @@ const ExternalInvoiceDetailView: React.FC<Props> = ({
             />
           </PopoverContent>
         </Popover>
+      ) : key === "payDueDate" && isEditing ? (
+        <Input
+          type="date"
+          id="payDueDate"
+          value={value ? String(value).slice(0, 10) : ""}
+          onChange={(e) =>
+            setEditedInvoice((prev) => ({
+              ...prev,
+              payDueDate: e.target.value ? e.target.value : null,
+            }))
+          }
+          className="w-full"
+        />
       ) : (
         <Input
           id={key}
           value={
-            ["billingMonth", "createdAt", "paidAt"].includes(key)
+            ["billingMonth", "createdAt", "paidAt", "payDueDate"].includes(key)
               ? value
-                ? new Date(value as string).toLocaleString()
+                ? key === "payDueDate" || key === "billingMonth"
+                  ? new Date(`${String(value).slice(0, 10)}T12:00:00`).toLocaleDateString()
+                  : new Date(value as string).toLocaleString()
                 : ""
-              : (value as string)
+              : String(value ?? "")
           }
           readOnly={!isEditing || key === "id" || key === "createdAt"}
           onChange={handleInput}

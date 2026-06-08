@@ -4,6 +4,7 @@ import React, {
     useMemo,
     useEffect,
     useState,
+    useRef,
 } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
@@ -67,6 +68,12 @@ import { cn } from "@/lib/utils";
 import { apiClient } from "@/api/client";
 import { useAuth } from "@/context/AuthContext";
 import { canAny } from "@/lib/permissions";
+import MonthlyCycleCell from "@/components/MonthlyCycleCell";
+import { isMonthlyQuotaExceededFromFields, monthlyCycleFieldsFromOnlineUser } from "@/lib/quotaCycle";
+
+const EMPTY_ONLINE_ROWS: OnlineUser[] = [];
+
+export type OnlineSessionStats = { fup: number; monthlyExceeded: number; total: number };
 
 // Disconnect is handled server-side (MikroTik API / radclient fallback).
 
@@ -179,6 +186,18 @@ const isFupUser = (u: OnlineUser) => {
     const monthlyExceeded = monthlyQuota > 0 && toInt(u.monthly_usage) >= monthlyQuota;
     return byFlag || byProfile || dailyExceeded || monthlyExceeded;
 };
+
+function computeSessionStats(rows: OnlineUser[]): OnlineSessionStats {
+    const fup = rows.filter((u) => isFupUser(u)).length;
+    const monthlyExceeded = rows.filter((u) =>
+        isMonthlyQuotaExceededFromFields(monthlyCycleFieldsFromOnlineUser(u))
+    ).length;
+    return { fup, monthlyExceeded, total: rows.length };
+}
+
+function sessionStatsEqual(a: OnlineSessionStats, b: OnlineSessionStats): boolean {
+    return a.fup === b.fup && a.monthlyExceeded === b.monthlyExceeded && a.total === b.total;
+}
 
 type UsageTone = "normal" | "warning" | "high" | "critical";
 
@@ -336,19 +355,14 @@ const MobileCard: React.FC<{
                         <span title={user.session_last_update || ""}>{formatAgo(user.session_last_update)}</span>
                     </div>
                 </div>
-                <UsageBar
-                    used={user.real_time_data_usage}
-                    total={user.profile_daily_quota}
-                    type="daily"
-                    isFup={fup}
-                />
             </div>
             <UsageBar
-                used={user.monthly_usage}
-                total={user.profile_monthly_quota}
-                type="monthly"
+                used={user.real_time_data_usage}
+                total={user.profile_daily_quota}
+                type="daily"
                 isFup={fup}
             />
+            <MonthlyCycleCell {...monthlyCycleFieldsFromOnlineUser(user)} />
         </CardContent>
         <CardFooter className="pt-2">
             <div className="flex w-full justify-end">
@@ -487,12 +501,7 @@ const TableRows = function TableRows({
                         />
                     </TableCell>
                     <TableCell>
-                        <UsageBar
-                            used={u.monthly_usage}
-                            total={u.profile_monthly_quota}
-                            type="monthly"
-                            isFup={fup}
-                        />
+                        <MonthlyCycleCell {...monthlyCycleFieldsFromOnlineUser(u)} />
                     </TableCell>
                     <TableCell className="text-center">
                         <TableRowActions
@@ -536,7 +545,7 @@ const DesktopTable: React.FC<{
                     <TableHead className="w-[120px]">Uptime</TableHead>
                     <TableHead className="w-[120px]">Last update</TableHead>
                     <TableHead>Daily Usage</TableHead>
-                    <TableHead>Monthly Usage</TableHead>
+                    <TableHead className="min-w-[160px]">Monthly Cycle</TableHead>
                     <TableHead className="text-center w-[100px]">Actions</TableHead>
                 </TableRow>
             </TableHeader>
@@ -561,6 +570,7 @@ const DesktopTable: React.FC<{
 interface Props {
     search: string;
     onCountChange?: (count: number) => void;
+    onStatsChange?: (stats: OnlineSessionStats) => void;
     isRefreshing?: boolean;
     refreshToken?: number;
     onChangeProfile?: (username: string, currentProfileName?: string) => void;
@@ -569,7 +579,8 @@ interface Props {
 
 const OnlineUsersTable: React.FC<Props> = ({ 
     search, 
-    onCountChange, 
+    onCountChange,
+    onStatsChange,
     isRefreshing,
     refreshToken,
     onChangeProfile,
@@ -700,14 +711,24 @@ const OnlineUsersTable: React.FC<Props> = ({
         // keep sortKey as-is; sorting doesn’t hide rows
     }, [setStatusFilter, setFupOnly]);
 
-    // Update count when users change
+    // Update count when users change (stable — avoid redundant parent re-renders)
     useEffect(() => {
-        onCountChange?.(data?.totalUsers || 0);
+        const total = data?.totalUsers ?? 0;
+        onCountChange?.(total);
     }, [data?.totalUsers, onCountChange]);
 
-    // Search/refresh are controlled by the page component.
+    const rows = useMemo(() => data?.data ?? EMPTY_ONLINE_ROWS, [data?.data]);
 
-    const rows = data?.data ?? [];
+    const sessionStats = useMemo(() => computeSessionStats(rows), [rows]);
+    const lastReportedStatsRef = useRef<OnlineSessionStats | null>(null);
+
+    useEffect(() => {
+        if (!onStatsChange) return;
+        const prev = lastReportedStatsRef.current;
+        if (prev && sessionStatsEqual(prev, sessionStats)) return;
+        lastReportedStatsRef.current = sessionStats;
+        onStatsChange(sessionStats);
+    }, [sessionStats, onStatsChange]);
     const statusCounts = useMemo(() => {
         return rows.reduce(
             (acc, u) => {

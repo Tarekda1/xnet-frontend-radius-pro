@@ -104,7 +104,12 @@ const InvoiceUpload: React.FC = () => {
         <CardHeader>
           <CardTitle>Upload Invoice File</CardTitle>
           <CardDescription>
-            Drag and drop your Excel file here or click to browse
+            Drag and drop your Excel file here or click to browse. Expected columns include{" "}
+            <span className="font-medium">username</span>, <span className="font-medium">fullName</span>,{" "}
+            <span className="font-medium">email</span>, <span className="font-medium">phoneNumber</span>,{" "}
+            <span className="font-medium">address</span> (or <span className="font-medium">Address</span>),{" "}
+            <span className="font-medium">provider</span>, <span className="font-medium">amount</span>, and optional{" "}
+            <span className="font-medium">billingMonth</span> / <span className="font-medium">status</span>.
           </CardDescription>
         </CardHeader>
         <CardContent>

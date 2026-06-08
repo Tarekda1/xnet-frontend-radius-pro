@@ -1,4 +1,5 @@
 import { apiClient } from './client';
+import type { ExternalInvoice } from '@/types/api';
 
 export type CollectedMetrics = {
   totalCollectedInvoices: number;
@@ -217,4 +218,8 @@ export async function setExternalInvoiceWorkflow(
   await apiClient.post(`/invoices/external/${invoiceId}/workflow`, payload);
 }
 
+export async function fetchExternalInvoicesPaymentDue(): Promise<ExternalInvoice[]> {
+  const { data } = await apiClient.get('/invoices/external/payment-due');
+  return data.data as ExternalInvoice[];
+}
 

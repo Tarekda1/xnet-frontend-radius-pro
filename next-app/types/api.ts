@@ -8,6 +8,17 @@ export interface User {
   isDailyExceeded?: boolean;
   isMonthlyExceededComputed?: boolean;
   quotaResetDay: number;
+  /** Optional manual anchor for the current monthly billing cycle (YYYY-MM-DD). */
+  quotaCycleStartDate?: string | null;
+  /** Bytes used in the current monthly cycle (string bigint from API). */
+  dailyUsage?: string;
+  monthlyUsage?: string;
+  /** Start of the current monthly quota window (YYYY-MM-DD). */
+  monthlyCycleStart?: string | null;
+  /** When the monthly quota resets (YYYY-MM-DD). */
+  monthlyCycleResetAt?: string | null;
+  /** 0–100 usage vs monthly quota. */
+  monthlyUsagePct?: number;
   accountStatus: string;
   /** ISO 8601 — subscription / access expiry (past date ⇒ `expired` + RADIUS reject until renewed). */
   expiresAt?: string | null;
@@ -51,11 +62,14 @@ export type ExternalInvoice = {
     /** Contact phone (E.164 or local) */
     phoneNumber: string;
 
-    /** Customer’s billing address */
-    address: string;
+    /** Customer’s billing address (optional) */
+    address?: string | null;
 
     /** Month being billed – ISO 8601 date string (“2025‑04‑01”) */
     billingMonth: string;
+
+    /** Target payment date (YYYY-MM-DD); optional, for collection tracking */
+    payDueDate?: string | null;
 
     /** Invoice amount in chosen currency (e.g. USD) */
     amount: number;

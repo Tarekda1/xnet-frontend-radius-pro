@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { User } from "@/types/api";
 import { getUserHealth } from "@/lib/userHealth";
+import MonthlyCycleCell from "@/components/MonthlyCycleCell";
 
 interface UserCardProps {
     user: User;
@@ -96,6 +97,22 @@ const UserCard: React.FC<UserCardProps> = ({
                     <div>
                         <span className="font-semibold">MAC Address:</span>{" "}
                         {user.macAddress?.macAddress ?? 'Not set'}
+                    </div>
+                    <div>
+                        <span className="font-semibold">Monthly cycle:</span>
+                        <div className="mt-1">
+                            <MonthlyCycleCell
+                                monthlyUsage={user.monthlyUsage}
+                                monthlyQuota={user.profile?.monthlyQuota}
+                                monthlyCycleStart={user.monthlyCycleStart}
+                                monthlyCycleResetAt={user.monthlyCycleResetAt}
+                                quotaResetDay={user.quotaResetDay}
+                                quotaCycleStartDate={user.quotaCycleStartDate}
+                                isMonthlyExceeded={user.isMonthlyExceeded}
+                                isMonthlyExceededComputed={user.isMonthlyExceededComputed}
+                                monthlyUsagePct={user.monthlyUsagePct}
+                            />
+                        </div>
                     </div>
                     <div>
                         <span className="font-semibold">Last Active:</span>{" "}

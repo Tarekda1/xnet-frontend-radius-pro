@@ -177,6 +177,24 @@ const DesktopTable: React.FC<Props> = ({
         ),
       },
       {
+        accessorKey: "address",
+        header: ({ column }) => (
+          <HeaderButton column={column}>Address</HeaderButton>
+        ),
+        cell: ({ row }) => {
+          const a = row.original.address;
+          if (a === undefined || a === null || String(a).trim() === "") {
+            return <span className="text-muted-foreground">—</span>;
+          }
+          const text = String(a);
+          return (
+            <span className="max-w-[220px] truncate block text-sm" title={text}>
+              {text}
+            </span>
+          );
+        },
+      },
+      {
         accessorKey: "provider",
         header: ({ column }) => (
           <HeaderButton column={column}>Provider</HeaderButton>
@@ -234,6 +252,20 @@ const DesktopTable: React.FC<Props> = ({
             })}
           </div>
         ),
+      },
+      {
+        accessorKey: "payDueDate",
+        header: ({ column }) => (
+          <HeaderButton column={column}>Pay&nbsp;due</HeaderButton>
+        ),
+        cell: ({ row }) => {
+          const raw = row.original.payDueDate;
+          if (raw === undefined || raw === null || String(raw).trim() === "") {
+            return <span className="text-muted-foreground">—</span>;
+          }
+          const ymd = String(raw).slice(0, 10);
+          return <span className="text-sm font-medium">{ymd}</span>;
+        },
       },
       {
         accessorKey: "amount",
