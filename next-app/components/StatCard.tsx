@@ -5,14 +5,16 @@ import { cn } from "@/lib/utils";
 
 export type StatCardProps = {
   label: string;
-  value: string | number;
+  value: React.ReactNode;
   sublabel?: string;
   icon?: React.ReactNode;
   onClick?: () => void;
   className?: string;
+  /** Optional slot under the value/sublabel (e.g. sparkline). */
+  footer?: React.ReactNode;
 };
 
-export default function StatCard({ label, value, sublabel, icon, onClick, className }: StatCardProps) {
+export default function StatCard({ label, value, sublabel, icon, onClick, className, footer }: StatCardProps) {
   return (
     <Card
       className={cn(
@@ -43,6 +45,7 @@ export default function StatCard({ label, value, sublabel, icon, onClick, classN
           </div>
           {icon ? <div className="shrink-0 text-muted-foreground">{icon}</div> : null}
         </div>
+        {footer ? <div className="mt-2">{footer}</div> : null}
       </CardContent>
     </Card>
   );

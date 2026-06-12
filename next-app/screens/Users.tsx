@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useReducer, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useReducer, useEffect, useRef } from 'react';
 import { Button } from "@/components/ui/button";
 import PageHeader from "@/components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,7 +11,6 @@ import {
     Wifi, 
     UserCheck, 
     UserX, 
-    AlertTriangle,
     Download,
     Upload,
     Filter,
@@ -19,8 +18,12 @@ import {
     Activity,
     Shield,
     Trash2,
-    X
+    X,
+    Server,
+    Gauge,
+    Layers
 } from 'lucide-react';
+import Link from "next/link";
 import SearchBar from '@/components/SearchBar';
 import UsersTable from '@/components/UsersTable';
 import AddUserModal from '../components/AddUserModal';
@@ -32,14 +35,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
-import { 
-    PieChart as RechartsPieChart, 
-    Pie, 
-    Cell,
-    Tooltip as RechartsTooltip, 
-    ResponsiveContainer 
-} from 'recharts';
+import dynamic from "next/dynamic";
 import { notify } from "@/lib/notify";
 import { MESSAGES } from "@/constants/messages";
 import QueryState from "@/components/QueryState";
@@ -61,6 +57,27 @@ import FilterPills from "@/components/FilterPills";
 import { isUserAtRisk } from "@/lib/userHealth";
 import IconActionButton from "@/components/IconActionButton";
 import StatCard from "@/components/StatCard";
+import { CountUpNumber, ProgressRing, Sparkline } from "@/components/viz";
+import { useTranslation } from "react-i18next";
+
+type UsersFleetMetrics = {
+    total: number;
+    online: number;
+    monthlyExceeded: number;
+    byStatus: Record<string, number>;
+    trends: {
+        onlineDaily: Array<{ day: string; count: number }>;
+        newUsersWeekly: Array<{ week: string; count: number }>;
+    };
+};
+
+const STATUS_SEGMENTS: Array<{ key: string; label: string; barClass: string; dotClass: string }> = [
+    { key: "active", label: "Active", barClass: "bg-emerald-500/85 hover:bg-emerald-500", dotClass: "bg-emerald-500" },
+    { key: "suspended", label: "Suspended", barClass: "bg-red-500/85 hover:bg-red-500", dotClass: "bg-red-500" },
+    { key: "inactive", label: "Inactive", barClass: "bg-slate-400/85 hover:bg-slate-400", dotClass: "bg-slate-400" },
+    { key: "expired", label: "Expired", barClass: "bg-amber-500/85 hover:bg-amber-500", dotClass: "bg-amber-500" },
+    { key: "terminated", label: "Terminated", barClass: "bg-zinc-600/85 hover:bg-zinc-600", dotClass: "bg-zinc-600" },
+];
 
 type AuditLogRow = {
     id: number;
@@ -115,55 +132,11 @@ function formatAuditTitle(action: string, meta: any): { title: string; detail?: 
     return { title: pretty };
 }
 
-const UsageChart = ({ users }: { users: User[] }) => {
-    const chartData = useMemo(() => {
-        const profileStats = users.reduce((acc, user) => {
-            const profileName = user.profile.profileName;
-            acc[profileName] = (acc[profileName] || 0) + 1;
-            return acc;
-        }, {} as Record<string, number>);
-
-        return Object.entries(profileStats).map(([name, value]) => ({
-            name,
-            value,
-            fill: name === 'Premium' ? '#fbbf24' : name === 'Basic' ? '#3b82f6' : '#10b981'
-        }));
-    }, [users]);
-
-    return (
-        <div className="h-64 relative">
-            <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-blue-50/30 to-purple-50/30 dark:from-primary/10 dark:to-primary/5" />
-            <div className="relative z-10 h-full">
-                <ResponsiveContainer width="100%" height="100%">
-                    <RechartsPieChart>
-                        <Pie
-                            data={chartData}
-                            cx="50%"
-                            cy="50%"
-                            labelLine={false}
-                            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                            outerRadius={80}
-                            fill="#8884d8"
-                            dataKey="value"
-                        >
-                            {chartData.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={entry.fill} />
-                            ))}
-                        </Pie>
-                        <RechartsTooltip 
-                            contentStyle={{
-                                backgroundColor: 'rgba(17, 24, 39, 0.95)',
-                                border: '1px solid rgba(75, 85, 99, 0.5)',
-                                borderRadius: '8px',
-                                color: 'white'
-                            }}
-                        />
-                    </RechartsPieChart>
-                </ResponsiveContainer>
-            </div>
-        </div>
-    );
-};
+// Loaded on demand: recharts stays out of the main /users/list bundle.
+const UsageChart = dynamic(() => import("@/components/charts/ProfileDistributionChart"), {
+    ssr: false,
+    loading: () => <Skeleton className="h-64 w-full rounded-lg" />,
+});
 
 const AuditActivityTimeline = ({ enabled }: { enabled: boolean }) => {
     const auditQuery = useQuery({
@@ -256,7 +229,7 @@ const BulkActions = ({
     const manageUsersReason = "You don't have permission to manage users.";
 
     return (
-        <div className="rounded-xl border border-border bg-card/60 p-4 shadow-sm">
+        <div className="sticky top-2 z-10 overflow-hidden rounded-xl border border-primary/20 bg-gradient-to-r from-blue-50/90 via-indigo-50/70 to-violet-50/50 p-4 shadow-md dark:from-blue-950/40 dark:via-indigo-950/30 dark:to-violet-950/20">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3">
                     <Checkbox
@@ -264,9 +237,12 @@ const BulkActions = ({
                         onCheckedChange={onSelectAll}
                         className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
                     />
-                    <Label className="text-sm font-semibold text-foreground">
-                        {selectedUsers.size} of {allUsers.length} selected
-                    </Label>
+                    <div>
+                        <Label className="text-sm font-semibold text-foreground">
+                            {selectedUsers.size} of {allUsers.length} selected
+                        </Label>
+                        <p className="text-xs text-muted-foreground">Bulk actions apply to the current selection</p>
+                    </div>
                 </div>
                 
                 {selectedUsers.size > 0 && (
@@ -356,6 +332,7 @@ const UsersPage: React.FC = () => {
         isBulkActionInProgress,
     } = state;
 
+    const { t } = useTranslation("screens");
     const [searchParams, setSearchParams] = useSearchParams();
     const router = useRouter();
     const savedViewsKeys = useMemo(
@@ -385,6 +362,27 @@ const UsersPage: React.FC = () => {
         resetMacAddressMutation
     } = useUsers(1, pageSize);
     const profilesQuery = useProfiles();
+
+    // Fleet-wide metrics (all pages, reseller-scoped server side) — the paginated
+    // list only covers the current page, so KPI cards use this endpoint instead.
+    const fleetMetricsQuery = useQuery({
+        queryKey: ["users", "fleet-metrics"],
+        queryFn: async () => {
+            const resp = await apiClient.get("/radius/users/metrics");
+            return (resp?.data?.data ?? null) as UsersFleetMetrics | null;
+        },
+        refetchInterval: 30000,
+        staleTime: 15000,
+    });
+    const fleet = fleetMetricsQuery.data;
+    const fleetStatusTotal = useMemo(
+        () => Object.values(fleet?.byStatus ?? {}).reduce((acc, n) => acc + n, 0),
+        [fleet?.byStatus]
+    );
+    const fleetSparks = useMemo(() => ({
+        newUsers: (fleet?.trends?.newUsersWeekly ?? []).map((p) => p.count),
+        onlineDaily: (fleet?.trends?.onlineDaily ?? []).map((p) => p.count),
+    }), [fleet?.trends]);
 
     // Backend sometimes returns either:
     // - { users, totalPages, ... } (normal list/search)
@@ -681,6 +679,35 @@ const UsersPage: React.FC = () => {
             },
         });
     }, [advancedFilters]);
+
+    // Press "/" anywhere to jump to the search box.
+    const searchBoxRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (e.key !== "/") return;
+            const target = e.target as HTMLElement | null;
+            const tag = (target?.tagName || "").toLowerCase();
+            if (tag === "input" || tag === "textarea" || target?.isContentEditable) return;
+            const input = searchBoxRef.current?.querySelector("input");
+            if (input) {
+                e.preventDefault();
+                (input as HTMLInputElement).focus();
+            }
+        };
+        window.addEventListener("keydown", onKeyDown);
+        return () => window.removeEventListener("keydown", onKeyDown);
+    }, []);
+
+    const applyAccountStatusFilter = useCallback((status: string) => {
+        dispatch({
+            type: "SET_ADVANCED_FILTERS",
+            payload: { ...advancedFilters, accountStatus: advancedFilters.accountStatus === status ? "" : status },
+        });
+        if (statusFilter === "active" || statusFilter === "suspended") {
+            dispatch({ type: "SET_STATUS_FILTER", payload: "" });
+        }
+        setCurrentPage(1);
+    }, [advancedFilters, statusFilter, setCurrentPage]);
 
     const clearAllFilters = useCallback(() => {
         setSearchQuery("");
@@ -1092,8 +1119,8 @@ const UsersPage: React.FC = () => {
             loading={
                 <div className="w-full space-y-6 py-6">
                     <PageHeader
-                        title="Users Management"
-                        subtitle="Comprehensive user management and monitoring system"
+                        title={t("users.title")}
+                        subtitle={t("users.subtitle_loading")}
                         icon={UsersIcon}
                         rightContent={<Skeleton className="h-10 w-full md:w-[260px]" />}
                         actions={
@@ -1158,219 +1185,252 @@ const UsersPage: React.FC = () => {
         >
         <div className="w-full min-w-0 space-y-6 py-6">
             <PageHeader 
-                title="Users Management"
-                subtitle="Comprehensive user management and monitoring system"
+                variant="gradient"
+                title={t("users.title")}
+                subtitle={t("users.subtitle")}
                 icon={UsersIcon}
-                rightContent={(
-                    <div className="flex w-full flex-col gap-3 md:w-auto md:flex-row md:items-center md:justify-end">
-                        <div className="flex items-center gap-2">
-                            <Label className="hidden sm:inline text-sm font-medium">View:</Label>
-                            <Select value={viewMode} onValueChange={(value: 'table' | 'cards' | 'analytics') => dispatch({ type: "SET_VIEW_MODE", payload: value })}>
-                                <SelectTrigger className="w-full sm:w-[140px]">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="table">Table</SelectItem>
-                                    <SelectItem value="cards">Cards</SelectItem>
-                                    <SelectItem value="analytics">Analytics</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <Label className="hidden sm:inline text-sm font-medium">Filter:</Label>
-                            <FilterPills
-                                name="users-quick-filter"
-                                value={quickFilterPillValue}
-                                onChange={handleQuickFilter}
-                                options={[
-                                    { value: "all", label: "All" },
-                                    { value: "online", label: "Online" },
-                                    { value: "offline", label: "Offline" },
-                                    { value: "suspended", label: "Suspended" },
-                                    { value: "risk", label: "Risk" },
-                                ]}
-                            />
-                        </div>
-                        <div className="hidden md:flex items-center gap-2">
-                            <SavedViews
-                                storageKey="users.views"
-                                keys={savedViewsKeys}
-                                getState={() => ({
-                                    q: searchQuery || "",
-                                    status: statusFilter || "",
-                                    account: advancedFilters.accountStatus || "",
-                                    profile: advancedFilters.profile || "",
-                                    quotaExceeded: advancedFilters.quotaExceeded ? "true" : "",
-                                    hasMacAddress: advancedFilters.hasMacAddress ? "true" : "",
-                                    hasContactInfo: advancedFilters.hasContactInfo ? "true" : "",
-                                    ps: String(pageSize),
-                                    view: viewMode,
-                                    p: String(currentPage),
-                                })}
-                                applyState={(s) => {
-                                    if (s.q !== undefined) setSearchQuery(s.q || "");
-                                    if (s.status !== undefined) dispatch({ type: "SET_STATUS_FILTER", payload: s.status || "" });
-                                    if (s.account !== undefined) {
-                                        dispatch({
-                                            type: "SET_ADVANCED_FILTERS",
-                                            payload: { ...advancedFilters, accountStatus: s.account || "" },
-                                        });
-                                    }
-                                    if (s.profile !== undefined) dispatch({ type: "SET_ADVANCED_FILTERS", payload: { ...advancedFilters, profile: s.profile || "all" } });
-                                    if (s.quotaExceeded !== undefined) dispatch({ type: "SET_ADVANCED_FILTERS", payload: { ...advancedFilters, quotaExceeded: s.quotaExceeded === "true" } });
-                                    if (s.hasMacAddress !== undefined) dispatch({ type: "SET_ADVANCED_FILTERS", payload: { ...advancedFilters, hasMacAddress: s.hasMacAddress === "true" } });
-                                    if (s.hasContactInfo !== undefined) dispatch({ type: "SET_ADVANCED_FILTERS", payload: { ...advancedFilters, hasContactInfo: s.hasContactInfo === "true" } });
-                                    if (s.ps) { const n = parseInt(s.ps, 10); if (Number.isFinite(n)) dispatch({ type: "SET_PAGE_SIZE", payload: n }); }
-                                    if (s.view && ["table", "cards", "analytics"].includes(s.view)) dispatch({ type: "SET_VIEW_MODE", payload: s.view as "table" | "cards" | "analytics" });
-                                    if (s.p) { const n = parseInt(s.p, 10); if (Number.isFinite(n) && n > 0) setCurrentPage(n); }
-                                    setSearchParams((prev) => {
-                                        const next = new URLSearchParams(prev);
-                                        if (s.q) next.set("q", s.q); else next.delete("q");
-                                        if (s.status) next.set("status", s.status); else next.delete("status");
-                                        if (s.account) next.set("account", s.account); else next.delete("account");
-                                        if (s.profile) next.set("profile", s.profile); else next.delete("profile");
-                                        if (s.quotaExceeded) next.set("quotaExceeded", s.quotaExceeded); else next.delete("quotaExceeded");
-                                        if (s.hasMacAddress) next.set("hasMacAddress", s.hasMacAddress); else next.delete("hasMacAddress");
-                                        if (s.hasContactInfo) next.set("hasContactInfo", s.hasContactInfo); else next.delete("hasContactInfo");
-                                        if (s.ps) next.set("ps", s.ps); else next.delete("ps");
-                                        if (s.view) next.set("view", s.view); else next.delete("view");
-                                        if (s.p) next.set("p", s.p); else next.delete("p");
-                                        return next;
-                                    }, { replace: true } as any);
-                                    refetch();
-                                }}
-                                onSaved={(name) => notify.success("View saved", `Saved "${name}".`)}
-                                onDeleted={(name) => notify.success("View deleted", `Deleted "${name}".`)}
-                            />
-                        </div>
-                    </div>
-                )}
                 actions={(
                     <div className="flex w-full flex-wrap gap-2 sm:justify-end">
                         <IconActionButton
                             label={isRefreshing ? "Refreshing..." : "Refresh"}
                             onClick={handleRefresh}
                             disabled={isRefreshing}
+                            className="border-white/25 bg-white/15 text-white shadow-sm hover:bg-white/25"
                             icon={<RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />}
                         />
                         <IconActionButton
                             label="Export Excel"
                             onClick={() => dispatch({ type: "SET_EXPORT_OPEN", payload: true })}
+                            className="border-white/25 bg-white/15 text-white shadow-sm hover:bg-white/25"
                             icon={<Download className="h-4 w-4" />}
                         />
                         <IconActionButton
                             label={!canManageUsers ? manageUsersReason : "Import CSV"}
                             onClick={() => dispatch({ type: "SET_IMPORT_OPEN", payload: true })}
                             disabled={!canManageUsers}
+                            className="border-white/25 bg-white/15 text-white shadow-sm hover:bg-white/25"
                             icon={<Upload className="h-4 w-4" />}
                         />
                         <IconActionButton
                             label={!canManageUsers ? manageUsersReason : "New User"}
                             onClick={handleAddUser}
                             disabled={!canManageUsers}
-                            variant="default"
+                            className="border-white/25 bg-white text-slate-900 shadow-sm hover:bg-white/90"
                             icon={<Plus className="h-4 w-4" />}
                         />
                     </div>
                 )}
             />
 
-            {/* Summary + search/filters (aligned with Live Sessions) */}
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-                {isLoading ? (
+            {/* Quick links to related screens */}
+            <div className="flex flex-wrap gap-2">
+                {canSeeLiveSessions ? (
+                    <Button variant="secondary" size="sm" className="rounded-full shadow-sm" asChild>
+                        <Link href="/online-users">
+                            <Activity className="mr-2 h-4 w-4" />
+                            Live sessions
+                        </Link>
+                    </Button>
+                ) : null}
+                <Button variant="secondary" size="sm" className="rounded-full shadow-sm" asChild>
+                    <Link href="/nas">
+                        <Server className="mr-2 h-4 w-4" />
+                        NAS devices
+                    </Link>
+                </Button>
+                <Button variant="secondary" size="sm" className="rounded-full shadow-sm" asChild>
+                    <Link href="/profiles/list">
+                        <Layers className="mr-2 h-4 w-4" />
+                        Profiles
+                    </Link>
+                </Button>
+            </div>
+
+            {/* Fleet-wide KPIs (all users, not just the current page) */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                {isLoading && !fleet ? (
                     <>
-                        {[1, 2, 3].map((i) => (
-                            <div key={i} className="lg:col-span-4">
-                                <Card className="border bg-card/60">
-                                    <CardContent className="p-4">
-                                        <Skeleton className="h-4 w-24" />
-                                        <Skeleton className="mt-2 h-8 w-20" />
-                                        <Skeleton className="mt-2 h-3 w-28" />
-                                    </CardContent>
-                                </Card>
-                            </div>
+                        {[1, 2, 3, 4].map((i) => (
+                            <Card key={i} className="border bg-card/60">
+                                <CardContent className="p-4">
+                                    <Skeleton className="h-4 w-24" />
+                                    <Skeleton className="mt-2 h-8 w-20" />
+                                    <Skeleton className="mt-2 h-3 w-28" />
+                                </CardContent>
+                            </Card>
                         ))}
                     </>
                 ) : (
                     <>
-                        <div className="lg:col-span-4">
-                            <StatCard
-                                label="Total users"
-                                value={metrics.total.toLocaleString()}
-                                sublabel="Registered users"
-                                onClick={() => {
-                                    setSearchQuery("");
-                                    dispatch({ type: "SET_STATUS_FILTER", payload: "" });
-                                    dispatch({
-                                        type: "SET_ADVANCED_FILTERS",
-                                        payload: {
-                                            accountStatus: "",
-                                            profile: "all",
-                                            quotaExceeded: false,
-                                            hasMacAddress: false,
-                                            hasContactInfo: false,
-                                        },
-                                    });
-                                    setCurrentPage(1);
-                                }}
-                                icon={
-                                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-                                        <UsersIcon className="h-5 w-5 text-primary" />
-                                    </div>
-                                }
-                            />
-                        </div>
-                        <div className="lg:col-span-4">
-                            <StatCard
-                                label="Online"
-                                value={metrics.online.toLocaleString()}
-                                sublabel={
-                                    metrics.total
-                                        ? `${Math.round((metrics.online / metrics.total) * 100)}% of filtered list`
-                                        : "No users in view"
-                                }
-                                onClick={() => handleQuickFilter("online")}
-                                icon={
-                                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-500/10">
-                                        <Wifi className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                                    </div>
-                                }
-                            />
-                        </div>
-                        <div className="lg:col-span-4">
-                            <StatCard
-                                label="At risk"
-                                value={metrics.riskUsers.toLocaleString()}
-                                sublabel={metrics.riskUsers > 0 ? "Needs attention" : "None flagged"}
-                                onClick={() => handleQuickFilter("risk")}
-                                icon={
-                                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-500/10">
-                                        <AlertTriangle className="h-5 w-5 text-orange-600 dark:text-orange-400" />
-                                    </div>
-                                }
-                            />
-                        </div>
+                        <StatCard
+                            label="Total users"
+                            value={<CountUpNumber value={fleet?.total ?? metrics.total} />}
+                            sublabel={
+                                fleetSparks.newUsers.length
+                                    ? `+${fleetSparks.newUsers[fleetSparks.newUsers.length - 1]} new this week`
+                                    : "Registered users"
+                            }
+                            onClick={clearAllFilters}
+                            icon={
+                                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+                                    <UsersIcon className="h-5 w-5 text-primary" />
+                                </div>
+                            }
+                            footer={
+                                fleetSparks.newUsers.length >= 2 ? (
+                                    <Sparkline data={fleetSparks.newUsers} strokeClass="stroke-blue-500" />
+                                ) : null
+                            }
+                        />
+                        <StatCard
+                            label="Online now"
+                            value={<CountUpNumber value={fleet?.online ?? metrics.online} />}
+                            sublabel={
+                                fleet?.total
+                                    ? `${Math.round(((fleet.online ?? 0) / fleet.total) * 100)}% of all users`
+                                    : "Live RADIUS sessions"
+                            }
+                            onClick={() => handleQuickFilter("online")}
+                            icon={
+                                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-500/10">
+                                    <Wifi className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                                </div>
+                            }
+                            footer={
+                                fleetSparks.onlineDaily.length >= 2 ? (
+                                    <Sparkline data={fleetSparks.onlineDaily} strokeClass="stroke-emerald-500" />
+                                ) : null
+                            }
+                        />
+                        <StatCard
+                            label="Suspended"
+                            value={<CountUpNumber value={fleet?.byStatus?.suspended ?? metrics.suspended} />}
+                            sublabel={
+                                fleet?.total
+                                    ? `${Math.round(((fleet.byStatus?.suspended ?? 0) / fleet.total) * 100)}% of all users`
+                                    : "Account status"
+                            }
+                            onClick={() => handleQuickFilter("suspended")}
+                            icon={
+                                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-500/10">
+                                    <UserX className="h-5 w-5 text-red-600 dark:text-red-400" />
+                                </div>
+                            }
+                        />
+                        <StatCard
+                            label="Quota exceeded"
+                            value={<CountUpNumber value={fleet?.monthlyExceeded ?? metrics.quotaExceeded} />}
+                            sublabel="Monthly traffic limit reached"
+                            onClick={() => setAttributeFilter("quota")}
+                            icon={
+                                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-500/10">
+                                    <Gauge className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+                                </div>
+                            }
+                        />
                     </>
                 )}
+            </div>
 
+            {/* Account status distribution (fleet-wide, clickable) */}
+            {fleet && fleetStatusTotal > 0 ? (
+                <Card className="overflow-hidden border-border/70 shadow-sm">
+                    <CardContent className="space-y-3 p-4 sm:p-5">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                                <Shield className="h-4 w-4 text-muted-foreground" />
+                                <span className="text-sm font-semibold">Account status distribution</span>
+                                <span className="text-xs text-muted-foreground">click a segment to filter</span>
+                            </div>
+                            <span className="text-xs text-muted-foreground">
+                                {fleetStatusTotal.toLocaleString()} users total
+                            </span>
+                        </div>
+                        <div className="flex h-9 w-full overflow-hidden rounded-lg border border-border/50">
+                            {STATUS_SEGMENTS.map((segment) => {
+                                const count = fleet.byStatus?.[segment.key] ?? 0;
+                                if (count <= 0) return null;
+                                const widthPercent = (count / fleetStatusTotal) * 100;
+                                const isActive = advancedFilters.accountStatus === segment.key;
+                                return (
+                                    <button
+                                        key={segment.key}
+                                        type="button"
+                                        className={`relative h-full transition-all ${segment.barClass} ${
+                                            isActive ? "ring-2 ring-inset ring-foreground/60" : ""
+                                        }`}
+                                        style={{ width: `${Math.max(widthPercent, 2)}%` }}
+                                        title={`${segment.label}: ${count.toLocaleString()} users`}
+                                        onClick={() => applyAccountStatusFilter(segment.key)}
+                                    >
+                                        {widthPercent > 12 ? (
+                                            <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-[10px] font-semibold text-white drop-shadow-sm">
+                                                {segment.label}
+                                            </span>
+                                        ) : null}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                            {STATUS_SEGMENTS.map((segment) => {
+                                const count = fleet.byStatus?.[segment.key] ?? 0;
+                                const isActive = advancedFilters.accountStatus === segment.key;
+                                return (
+                                    <button
+                                        key={segment.key}
+                                        type="button"
+                                        onClick={() => applyAccountStatusFilter(segment.key)}
+                                        className={`flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-xs transition-colors hover:bg-muted ${
+                                            isActive ? "bg-muted font-semibold" : "text-muted-foreground"
+                                        }`}
+                                    >
+                                        <span className={`h-2 w-2 rounded-full ${segment.dotClass}`} />
+                                        {segment.label}
+                                        <span className="tabular-nums">{count.toLocaleString()}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </CardContent>
+                </Card>
+            ) : null}
+
+            {/* Search & filters */}
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
                 <Card className="lg:col-span-12">
                     <CardContent className="p-4">
-                        <div className="flex flex-col gap-3 md:flex-row md:items-start lg:items-center">
-                            <div className="w-full md:flex-none md:w-[320px] lg:w-[360px] xl:w-[420px]">
+                        <div className="flex flex-wrap items-center gap-3">
+                            <div ref={searchBoxRef} className="order-1 w-full md:w-[70%]">
                                 <SearchBar
                                     currentSearchTerm={searchQuery}
                                     onSearch={handleSearch}
-                                    placeholder="Search by username, status, or profile..."
+                                    placeholder="Search by username, status, or profile… (press / to focus)"
                                     className="w-full"
                                     autoSearch={false}
                                     showButton
                                 />
                             </div>
-                            <div className="min-w-0 flex-1">
-                                <div className="flex flex-wrap items-center gap-2">
+                            <div className="order-3 w-full min-w-0 border-t border-border/60 pt-3">
+                                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                                     <div className="flex items-center gap-2 whitespace-nowrap text-xs text-muted-foreground">
                                         <Filter className="h-4 w-4 text-muted-foreground" />
                                         <span className="font-medium">Filters</span>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                        <span className="whitespace-nowrap text-xs text-muted-foreground">Status</span>
+                                        <FilterPills
+                                            name="users-quick-filter"
+                                            value={quickFilterPillValue}
+                                            onChange={handleQuickFilter}
+                                            options={[
+                                                { value: "all", label: "All" },
+                                                { value: "online", label: "Online" },
+                                                { value: "offline", label: "Offline" },
+                                                { value: "suspended", label: "Suspended" },
+                                                { value: "risk", label: "Risk" },
+                                            ]}
+                                        />
                                     </div>
                                     <div className="flex flex-wrap items-center gap-1.5">
                                         <span className="whitespace-nowrap text-xs text-muted-foreground">Profile</span>
@@ -1412,6 +1472,60 @@ const UsersPage: React.FC = () => {
                                         <Filter className="h-3.5 w-3.5" />
                                         Account status
                                     </Button>
+                                </div>
+                            </div>
+                            <div className="order-2 hidden min-w-0 flex-1 items-center justify-end md:flex">
+                                <div>
+                                    <SavedViews
+                                        storageKey="users.views"
+                                        keys={savedViewsKeys}
+                                        getState={() => ({
+                                            q: searchQuery || "",
+                                            status: statusFilter || "",
+                                            account: advancedFilters.accountStatus || "",
+                                            profile: advancedFilters.profile || "",
+                                            quotaExceeded: advancedFilters.quotaExceeded ? "true" : "",
+                                            hasMacAddress: advancedFilters.hasMacAddress ? "true" : "",
+                                            hasContactInfo: advancedFilters.hasContactInfo ? "true" : "",
+                                            ps: String(pageSize),
+                                            view: viewMode,
+                                            p: String(currentPage),
+                                        })}
+                                        applyState={(s) => {
+                                            if (s.q !== undefined) setSearchQuery(s.q || "");
+                                            if (s.status !== undefined) dispatch({ type: "SET_STATUS_FILTER", payload: s.status || "" });
+                                            if (s.account !== undefined) {
+                                                dispatch({
+                                                    type: "SET_ADVANCED_FILTERS",
+                                                    payload: { ...advancedFilters, accountStatus: s.account || "" },
+                                                });
+                                            }
+                                            if (s.profile !== undefined) dispatch({ type: "SET_ADVANCED_FILTERS", payload: { ...advancedFilters, profile: s.profile || "all" } });
+                                            if (s.quotaExceeded !== undefined) dispatch({ type: "SET_ADVANCED_FILTERS", payload: { ...advancedFilters, quotaExceeded: s.quotaExceeded === "true" } });
+                                            if (s.hasMacAddress !== undefined) dispatch({ type: "SET_ADVANCED_FILTERS", payload: { ...advancedFilters, hasMacAddress: s.hasMacAddress === "true" } });
+                                            if (s.hasContactInfo !== undefined) dispatch({ type: "SET_ADVANCED_FILTERS", payload: { ...advancedFilters, hasContactInfo: s.hasContactInfo === "true" } });
+                                            if (s.ps) { const n = parseInt(s.ps, 10); if (Number.isFinite(n)) dispatch({ type: "SET_PAGE_SIZE", payload: n }); }
+                                            if (s.view && ["table", "cards", "analytics"].includes(s.view)) dispatch({ type: "SET_VIEW_MODE", payload: s.view as "table" | "cards" | "analytics" });
+                                            if (s.p) { const n = parseInt(s.p, 10); if (Number.isFinite(n) && n > 0) setCurrentPage(n); }
+                                            setSearchParams((prev) => {
+                                                const next = new URLSearchParams(prev);
+                                                if (s.q) next.set("q", s.q); else next.delete("q");
+                                                if (s.status) next.set("status", s.status); else next.delete("status");
+                                                if (s.account) next.set("account", s.account); else next.delete("account");
+                                                if (s.profile) next.set("profile", s.profile); else next.delete("profile");
+                                                if (s.quotaExceeded) next.set("quotaExceeded", s.quotaExceeded); else next.delete("quotaExceeded");
+                                                if (s.hasMacAddress) next.set("hasMacAddress", s.hasMacAddress); else next.delete("hasMacAddress");
+                                                if (s.hasContactInfo) next.set("hasContactInfo", s.hasContactInfo); else next.delete("hasContactInfo");
+                                                if (s.ps) next.set("ps", s.ps); else next.delete("ps");
+                                                if (s.view) next.set("view", s.view); else next.delete("view");
+                                                if (s.p) next.set("p", s.p); else next.delete("p");
+                                                return next;
+                                            }, { replace: true } as any);
+                                            refetch();
+                                        }}
+                                        onSaved={(name) => notify.success("View saved", `Saved "${name}".`)}
+                                        onDeleted={(name) => notify.success("View deleted", `Deleted "${name}".`)}
+                                    />
                                 </div>
                             </div>
                         </div>
@@ -1639,44 +1753,41 @@ const UsersPage: React.FC = () => {
                                 System Health
                             </CardTitle>
                         </CardHeader>
-                        <CardContent className="space-y-6">
-                            <div className="space-y-3">
-                                <div className="flex justify-between text-sm font-medium">
-                                    <span className="text-foreground/90">Online Rate</span>
-                                    <span className="font-bold text-blue-600 dark:text-blue-400">
-                                        {metrics.total ? Math.round((metrics.online / metrics.total) * 100) : 0}%
-                                    </span>
-                                </div>
-                                <Progress 
-                                    value={metrics.total ? (metrics.online / metrics.total) * 100 : 0} 
-                                    className="h-3 bg-muted"
-                                />
-                            </div>
-                            
-                            <div className="space-y-3">
-                                <div className="flex justify-between text-sm font-medium">
-                                    <span className="text-foreground/90">Active Rate</span>
-                                    <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                                        {metrics.total ? Math.round((metrics.active / metrics.total) * 100) : 0}%
-                                    </span>
-                                </div>
-                                <Progress 
-                                    value={metrics.total ? (metrics.active / metrics.total) * 100 : 0} 
-                                    className="h-3 bg-muted"
-                                />
-                            </div>
-
-                            <div className="space-y-3">
-                                <div className="flex justify-between text-sm font-medium">
-                                    <span className="text-foreground/90">Quota Issues</span>
-                                    <span className="font-bold text-orange-600 dark:text-orange-400">
-                                        {metrics.total ? Math.round((metrics.quotaExceeded / metrics.total) * 100) : 0}%
-                                    </span>
-                                </div>
-                                <Progress 
-                                    value={metrics.total ? (metrics.quotaExceeded / metrics.total) * 100 : 0} 
-                                    className="h-3 bg-muted [&>div]:bg-gradient-to-r [&>div]:from-orange-500 [&>div]:to-red-500"
-                                />
+                        <CardContent>
+                            <div className="grid grid-cols-3 gap-2">
+                                {[
+                                    {
+                                        label: "Online rate",
+                                        percent: metrics.total ? (metrics.online / metrics.total) * 100 : 0,
+                                        detail: `${metrics.online.toLocaleString()} online`,
+                                        tone: "auto" as const,
+                                    },
+                                    {
+                                        label: "Active rate",
+                                        percent: metrics.total ? (metrics.active / metrics.total) * 100 : 0,
+                                        detail: `${metrics.active.toLocaleString()} active`,
+                                        tone: "auto" as const,
+                                    },
+                                    {
+                                        label: "Quota issues",
+                                        percent: metrics.total ? (metrics.quotaExceeded / metrics.total) * 100 : 0,
+                                        detail: `${metrics.quotaExceeded.toLocaleString()} exceeded`,
+                                        tone: "inverse" as const,
+                                    },
+                                ].map((ring) => (
+                                    <div key={ring.label} className="flex flex-col items-center gap-2 text-center">
+                                        <div className="relative">
+                                            <ProgressRing percent={ring.percent} size={88} tone={ring.tone} />
+                                            <span className="absolute inset-0 flex items-center justify-center text-sm font-bold tabular-nums">
+                                                {Math.round(ring.percent)}%
+                                            </span>
+                                        </div>
+                                        <div>
+                                            <div className="text-xs font-semibold text-foreground/90">{ring.label}</div>
+                                            <div className="text-[11px] text-muted-foreground">{ring.detail}</div>
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
                         </CardContent>
                     </Card>

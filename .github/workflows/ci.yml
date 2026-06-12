@@ -22,9 +22,16 @@ jobs:
         with:
           node-version: 20
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            next-app/package-lock.json
 
-      - name: Install dependencies
+      - name: Install dependencies (root)
         run: npm ci
+
+      - name: Install dependencies (next-app)
+        run: npm ci
+        working-directory: next-app
 
       - name: Cache Playwright browsers
         uses: actions/cache@v4
@@ -38,6 +45,12 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm run test
 
       - name: Build
         run: npm run build

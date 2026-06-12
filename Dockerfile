@@ -2,6 +2,11 @@
 
 FROM node:20-alpine AS builder
 RUN apk add --no-cache libc6-compat
+
+# next.config.ts reads ../package.json for app version metadata
+WORKDIR /app
+COPY package.json ./package.json
+
 WORKDIR /app/next-app
 
 # Retry flaky registry downloads inside Docker (common on Windows Desktop).

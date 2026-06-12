@@ -107,6 +107,9 @@ export type ExternalInvoice = {
     /** Last invoice action marker */
     lastAction?: string | null;
 
+    /** Last time a WhatsApp payment reminder was sent */
+    lastRemindedAt?: string | null;
+
     modifiedBy: string | null;
     modifiedAt?: string | null;
 };

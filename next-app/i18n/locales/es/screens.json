@@ -1,0 +1,32 @@
+{
+  "home": {
+    "greeting_morning": "Buenos días",
+    "greeting_afternoon": "Buenas tardes",
+    "greeting_evening": "Buenas noches",
+    "subtitle": "{{date}} — esto es lo que ocurre en su red."
+  },
+  "dashboard": {
+    "title": "Panel de control",
+    "subtitle": "Salud de red, sesiones, facturación y alertas operativas en un solo lugar."
+  },
+  "users": {
+    "title": "Gestión de usuarios",
+    "subtitle": "Gestione cuentas, supervise la conectividad y ejecute operaciones masivas.",
+    "subtitle_loading": "Sistema integral de gestión y supervisión de usuarios"
+  },
+  "sessions": {
+    "title": "Sesiones en vivo",
+    "subtitle": "Sesiones RADIUS activas con ciclos de cuota diarios y mensuales — misma ventana de facturación que la lista de usuarios",
+    "subtitle_loading": "Supervise y gestione las sesiones RADIUS activas"
+  },
+  "profiles": {
+    "title": "Perfiles de red",
+    "subtitle": "Gestione planes de velocidad, cuotas y precios para sus suscriptores."
+  },
+  "invoices": {
+    "title": "Facturas externas",
+    "title_reconciliation": "Conciliación de facturas",
+    "subtitle": "Busque, cobre y envíe recordatorios de WhatsApp para facturación externa.",
+    "subtitle_reconciliation": "Encuentre duplicados, discrepancias de importes y pagos faltantes en las facturas importadas."
+  }
+}

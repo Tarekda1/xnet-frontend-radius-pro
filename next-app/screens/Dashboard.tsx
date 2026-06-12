@@ -48,6 +48,8 @@ import { getDashboardPersona, sortDashboardWidgets } from "@/lib/dashboardPerson
 import { Line as RechartsLine, LineChart as RechartsLineChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from "recharts";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import FilterPills from "@/components/FilterPills";
+import { CountUpNumber } from "@/components/viz";
+import { useTranslation } from "react-i18next";
 
 type AuditLogRow = {
   id: number;
@@ -202,29 +204,37 @@ const DashboardMiniWidget = ({
   icon: React.ElementType;
   accentClass?: string;
   glowClass?: string;
-}) => (
-  <Link
-    href={to}
-    className="group relative block overflow-hidden rounded-xl border border-border/70 bg-card/90 p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-border hover:shadow-md dark:bg-card/80"
-  >
-    <div className={`pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full opacity-[0.08] ${glowClass}`} />
-    <div className="relative flex items-start justify-between gap-2">
-      <div className="min-w-0 flex-1">
-        <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground sm:text-xs">{title}</span>
-        <div className={`mt-1.5 text-xl font-bold tabular-nums tracking-tight sm:text-2xl ${accentClass}`}>{value}</div>
-        <div className="mt-1 truncate text-[11px] text-muted-foreground">{subtitle}</div>
+}) => {
+  // Animate plain numeric values; keep formatted strings (currency, %, "…") as-is.
+  const numericValue = /^[\d,]+$/.test(value.trim()) ? Number(value.replace(/,/g, "")) : null;
+  return (
+    <Link
+      href={to}
+      className="group relative block overflow-hidden rounded-xl border border-border/70 bg-card/90 p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-border hover:shadow-md dark:bg-card/80"
+    >
+      <div className={`pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full opacity-[0.08] ${glowClass}`} />
+      <div className="relative flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground sm:text-xs">{title}</span>
+          <div className={`mt-1.5 text-xl font-bold tabular-nums tracking-tight sm:text-2xl ${accentClass}`}>
+            {numericValue !== null ? <CountUpNumber value={numericValue} /> : value}
+          </div>
+          <div className="mt-1 truncate text-[11px] text-muted-foreground">{subtitle}</div>
+        </div>
+        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted/60 ${accentClass}`}>
+          <Icon className="h-4 w-4" />
+        </div>
       </div>
-      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted/60 ${accentClass}`}>
-        <Icon className="h-4 w-4" />
-      </div>
-    </div>
-    <ArrowUpRight className="absolute bottom-3 right-3 h-3.5 w-3.5 text-muted-foreground/0 transition-all group-hover:text-muted-foreground" />
-  </Link>
-);
+      <ArrowUpRight className="absolute bottom-3 right-3 h-3.5 w-3.5 text-muted-foreground/0 transition-all group-hover:text-muted-foreground" />
+    </Link>
+  );
+};
 
 const Dashboard: React.FC = () => {
+  const { t } = useTranslation("screens");
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [quotaAlertDismissed, setQuotaAlertDismissed] = useState(false);
   const [watchlistDefaultFilter, setWatchlistDefaultFilter] = useState<WatchlistFilter>(() => getStoredWatchlistFilter());
@@ -682,6 +692,7 @@ const Dashboard: React.FC = () => {
   useEffect(() => {
     const timer = setTimeout(() => {
       setIsLoading(false);
+      setLastUpdatedAt(new Date());
     }, 200);
 
     return () => clearTimeout(timer);
@@ -788,6 +799,7 @@ const Dashboard: React.FC = () => {
       if (canSeeQuotaExceeded) tasks.push(quotaExceededQuery.refetch());
       tasks.push(nasQuery.refetch());
       await Promise.allSettled(tasks);
+      setLastUpdatedAt(new Date());
     } finally {
       setIsRefreshing(false);
     }
@@ -900,8 +912,8 @@ const Dashboard: React.FC = () => {
     <div className="w-full space-y-6 px-4 py-6 sm:px-0 animate-in fade-in-50">
       <PageHeader
         variant="gradient"
-        title="Dashboard"
-        subtitle="Live network health, sessions, billing, and operational alerts in one place."
+        title={t("dashboard.title")}
+        subtitle={t("dashboard.subtitle")}
         icon={Activity}
         actions={(
           <div className="flex w-full flex-wrap justify-end gap-2">
@@ -963,11 +975,18 @@ const Dashboard: React.FC = () => {
             </Link>
           </Button>
         ) : null}
-        {dashboardAutoRefreshSec > 0 ? (
-          <Badge variant="outline" className="ml-auto hidden md:inline-flex">
-            Auto-refresh every {dashboardAutoRefreshSec}s
-          </Badge>
-        ) : null}
+        <div className="ml-auto hidden items-center gap-2 md:flex">
+          {lastUpdatedAt ? (
+            <span className="text-xs text-muted-foreground">
+              Updated {lastUpdatedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            </span>
+          ) : null}
+          {dashboardAutoRefreshSec > 0 ? (
+            <Badge variant="outline">
+              Auto-refresh every {dashboardAutoRefreshSec}s
+            </Badge>
+          ) : null}
+        </div>
       </div>
 
       {isLoading ? (

@@ -26,6 +26,21 @@ const nextConfig: NextConfig = {
     );
     return config;
   },
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=()" },
+          // HSTS is a no-op over plain HTTP; effective once served via HTTPS.
+          { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
+        ],
+      },
+    ];
+  },
   /**
    * When `NEXT_PUBLIC_API_URL` is same-origin (e.g. /api), proxied API forwards to the backend.
    * Backend for `/api` rewrites (not the Next port). Example: `API_PROXY_TARGET=http://127.0.0.1:3000 npm run dev` while Next serves on 5173.

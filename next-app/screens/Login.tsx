@@ -17,7 +17,7 @@ const Login: React.FC = () => {
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState<boolean>(true);
   const { login, isLoading, error } = useLogin();
-  const { login: authLogin } = useAuth();
+  const { login: authLogin, isAuthenticated } = useAuth();
   const router = useRouter();
   const [searchParams] = useSearchParams();
 
@@ -26,6 +26,14 @@ const Login: React.FC = () => {
     if (raw === null) return;
     setRememberMe(raw === "true");
   }, []);
+
+  // Already signed in (e.g. session predating the middleware cookie): skip the form.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const from = searchParams.get("from");
+    const target = from && from.startsWith("/") && from !== "/login" ? from : "/";
+    router.replace(target);
+  }, [isAuthenticated, router, searchParams]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();

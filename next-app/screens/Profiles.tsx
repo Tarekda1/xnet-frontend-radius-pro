@@ -1,12 +1,37 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
 import PageHeader from "@/components/PageHeader";
 import IconActionButton from "@/components/IconActionButton";
+import StatCard from "@/components/StatCard";
+import FilterPills from "@/components/FilterPills";
+import ActionConfirmDialog from "@/components/ActionConfirmDialog";
+import { CountUpNumber } from "@/components/viz";
+import { useTranslation } from "react-i18next";
+import { apiClient } from "@/api/client";
 import { Profile, useProfiles } from '../hooks/useProfiles';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Search, Plus, Download, Upload, Clock, Users, Pencil, Network, Trash2 } from 'lucide-react';
+import {
+  Search,
+  Plus,
+  Download,
+  Upload,
+  Clock,
+  Users,
+  Pencil,
+  Network,
+  Trash2,
+  Copy,
+  RefreshCw,
+  Layers,
+  Gauge,
+  CircleDollarSign,
+  Moon,
+  ArrowDownUp,
+} from 'lucide-react';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { useForm } from "react-hook-form";
@@ -16,64 +41,82 @@ import { Skeleton } from "@/components/ui/skeleton";
 import SearchBar from "@/components/SearchBar";
 import QueryState from "@/components/QueryState";
 
-const ProfileCard: React.FC<{ profile: Profile; onEdit: () => void; onDelete: () => void }> = ({ profile, onEdit, onDelete }) => {
-  const formatQuota = (quota: string) => {
-    const quotaGB = (parseInt(quota) / (1024 * 1024 * 1024)).toFixed(2);
-    return `${quotaGB} GB`;
-  };
+type ProfileUsage = {
+  profileId: number;
+  usersCount: number;
+  activeCount: number;
+};
 
-  const formatSpeed = (speedKbps?: number) => {
-    const v = Number(speedKbps ?? 0);
-    if (!Number.isFinite(v) || v <= 0) return "—";
-    if (v >= 1000000) {
-      return `${(v / 1000000).toFixed(2)} Gbps`;
-    } else if (v >= 1000) {
-      return `${(v / 1000).toFixed(2)} Mbps`;
-    } else {
-      return `${v} Kbps`;
-    }
-  };
+const formatQuota = (quota?: string) => {
+  const bytes = Number(quota);
+  if (!Number.isFinite(bytes) || bytes <= 0) return "—";
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+};
 
-  const formatSessionTimeout = (seconds?: number) => {
-    const s = Number(seconds ?? 0);
-    if (!Number.isFinite(s) || s <= 0) return "—";
-    if (s >= 86400) {
-      return `${Math.floor(s / 86400)} day(s)`;
-    } else if (s >= 3600) {
-      return `${Math.floor(s / 3600)} hour(s)`;
-    } else if (s >= 60) {
-      return `${Math.floor(s / 60)} minute(s)`;
-    } else {
-      return `${s} second(s)`;
-    }
-  };
+const formatSpeed = (speedKbps?: number) => {
+  const v = Number(speedKbps ?? 0);
+  if (!Number.isFinite(v) || v <= 0) return "—";
+  if (v >= 1000000) return `${(v / 1000000).toFixed(2)} Gbps`;
+  if (v >= 1000) return `${(v / 1000).toFixed(2)} Mbps`;
+  return `${v} Kbps`;
+};
+
+const formatSessionTimeout = (seconds?: number) => {
+  const s = Number(seconds ?? 0);
+  if (!Number.isFinite(s) || s <= 0) return "—";
+  if (s >= 86400) return `${Math.floor(s / 86400)} day(s)`;
+  if (s >= 3600) return `${Math.floor(s / 3600)} hour(s)`;
+  if (s >= 60) return `${Math.floor(s / 60)} minute(s)`;
+  return `${s} second(s)`;
+};
+
+const ProfileCard: React.FC<{
+  profile: Profile;
+  usage?: ProfileUsage;
+  onEdit: () => void;
+  onClone: () => void;
+  onDelete: () => void;
+}> = ({ profile, usage, onEdit, onClone, onDelete }) => {
+  const usersCount = usage?.usersCount ?? 0;
+  const hasNightWindow = Boolean(profile.nightStart && profile.nightEnd);
 
   return (
-    <Card className="relative overflow-hidden border-0 shadow-xl bg-card/90 backdrop-blur-sm border border-border/40 dark:border-border/60 transition-all duration-300 hover:shadow-2xl">
-      <div className="absolute inset-0 bg-gradient-to-br from-blue-50/30 via-purple-50/20 to-pink-50/30 dark:from-primary/8 dark:via-primary/4 dark:to-transparent" />
+    <Card className="group relative overflow-hidden border-border/60 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg">
+      <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 opacity-70" />
 
-      <CardHeader className="relative z-10 pb-3">
+      <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <CardTitle className="truncate text-lg text-card-foreground">{profile.profileName}</CardTitle>
-            <CardDescription className="flex items-center gap-2">
+            <CardDescription className="mt-1 flex flex-wrap items-center gap-1.5">
               <Badge variant="outline" className="bg-card/85">
                 ID: {profile.id}
               </Badge>
-              <span className="text-xs text-muted-foreground truncate">
-                Night: {profile.nightStart || "—"} – {profile.nightEnd || "—"}
-              </span>
+              {profile.price != null && profile.price > 0 ? (
+                <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/45 dark:text-emerald-300">
+                  {Number(profile.price).toLocaleString()} / mo
+                </Badge>
+              ) : null}
+              {hasNightWindow ? (
+                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                  <Moon className="h-3 w-3" />
+                  {profile.nightStart} – {profile.nightEnd}
+                </span>
+              ) : null}
             </CardDescription>
           </div>
 
-          <div className="flex gap-2">
-            <Button variant="outline" size="icon" className="bg-card/85" onClick={onEdit} title="Edit profile">
+          <div className="flex gap-1.5">
+            <Button variant="outline" size="icon" className="h-8 w-8 bg-card/85" onClick={onClone} title="Duplicate profile">
+              <Copy className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="icon" className="h-8 w-8 bg-card/85" onClick={onEdit} title="Edit profile">
               <Pencil className="h-4 w-4" />
             </Button>
             <Button
               variant="outline"
               size="icon"
-              className="bg-card/85 text-destructive hover:bg-destructive/10"
+              className="h-8 w-8 bg-card/85 text-destructive hover:bg-destructive/10"
               onClick={onDelete}
               title="Delete profile"
             >
@@ -83,39 +126,36 @@ const ProfileCard: React.FC<{ profile: Profile; onEdit: () => void; onDelete: ()
         </div>
       </CardHeader>
 
-      <CardContent className="relative z-10 space-y-4">
+      <CardContent className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
           <div className="rounded-lg border bg-card/85 p-3">
-            <div className="text-xs text-muted-foreground flex items-center gap-2">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <Download className="h-4 w-4 text-blue-600 dark:text-blue-400" />
               Download
             </div>
             <div className="mt-1 font-mono text-sm text-foreground">{formatSpeed(profile.speedDown)}</div>
           </div>
           <div className="rounded-lg border bg-card/85 p-3">
-            <div className="text-xs text-muted-foreground flex items-center gap-2">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <Upload className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
               Upload
             </div>
             <div className="mt-1 font-mono text-sm text-foreground">{formatSpeed(profile.speedUp)}</div>
           </div>
           <div className="rounded-lg border bg-card/85 p-3">
-            <div className="text-xs text-muted-foreground flex items-center gap-2">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <Clock className="h-4 w-4 text-orange-600 dark:text-orange-400" />
               Session timeout
             </div>
             <div className="mt-1 font-mono text-sm text-foreground">{formatSessionTimeout(profile.sessionTimeout)}</div>
           </div>
           <div className="rounded-lg border bg-card/85 p-3">
-            <div className="text-xs text-muted-foreground flex items-center gap-2">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <Users className="h-4 w-4 text-purple-600 dark:text-purple-400" />
               Max sessions
             </div>
             <div className="mt-1 font-mono text-sm text-foreground">{profile.maxSessions ?? "—"}</div>
           </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
           <div className="rounded-lg border bg-card/85 p-3">
             <div className="text-xs text-muted-foreground">Daily quota</div>
             <div className="mt-1 font-mono text-sm text-foreground">{formatQuota(profile.dailyQuota)}</div>
@@ -124,12 +164,22 @@ const ProfileCard: React.FC<{ profile: Profile; onEdit: () => void; onDelete: ()
             <div className="text-xs text-muted-foreground">Monthly quota</div>
             <div className="mt-1 font-mono text-sm text-foreground">{formatQuota(profile.monthlyQuota)}</div>
           </div>
-          {profile.price != null && profile.price > 0 && (
-            <div className="col-span-2 rounded-lg border bg-card/85 p-3">
-              <div className="text-xs text-muted-foreground">Price</div>
-              <div className="mt-1 font-mono text-sm font-semibold text-foreground">{Number(profile.price).toLocaleString()} / month</div>
-            </div>
-          )}
+        </div>
+
+        <div className="flex items-center justify-between rounded-lg border bg-muted/40 px-3 py-2">
+          <span className="text-xs text-muted-foreground">
+            {usersCount > 0 && usage
+              ? `${usage.activeCount.toLocaleString()} active of ${usersCount.toLocaleString()} assigned`
+              : "No users assigned"}
+          </span>
+          {usersCount > 0 ? (
+            <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs" asChild>
+              <Link href={`/users/list?profile=${encodeURIComponent(profile.profileName.toLowerCase())}`}>
+                <Users className="h-3.5 w-3.5" />
+                View {usersCount.toLocaleString()} user{usersCount !== 1 ? "s" : ""}
+              </Link>
+            </Button>
+          ) : null}
         </div>
       </CardContent>
     </Card>
@@ -220,11 +270,12 @@ const ProfileFormModal: React.FC<ProfileFormModalProps> = ({ profile, onSave, on
     onClose();
   };
 
+  const title = profile?.id ? 'Edit Profile' : profile ? 'Duplicate Profile' : 'Create New Profile';
 
   return (
     <DialogContent className="sm:max-w-[560px] max-h-[85vh] overflow-y-auto">
       <DialogHeader>
-        <DialogTitle>{profile ? 'Edit Profile' : 'Create New Profile'}</DialogTitle>
+        <DialogTitle>{title}</DialogTitle>
       </DialogHeader>
       <form onSubmit={handleSubmit(onSubmit as (data: ProfileFormData) => void)}>
         <div className="grid gap-4 py-4">
@@ -321,18 +372,77 @@ const ProfileFormModal: React.FC<ProfileFormModalProps> = ({ profile, onSave, on
   );
 };
 
+type SortKey = "name" | "price" | "speed" | "users";
+
 const ProfilesComponent: React.FC = () => {
-  const { data, error, isLoading, updateProfile, createProfile, deleteProfile } = useProfiles();
+  const { t } = useTranslation("screens");
+  const { data, error, isLoading, refetch, updateProfile, createProfile, deleteProfile } = useProfiles();
   const [searchTerm, setSearchTerm] = useState('');
+  const [sortBy, setSortBy] = useState<SortKey>("name");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProfile, setEditingProfile] = useState<Profile | undefined>(undefined);
+  const [deleteTarget, setDeleteTarget] = useState<Profile | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const allProfiles = data?.data ?? [];
-  const filteredProfiles = useMemo(() => {
+  const usageQuery = useQuery({
+    queryKey: ["profiles", "usage"],
+    queryFn: async () => {
+      const resp = await apiClient.get("/profiles/usage");
+      return (resp?.data?.data ?? []) as ProfileUsage[];
+    },
+    staleTime: 30000,
+    refetchInterval: 60000,
+  });
+  const usageMap = useMemo(() => {
+    const m = new Map<number, ProfileUsage>();
+    for (const u of usageQuery.data ?? []) m.set(u.profileId, u);
+    return m;
+  }, [usageQuery.data]);
+
+  const allProfiles = useMemo(() => data?.data ?? [], [data?.data]);
+
+  const totals = useMemo(() => {
+    let assignedUsers = 0;
+    let activeUsers = 0;
+    let revenue = 0;
+    let fastest: Profile | null = null;
+    for (const p of allProfiles) {
+      const u = p.id != null ? usageMap.get(p.id) : undefined;
+      const count = u?.usersCount ?? 0;
+      assignedUsers += count;
+      activeUsers += u?.activeCount ?? 0;
+      revenue += (Number(p.price) || 0) * count;
+      if ((Number(p.speedDown) || 0) > (Number(fastest?.speedDown) || 0)) fastest = p;
+    }
+    return { totalProfiles: allProfiles.length, assignedUsers, activeUsers, revenue, fastest };
+  }, [allProfiles, usageMap]);
+
+  const visibleProfiles = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
-    if (!q) return allProfiles;
-    return allProfiles.filter((p) => p.profileName.toLowerCase().includes(q));
-  }, [allProfiles, searchTerm]);
+    const filtered = q ? allProfiles.filter((p) => p.profileName.toLowerCase().includes(q)) : allProfiles;
+    const usersOf = (p: Profile) => (p.id != null ? usageMap.get(p.id)?.usersCount ?? 0 : 0);
+    return [...filtered].sort((a, b) => {
+      switch (sortBy) {
+        case "price":
+          return (Number(b.price) || 0) - (Number(a.price) || 0);
+        case "speed":
+          return (Number(b.speedDown) || 0) - (Number(a.speedDown) || 0);
+        case "users":
+          return usersOf(b) - usersOf(a);
+        default:
+          return a.profileName.localeCompare(b.profileName);
+      }
+    });
+  }, [allProfiles, searchTerm, sortBy, usageMap]);
+
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await Promise.all([refetch(), usageQuery.refetch()]);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [refetch, usageQuery]);
 
   const handleSaveProfile = async (profile: Profile) => {
     // Toasts are handled by the hook.
@@ -352,26 +462,45 @@ const ProfilesComponent: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const handleDeleteProfile = (profile: Profile) => {
-    if (!profile.id) return;
-    const ok = window.confirm(`Delete profile "${profile.profileName}"? This cannot be undone.`);
-    if (!ok) return;
-    deleteProfile(profile.id);
+  const openCloneModal = (profile: Profile) => {
+    setEditingProfile({
+      ...profile,
+      id: undefined,
+      profileName: `${profile.profileName} (copy)`,
+      speedDown: Number(profile.speedDown),
+      speedUp: Number(profile.speedUp),
+      sessionTimeout: Number(profile.sessionTimeout),
+      idleTimeout: Number(profile.idleTimeout),
+      maxSessions: Number(profile.maxSessions),
+    });
+    setIsModalOpen(true);
   };
 
+  const deleteTargetUsage = deleteTarget?.id != null ? usageMap.get(deleteTarget.id) : undefined;
+
   return (
-    <div className="w-full py-6 space-y-6 min-h-screen bg-gradient-to-br from-gray-50/50 via-blue-50/30 to-purple-50/30 dark:from-background dark:via-muted/20 dark:to-muted/35">
+    <div className="w-full min-w-0 space-y-6 py-6">
       <PageHeader
-        title="Network Profiles"
-        subtitle="Manage and configure network access profiles"
+        variant="gradient"
+        title={t("profiles.title")}
+        subtitle={t("profiles.subtitle")}
         icon={Network}
-        className="border-0 shadow-xl bg-card/90 backdrop-blur-sm border border-border/40 dark:border-border/60"
         actions={(
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 sm:justify-end">
+            <IconActionButton
+              label={isRefreshing ? "Refreshing..." : "Refresh"}
+              onClick={() => void handleRefresh()}
+              disabled={isRefreshing}
+              className="border-white/25 bg-white/15 text-white shadow-sm hover:bg-white/25"
+              icon={<RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />}
+            />
             <IconActionButton
               label="Add Profile"
-              onClick={() => setIsModalOpen(true)}
-              variant="default"
+              onClick={() => {
+                setEditingProfile(undefined);
+                setIsModalOpen(true);
+              }}
+              className="border-white/25 bg-white text-slate-900 shadow-sm hover:bg-white/90"
               icon={<Plus className="h-4 w-4" />}
             />
           </div>
@@ -383,84 +512,178 @@ const ProfilesComponent: React.FC = () => {
         error={error}
         // only show empty state when there are truly no profiles in the system
         isEmpty={!isLoading && !error && allProfiles.length === 0}
-        onRetry={() => window.location.reload()}
+        onRetry={() => refetch()}
         loading={
-          <Card className="border-0 shadow-xl bg-card/90 backdrop-blur-sm border border-border/40 dark:border-border/60">
-            <CardHeader>
-              <Skeleton className="h-6 w-48" />
-              <Skeleton className="h-4 w-64" />
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {[1, 2, 3].map((i) => (
-                  <Card key={i} className="overflow-hidden border-0 shadow-lg bg-card/85">
-                    <Skeleton className="h-32 w-full" />
-                    <div className="p-4 space-y-4">
-                      <Skeleton className="h-4 w-3/4" />
-                      <Skeleton className="h-4 w-1/2" />
-                      <Skeleton className="h-4 w-2/3" />
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              {[1, 2, 3, 4].map((i) => (
+                <Card key={i} className="border bg-card/60">
+                  <CardContent className="p-4">
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="mt-2 h-8 w-20" />
+                    <Skeleton className="mt-2 h-3 w-28" />
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {[1, 2, 3].map((i) => (
+                <Card key={i} className="overflow-hidden border bg-card/85 shadow-sm">
+                  <Skeleton className="h-32 w-full" />
+                  <div className="space-y-4 p-4">
+                    <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="h-4 w-1/2" />
+                    <Skeleton className="h-4 w-2/3" />
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </div>
         }
         errorTitle="Error loading profiles"
         emptyTitle="No profiles yet"
         emptyDescription="Create your first profile plan."
       >
-        <Card className="border-0 shadow-xl bg-card/90 backdrop-blur-sm border border-border/40 dark:border-border/60">
-          <CardHeader>
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div>
-                <CardTitle>Available Profiles</CardTitle>
-                <CardDescription>
-                  {filteredProfiles.length} profile{filteredProfiles.length !== 1 ? 's' : ''} found
-                </CardDescription>
+        {/* KPI cards */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard
+            label="Profiles"
+            value={<CountUpNumber value={totals.totalProfiles} />}
+            sublabel="Configured speed plans"
+            icon={
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+                <Layers className="h-5 w-5 text-primary" />
               </div>
-              <div className="w-full sm:w-64">
+            }
+          />
+          <StatCard
+            label="Assigned users"
+            value={<CountUpNumber value={totals.assignedUsers} />}
+            sublabel={`${totals.activeUsers.toLocaleString()} active accounts`}
+            icon={
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-purple-500/10">
+                <Users className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+              </div>
+            }
+          />
+          <StatCard
+            label="Revenue potential"
+            value={<CountUpNumber value={totals.revenue} />}
+            sublabel="Price × assigned users, per month"
+            icon={
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/10">
+                <CircleDollarSign className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+              </div>
+            }
+          />
+          <StatCard
+            label="Fastest plan"
+            value={formatSpeed(totals.fastest?.speedDown)}
+            sublabel={totals.fastest ? totals.fastest.profileName : "No plans yet"}
+            icon={
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-500/10">
+                <Gauge className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+              </div>
+            }
+          />
+        </div>
+
+        {/* Search & sort */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="order-1 w-full md:w-[70%]">
                 <SearchBar
                   currentSearchTerm={searchTerm}
                   onSearch={(term) => setSearchTerm(term)}
-                  placeholder="Search profiles..."
+                  placeholder="Search profiles by name..."
                 />
               </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredProfiles.map(profile => (
-                <ProfileCard
-                  key={profile.id}
-                  profile={profile}
-                  onEdit={() => openEditModal(profile)}
-                  onDelete={() => handleDeleteProfile(profile)}
-                />
-              ))}
-            </div>
-            {filteredProfiles.length === 0 ? (
-              <div className="text-center py-12">
-                <div className="p-3 rounded-full bg-muted inline-block mb-4">
-                  <Search className="h-6 w-6 text-muted-foreground" />
-                </div>
-                <h3 className="text-lg font-semibold text-foreground">No profiles found</h3>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {searchTerm ? 'Try adjusting your search' : 'Create your first profile'}
-                </p>
-                {!searchTerm ? (
-                  <div className="mt-4">
-                    <Button onClick={() => setIsModalOpen(true)}>
-                      <Plus className="w-4 h-4 mr-2" />
-                      Add Profile
-                    </Button>
+              <div className="order-2 hidden min-w-0 flex-1 justify-end text-sm text-muted-foreground md:flex">
+                {visibleProfiles.length} of {allProfiles.length} profile{allProfiles.length !== 1 ? "s" : ""}
+              </div>
+              <div className="order-3 w-full border-t border-border/60 pt-3">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                  <div className="flex items-center gap-2 whitespace-nowrap text-xs text-muted-foreground">
+                    <ArrowDownUp className="h-4 w-4 text-muted-foreground" />
+                    <span className="font-medium">Sort by</span>
                   </div>
-                ) : null}
+                  <FilterPills
+                    name="profiles-sort"
+                    value={sortBy}
+                    onChange={(value) => setSortBy(value as SortKey)}
+                    options={[
+                      { value: "name", label: "Name" },
+                      { value: "price", label: "Price" },
+                      { value: "speed", label: "Speed" },
+                      { value: "users", label: "Users" },
+                    ]}
+                  />
+                </div>
               </div>
-            ) : null}
+            </div>
           </CardContent>
         </Card>
+
+        {/* Profile cards */}
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {visibleProfiles.map(profile => (
+            <ProfileCard
+              key={profile.id}
+              profile={profile}
+              usage={profile.id != null ? usageMap.get(profile.id) : undefined}
+              onEdit={() => openEditModal(profile)}
+              onClone={() => openCloneModal(profile)}
+              onDelete={() => setDeleteTarget(profile)}
+            />
+          ))}
+        </div>
+        {visibleProfiles.length === 0 ? (
+          <Card>
+            <CardContent className="py-12 text-center">
+              <div className="mb-4 inline-block rounded-full bg-muted p-3">
+                <Search className="h-6 w-6 text-muted-foreground" />
+              </div>
+              <h3 className="text-lg font-semibold text-foreground">No profiles found</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {searchTerm ? 'Try adjusting your search' : 'Create your first profile'}
+              </p>
+              {searchTerm ? (
+                <div className="mt-4">
+                  <Button variant="outline" onClick={() => setSearchTerm("")}>
+                    Clear search
+                  </Button>
+                </div>
+              ) : (
+                <div className="mt-4">
+                  <Button onClick={() => setIsModalOpen(true)}>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Profile
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        ) : null}
       </QueryState>
+
+      <ActionConfirmDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title={`Delete profile "${deleteTarget?.profileName ?? ""}"?`}
+        description={
+          deleteTargetUsage && deleteTargetUsage.usersCount > 0
+            ? `${deleteTargetUsage.usersCount.toLocaleString()} user(s) are still assigned to this profile. The server will refuse the delete until they are reassigned.`
+            : "This cannot be undone."
+        }
+        confirmText="Delete"
+        confirmTone="destructive"
+        onConfirm={() => {
+          if (deleteTarget?.id != null) deleteProfile(deleteTarget.id);
+        }}
+      />
 
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <ProfileFormModal
@@ -477,4 +700,3 @@ const ProfilesComponent: React.FC = () => {
 };
 
 export default ProfilesComponent;
-

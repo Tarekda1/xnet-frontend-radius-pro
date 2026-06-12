@@ -1,0 +1,32 @@
+{
+  "home": {
+    "greeting_morning": "Good morning",
+    "greeting_afternoon": "Good afternoon",
+    "greeting_evening": "Good evening",
+    "subtitle": "{{date}} — here's what's happening on your network."
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "subtitle": "Live network health, sessions, billing, and operational alerts in one place."
+  },
+  "users": {
+    "title": "Users Management",
+    "subtitle": "Manage accounts, monitor connectivity, and run bulk operations across your subscriber base.",
+    "subtitle_loading": "Comprehensive user management and monitoring system"
+  },
+  "sessions": {
+    "title": "Live Sessions",
+    "subtitle": "Active RADIUS sessions with daily and monthly quota cycles — same billing window as the Users list",
+    "subtitle_loading": "Monitor and manage active RADIUS sessions"
+  },
+  "profiles": {
+    "title": "Network Profiles",
+    "subtitle": "Manage speed plans, quotas, and pricing for your subscriber base."
+  },
+  "invoices": {
+    "title": "External Invoices",
+    "title_reconciliation": "Invoice Reconciliation",
+    "subtitle": "Search, collect, and send WhatsApp reminders for external billing.",
+    "subtitle_reconciliation": "Find duplicates, amount mismatches, and missing payments across imported invoices."
+  }
+}

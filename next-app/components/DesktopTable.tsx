@@ -49,7 +49,31 @@ import { notify } from "@/lib/notify";
 import TableToolbar from "@/components/TableToolbar";
 import TablePager from "@/components/TablePager";
 import TableRowActions from "@/components/TableRowActions";
-import { deriveWorkflowStage, getWorkflowLabel, getWorkflowTone, type ReconciliationFlag, type WorkflowStage } from "@/lib/externalInvoiceInsights";
+import {
+  deriveWorkflowStage,
+  formatRelativeShort,
+  getLastRemindedAt,
+  getOverdueDays,
+  getOverdueSeverity,
+  getWorkflowLabel,
+  getWorkflowTone,
+  parsePromiseDateFromLastAction,
+  type OverdueSeverity,
+  type ReconciliationFlag,
+  type WorkflowStage,
+} from "@/lib/externalInvoiceInsights";
+
+/* ── row tint by overdue severity (open invoices only) ───── */
+const severityRowStyles: Record<OverdueSeverity, string> = {
+  none: "",
+  mild: "border-l-amber-300 bg-amber-50/40 hover:bg-amber-100/60 dark:border-l-amber-700 dark:bg-amber-950/20 dark:hover:bg-amber-950/30",
+  moderate:
+    "border-l-orange-400 bg-orange-50/50 hover:bg-orange-100/60 dark:border-l-orange-700 dark:bg-orange-950/20 dark:hover:bg-orange-950/30",
+  severe:
+    "border-l-red-400 bg-red-50/50 hover:bg-red-100/60 dark:border-l-red-800 dark:bg-red-950/20 dark:hover:bg-red-950/30",
+  critical:
+    "border-l-red-600 bg-red-100/60 hover:bg-red-100/80 dark:border-l-red-600 dark:bg-red-950/35 dark:hover:bg-red-950/45",
+};
 
 /* ── colour map for provider pills ───────────────────────── */
 const providerStyles = {
@@ -332,7 +356,8 @@ const DesktopTable: React.FC<Props> = ({
         id: "workflow",
         header: () => <span>Workflow</span>,
         cell: ({ row }) => {
-          const stage = deriveWorkflowStage(row.original, workflowGraceDays);
+          const inv = row.original;
+          const stage = deriveWorkflowStage(inv, workflowGraceDays);
           const tone = getWorkflowTone(stage);
           const className =
             tone === "success"
@@ -342,10 +367,66 @@ const DesktopTable: React.FC<Props> = ({
                 : tone === "warning"
                   ? "bg-amber-100 text-amber-700 border-amber-200"
                   : "bg-slate-100 text-slate-700 border-slate-200";
+
+          const overdueDays = getOverdueDays(inv, workflowGraceDays);
+          const showOverdueChip = inv.status !== "paid" && overdueDays > 0;
+
+          const promiseDate = stage === "promise_to_pay" ? parsePromiseDateFromLastAction(inv.lastAction) : null;
+          let promiseChip: { label: string; broken: boolean } | null = null;
+          if (promiseDate) {
+            const daysLeft = Math.ceil(
+              (new Date(`${promiseDate}T23:59:59`).getTime() - Date.now()) / (24 * 60 * 60 * 1000)
+            );
+            promiseChip = daysLeft >= 0
+              ? { label: `Promise in ${daysLeft}d`, broken: false }
+              : { label: `Promise broken ${Math.abs(daysLeft)}d`, broken: true };
+          }
+
+          const remindedAt = inv.status !== "paid" ? getLastRemindedAt(inv) : null;
+
           return (
-            <Badge variant="outline" className={className}>
-              {getWorkflowLabel(stage)}
-            </Badge>
+            <div className="flex flex-col items-start gap-1">
+              <Badge variant="outline" className={className}>
+                {getWorkflowLabel(stage)}
+              </Badge>
+              {showOverdueChip ? (
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium",
+                    overdueDays > 60
+                      ? "bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300"
+                      : overdueDays > 30
+                        ? "bg-orange-100 text-orange-700 dark:bg-orange-950/50 dark:text-orange-300"
+                        : "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300"
+                  )}
+                >
+                  <AlertCircle className="h-2.5 w-2.5" />
+                  {overdueDays}d overdue
+                </span>
+              ) : null}
+              {promiseChip ? (
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium",
+                    promiseChip.broken
+                      ? "bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300"
+                      : "bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300"
+                  )}
+                >
+                  <CalendarIcon className="h-2.5 w-2.5" />
+                  {promiseChip.label}
+                </span>
+              ) : null}
+              {remindedAt ? (
+                <span
+                  className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300"
+                  title={remindedAt.toLocaleString()}
+                >
+                  <BellRing className="h-2.5 w-2.5" />
+                  Reminded {formatRelativeShort(remindedAt)}
+                </span>
+              ) : null}
+            </div>
           );
         },
       },
@@ -542,6 +623,7 @@ const DesktopTable: React.FC<Props> = ({
                 const isFlagged =
                   reconciliationMode && (reconciliationFlags?.get(row.original.id)?.length ?? 0) > 0;
                 const isSelected = row.getIsSelected();
+                const severity = getOverdueSeverity(row.original, workflowGraceDays);
                 return (
                   <TableRow
                     key={row.id}
@@ -553,6 +635,7 @@ const DesktopTable: React.FC<Props> = ({
                       "hover:z-[2] hover:-translate-y-px hover:border-l-primary/80",
                       "hover:bg-accent/65 hover:shadow-md dark:hover:bg-accent/35 dark:hover:shadow-md",
                       i % 2 ? "bg-muted/35" : "bg-card",
+                      !isSelected && !isFlagged && severityRowStyles[severity],
                       isSelected &&
                         "z-[1] border-l-primary bg-primary/45 shadow-sm hover:bg-primary/50 hover:shadow-md data-[state=selected]:bg-primary/45 data-[state=selected]:hover:bg-primary/50 dark:bg-primary/25 dark:hover:bg-primary/35 dark:data-[state=selected]:bg-primary/25",
                       isFlagged &&

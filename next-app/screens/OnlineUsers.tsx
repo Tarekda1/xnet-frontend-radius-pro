@@ -1,5 +1,5 @@
 // OnlineUsersPage.tsx (or wherever you host the page)
-import { useMemo, useState, useCallback, useEffect } from "react";
+import { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import SearchBar from "../components/SearchBar";
 import OnlineUsersTable, { type OnlineSessionStats } from "../components/OnlineUsersTable";
 import { RefreshCw, Users, Activity, AlertTriangle, Gauge, Wifi, Server } from "lucide-react";
@@ -19,17 +19,26 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { useProfiles } from "@/hooks/useProfiles";
 import { useOnlineUsers } from "@/hooks/useOnlineUsers";
-import { Line, LineChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from "recharts";
+import dynamic from "next/dynamic";
 import SavedViews from "@/components/SavedViews";
 import type { SavedViewState } from "@/lib/savedViews";
 import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "@/api/client";
 import { useSearchParams } from "@/navigation/urlSearchParams";
 import Link from "next/link";
+import { CountUpNumber } from "@/components/viz";
+import { useTranslation } from "react-i18next";
 
 type OnlineUsersMetrics = { totalOnlineUsers: number; totalActiveUsers: number };
 
+// Loaded on demand: recharts stays out of the main /online-users bundle.
+const LiveTrafficChart = dynamic(() => import("@/components/charts/LiveTrafficChart"), {
+  ssr: false,
+  loading: () => <Skeleton className="h-full w-full rounded-md" />,
+});
+
 export default function OnlineUsersPage() {
+  const { t } = useTranslation("screens");
   const [searchParams, setSearchParams] = useSearchParams();
   const initialSearchFromUrl = useMemo(() => String(searchParams.get("search") ?? "").trim(), [searchParams]);
   const [search, setSearch] = useState(initialSearchFromUrl);
@@ -96,6 +105,24 @@ export default function OnlineUsersPage() {
 
   const handleSearch = useCallback((term: string) => {
     setSearch(term);
+  }, []);
+
+  // Press "/" anywhere to jump to the search box.
+  const searchBoxRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "/") return;
+      const target = e.target as HTMLElement | null;
+      const tag = (target?.tagName || "").toLowerCase();
+      if (tag === "input" || tag === "textarea" || target?.isContentEditable) return;
+      const input = searchBoxRef.current?.querySelector("input");
+      if (input) {
+        e.preventDefault();
+        (input as HTMLInputElement).focus();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
   useEffect(() => {
@@ -301,8 +328,8 @@ export default function OnlineUsersPage() {
       <div className="w-full space-y-6 px-4 py-6 sm:px-0 animate-in fade-in-50">
         <PageHeader
           variant="gradient"
-          title="Live Sessions"
-          subtitle="Monitor and manage active RADIUS sessions"
+          title={t("sessions.title")}
+          subtitle={t("sessions.subtitle_loading")}
           icon={Users}
           actions={
             <div className="flex gap-2">
@@ -354,8 +381,8 @@ export default function OnlineUsersPage() {
     <div className="w-full space-y-6 px-4 py-6 sm:px-0 animate-in fade-in-50">
       <PageHeader
         variant="gradient"
-        title="Live Sessions"
-        subtitle="Active RADIUS sessions with daily and monthly quota cycles — same billing window as the Users list"
+        title={t("sessions.title")}
+        subtitle={t("sessions.subtitle")}
         icon={Activity}
         actions={(
           <div className="flex flex-wrap items-center justify-end gap-2">
@@ -408,7 +435,7 @@ export default function OnlineUsersPage() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Active now"
-          value={activeOnline.toLocaleString()}
+          value={<CountUpNumber value={activeOnline} />}
           sublabel="Recent accounting updates"
           icon={
             <div className="relative flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/10">
@@ -421,7 +448,7 @@ export default function OnlineUsersPage() {
         />
         <StatCard
           label="Total online"
-          value={totalOnline.toLocaleString()}
+          value={<CountUpNumber value={totalOnline} />}
           sublabel={idleOnline ? `${idleOnline.toLocaleString()} idle / no recent update` : "All open sessions"}
           icon={
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-500/10">
@@ -431,7 +458,7 @@ export default function OnlineUsersPage() {
         />
         <StatCard
           label="FUP / throttled"
-          value={sessionStats.fup.toLocaleString()}
+          value={<CountUpNumber value={sessionStats.fup} />}
           sublabel={
             sessionStats.fup
               ? `${Math.round((sessionStats.fup / Math.max(sessionStats.total, 1)) * 100)}% on current page`
@@ -445,7 +472,7 @@ export default function OnlineUsersPage() {
         />
         <StatCard
           label="Monthly exceeded"
-          value={sessionStats.monthlyExceeded.toLocaleString()}
+          value={<CountUpNumber value={sessionStats.monthlyExceeded} />}
           sublabel="Over quota this billing cycle"
           icon={
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/10">
@@ -455,44 +482,86 @@ export default function OnlineUsersPage() {
         />
       </div>
 
+      {totalOnline > 0 ? (
+        <Card className="border-border/60">
+          <CardContent className="space-y-2 p-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold">Session mix</h2>
+              <span className="text-xs text-muted-foreground">
+                {activeOnline.toLocaleString()} active · {idleOnline.toLocaleString()} idle · {totalOnline.toLocaleString()} total
+              </span>
+            </div>
+            <div className="flex h-3 w-full overflow-hidden rounded-full bg-muted">
+              <div
+                className="bg-emerald-500 transition-all duration-700"
+                style={{ width: `${(activeOnline / totalOnline) * 100}%` }}
+                title={`Active: ${activeOnline.toLocaleString()}`}
+              />
+              <div
+                className="bg-slate-400/70 transition-all duration-700 dark:bg-slate-500/60"
+                style={{ width: `${(idleOnline / totalOnline) * 100}%` }}
+                title={`Idle: ${idleOnline.toLocaleString()}`}
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                Active — recent accounting updates
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-slate-400/70 dark:bg-slate-500/60" />
+                Idle — session open, no recent update
+              </span>
+              {sessionStats.fup > 0 ? (
+                <span className="inline-flex items-center gap-1.5 text-red-600 dark:text-red-400">
+                  <AlertTriangle className="h-3 w-3" />
+                  {sessionStats.fup} throttled on this page
+                </span>
+              ) : null}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <Card className="overflow-hidden border-border/70 shadow-sm">
-        <CardContent className="space-y-4 p-4 sm:p-5">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <h2 className="text-sm font-semibold">Search sessions</h2>
+        <CardContent className="p-4 sm:p-5">
+          <div className="flex flex-wrap items-center gap-3">
+            <div ref={searchBoxRef} className="order-1 w-full md:w-[70%]">
+              <SearchBar
+                currentSearchTerm={search}
+                onSearch={handleSearch}
+                placeholder="Search by username, full name, NAS IP or name… (press / to focus)"
+                className="w-full"
+                autoSearch={false}
+                showButton
+              />
+            </div>
+            <div className="order-2 hidden min-w-0 flex-1 items-center justify-end md:flex">
+              <SavedViews
+                storageKey="savedViews:liveSessions"
+                keys={sessionsSavedViewsKeys}
+                getState={getSessionsViewState}
+                applyState={applySessionsViewState}
+                compact
+                onSaved={() => notify.success("View saved")}
+                onDeleted={() => notify.success("View deleted")}
+              />
+            </div>
+            <div className="order-3 flex w-full flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-3">
               <p className="text-xs text-muted-foreground">
                 Last refresh {secondsSinceRefresh}s ago · {lastRefreshedAt.toLocaleTimeString()}
                 {totalOnline > 0 ? ` · ${totalOnline.toLocaleString()} total online` : ""}
               </p>
+              {search.trim() ? (
+                <Badge variant="secondary" className="gap-1">
+                  Search: {search}
+                  <button type="button" onClick={() => setSearch("")} className="inline-flex" aria-label="Clear search">
+                    ×
+                  </button>
+                </Badge>
+              ) : null}
             </div>
-            <SavedViews
-              storageKey="savedViews:liveSessions"
-              keys={sessionsSavedViewsKeys}
-              getState={getSessionsViewState}
-              applyState={applySessionsViewState}
-              compact
-              onSaved={() => notify.success("View saved")}
-              onDeleted={() => notify.success("View deleted")}
-            />
           </div>
-          <SearchBar
-            currentSearchTerm={search}
-            onSearch={handleSearch}
-            placeholder="Search by username, full name, NAS IP or name…"
-            className="w-full max-w-2xl"
-            autoSearch={false}
-            showButton
-          />
-          {search.trim() ? (
-            <div className="flex flex-wrap items-center gap-2 border-t border-border/60 pt-3">
-              <Badge variant="secondary" className="gap-1">
-                Search: {search}
-                <button type="button" onClick={() => setSearch("")} className="inline-flex" aria-label="Clear search">
-                  ×
-                </button>
-              </Badge>
-            </div>
-          ) : null}
         </CardContent>
       </Card>
 
@@ -609,15 +678,7 @@ export default function OnlineUsersPage() {
               User: <span className="font-medium text-foreground">{trafficUsername ?? "—"}</span>
             </div>
             <div className="h-64 w-full rounded-md border border-border bg-card">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={trafficChartData}>
-                  <XAxis dataKey="time" hide />
-                  <YAxis width={60} />
-                  <RechartsTooltip />
-                  <Line type="monotone" dataKey="downKbps" stroke="#2563eb" dot={false} name="Down (KB/s)" />
-                  <Line type="monotone" dataKey="upKbps" stroke="#16a34a" dot={false} name="Up (KB/s)" />
-                </LineChart>
-              </ResponsiveContainer>
+              <LiveTrafficChart data={trafficChartData} />
             </div>
             <div className="text-xs text-muted-foreground">
               Updates every 2s (based on session byte counters).

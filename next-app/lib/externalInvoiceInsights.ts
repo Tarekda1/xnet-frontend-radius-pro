@@ -81,6 +81,51 @@ export function buildReminderMessagePreview(invoice: ExternalInvoice): string {
   );
 }
 
+/** Visual severity for an open invoice, derived from its aging bucket. */
+export type OverdueSeverity = "none" | "mild" | "moderate" | "severe" | "critical";
+
+export function getOverdueSeverity(invoice: ExternalInvoice, graceDays = 7): OverdueSeverity {
+  if (String(invoice.status || "").toLowerCase() === "paid") return "none";
+  const bucket = getAgingBucket(invoice, graceDays);
+  if (bucket === "current") return "none";
+  if (bucket === "1_30") return "mild";
+  if (bucket === "31_60") return "moderate";
+  if (bucket === "61_90") return "severe";
+  return "critical";
+}
+
+/**
+ * Last reminder timestamp: prefer the dedicated column, fall back to parsing
+ * the legacy `lastAction` marker ("reminded by X @ ISO" / "dunning_stage:… @ ISO").
+ */
+export function getLastRemindedAt(invoice: ExternalInvoice): Date | null {
+  if (invoice.lastRemindedAt) {
+    const direct = new Date(invoice.lastRemindedAt);
+    if (!Number.isNaN(direct.getTime())) return direct;
+  }
+  const raw = String(invoice.lastAction || "");
+  if (!/remind|dunning_stage:\d+:remind/i.test(raw)) return null;
+  const match = /@ (\d{4}-\d{2}-\d{2}T[\d:.]+Z?)/.exec(raw);
+  if (!match) return null;
+  const parsed = new Date(match[1]);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+/** Compact "2d ago" / "3h ago" formatting for reminder chips. */
+export function formatRelativeShort(date: Date, asOf = new Date()): string {
+  const diffMs = asOf.getTime() - date.getTime();
+  if (diffMs < 0) return "just now";
+  const minutes = Math.floor(diffMs / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  return `${months}mo ago`;
+}
+
 export type ReconciliationFlag = "missing_payment" | "duplicate" | "amount_mismatch";
 
 export function getReconciliationFlagsMap(invoices: ExternalInvoice[]): Map<number, ReconciliationFlag[]> {

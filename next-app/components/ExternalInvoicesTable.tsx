@@ -46,6 +46,9 @@ type Props = {
     onFirstPage?: () => void;
     onLastPage?: () => void;
     totalItems?: number;
+    /** When provided, the empty state offers a "Clear filters" action. */
+    onClearFilters?: () => void;
+    hasActiveFilters?: boolean;
 };
 
 const ExternalInvoicesTable: React.FC<Props> = ({ 
@@ -65,6 +68,8 @@ const ExternalInvoicesTable: React.FC<Props> = ({
     onFirstPage,
     onLastPage,
     totalItems,
+    onClearFilters,
+    hasActiveFilters = false,
 }) => {
     const { user } = useAuth();
     const canPay = can(user, 'billing.externalInvoices.pay');
@@ -252,9 +257,15 @@ const ExternalInvoicesTable: React.FC<Props> = ({
             empty={
                 <div className="p-4">
                     <EmptyState
-                        title="No invoices found"
-                        description="Try changing filters or search terms."
+                        title={hasActiveFilters ? "No invoices match your filters" : "No invoices found"}
+                        description={
+                            hasActiveFilters
+                                ? "Loosen or clear the active filters to see more results."
+                                : "Imported invoices will show up here once available."
+                        }
                         icon={FileText}
+                        actionLabel={hasActiveFilters && onClearFilters ? "Clear all filters" : undefined}
+                        onAction={hasActiveFilters && onClearFilters ? onClearFilters : undefined}
                     />
                 </div>
             }

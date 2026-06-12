@@ -16,6 +16,24 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+/**
+ * Presence-only cookie (no token material) so Next.js middleware can guard
+ * routes server-side and avoid flashing protected pages before redirect.
+ * The real authorization is still enforced by the backend on every API call.
+ */
+const AUTH_COOKIE = "xnet_auth";
+
+const setAuthPresenceCookie = (rememberMe: boolean) => {
+  if (typeof document === "undefined") return;
+  const maxAge = rememberMe ? `; max-age=${60 * 60 * 24 * 30}` : "";
+  document.cookie = `${AUTH_COOKIE}=1; path=/; SameSite=Lax${maxAge}`;
+};
+
+const clearAuthPresenceCookie = () => {
+  if (typeof document === "undefined") return;
+  document.cookie = `${AUTH_COOKIE}=; path=/; max-age=0; SameSite=Lax`;
+};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const getStoredAuth = (): { accessToken: string | null; user: AuthUser | null; storage: "local" | "session" | null } => {
     if (typeof window === "undefined") {
@@ -52,6 +70,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   });
   const router = useRouter();
+
+  // Keep the middleware presence cookie in sync with the stored session
+  // (covers sessions that existed before the cookie was introduced).
+  useEffect(() => {
+    if (authState.isAuthenticated) {
+      setAuthPresenceCookie(authState.storage !== "session");
+    } else {
+      clearAuthPresenceCookie();
+    }
+  }, [authState.isAuthenticated, authState.storage]);
 
   // Attach user context to telemetry (Sentry), if enabled.
   useEffect(() => {
@@ -173,6 +201,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     store.setItem("accessToken", accessToken);
     store.setItem("user", JSON.stringify(user));
+    setAuthPresenceCookie(Boolean(rememberMe));
     setAuthState({ isAuthenticated: true, accessToken, user: user, storage: rememberMe ? "local" : "session" });
   };
 
@@ -190,6 +219,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem("user");
     sessionStorage.removeItem("accessToken");
     sessionStorage.removeItem("user");
+    clearAuthPresenceCookie();
     setAuthState({ isAuthenticated: false, accessToken: null, user: null, storage: null });
   };
 

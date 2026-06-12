@@ -194,6 +194,19 @@ export async function fetchExternalAgingSummary(params?: {
   return data.data as ExternalAgingSummary;
 }
 
+export type ExternalInvoiceTrendPoint = {
+  month: string; // "YYYY-MM"
+  totalCount: number;
+  paidCount: number;
+  totalAmount: number;
+  paidAmount: number;
+};
+
+export async function fetchExternalInvoicesTrend(months = 6): Promise<ExternalInvoiceTrendPoint[]> {
+  const { data } = await apiClient.get('/invoices/external/trend', { params: { months } });
+  return data.data as ExternalInvoiceTrendPoint[];
+}
+
 export type ExternalInvoiceHistoryItem = {
   id: number;
   action: string;
