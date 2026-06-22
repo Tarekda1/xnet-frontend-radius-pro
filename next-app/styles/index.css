@@ -92,13 +92,13 @@
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
   --radius: 0.875rem;
-  --sidebar: oklch(0.18 0.045 265);
-  --sidebar-foreground: oklch(0.92 0.02 265);
+  --sidebar: oklch(0.985 0.008 265);
+  --sidebar-foreground: oklch(0.35 0.04 265);
   --sidebar-primary: oklch(0.511 0.262 276.966);
   --sidebar-primary-foreground: oklch(0.99 0.002 264);
-  --sidebar-accent: oklch(0.28 0.04 265);
-  --sidebar-accent-foreground: oklch(0.98 0.01 265);
-  --sidebar-border: oklch(1 0 0 / 0.08);
+  --sidebar-accent: oklch(0.955 0.015 265);
+  --sidebar-accent-foreground: oklch(0.25 0.04 265);
+  --sidebar-border: oklch(0.91 0.018 265);
   --sidebar-ring: oklch(0.62 0.19 277);
 }
 
@@ -108,9 +108,16 @@
 }
 
 .radius-sidebar-shop {
-  background: linear-gradient(165deg, #0f172a 0%, #1e293b 48%, #0f172a 100%);
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
-  box-shadow: 4px 0 32px rgba(0, 0, 0, 0.12);
+  background-color: var(--sidebar);
+  background-image: linear-gradient(
+    165deg,
+    color-mix(in oklch, var(--sidebar) 88%, var(--sidebar-primary)) 0%,
+    var(--sidebar) 45%,
+    color-mix(in oklch, var(--sidebar) 92%, var(--sidebar-accent)) 100%
+  );
+  border-right: 1px solid var(--sidebar-border);
+  box-shadow: 4px 0 24px color-mix(in oklch, var(--foreground) 6%, transparent);
+  color: var(--sidebar-foreground);
 }
 
 /* index.css */
@@ -278,6 +285,7 @@ html.dark {
 html[data-theme="dark"] .radius-sidebar-shop,
 .dark .radius-sidebar-shop,
 html.dark .radius-sidebar-shop {
+  box-shadow: 4px 0 32px rgba(0, 0, 0, 0.12);
   filter: saturate(0.95);
 }
 

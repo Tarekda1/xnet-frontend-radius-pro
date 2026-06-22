@@ -130,20 +130,24 @@ const profileClass = (p: string) =>
         : p.toLowerCase().includes("basic")
             ? "text-violet-600 dark:text-violet-400"
             : "text-foreground/90";
-const profileBadge = (p: string) => {
+const profileBadge = (p: string, compact = false) => {
+    const sizeClass = compact ? "px-1.5 py-0 text-[10px]" : "";
     const l = p.toLowerCase();
     if (l === "premium")
         return (
             <Badge
                 variant="outline"
-                className="border-yellow-300 bg-yellow-100 text-yellow-900 dark:border-yellow-700 dark:bg-yellow-950/45 dark:text-yellow-100"
+                className={cn(
+                    "border-yellow-300 bg-yellow-100 text-yellow-900 dark:border-yellow-700 dark:bg-yellow-950/45 dark:text-yellow-100",
+                    sizeClass
+                )}
             >
                 Premium
             </Badge>
         );
     if (l === "basic")
         return (
-            <Badge variant="outline" className="border-blue-300 bg-blue-100 text-blue-800 dark:border-blue-700 dark:bg-blue-950/50 dark:text-blue-200">
+            <Badge variant="outline" className={cn("border-blue-300 bg-blue-100 text-blue-800 dark:border-blue-700 dark:bg-blue-950/50 dark:text-blue-200", sizeClass)}>
                 Basic
             </Badge>
         );
@@ -151,13 +155,16 @@ const profileBadge = (p: string) => {
         return (
             <Badge
               variant="outline"
-              className="border-purple-300 bg-purple-100 text-purple-800 dark:border-purple-600 dark:bg-purple-950/45 dark:text-purple-200"
+              className={cn(
+                "border-purple-300 bg-purple-100 text-purple-800 dark:border-purple-600 dark:bg-purple-950/45 dark:text-purple-200",
+                sizeClass
+              )}
             >
                 BasicFN
             </Badge>
         );
     return (
-            <Badge variant="outline" className="border-border bg-muted text-foreground">
+            <Badge variant="outline" className={cn("border-border bg-muted text-foreground max-w-[5rem] truncate", sizeClass)}>
             {p}
         </Badge>
     );
@@ -200,6 +207,94 @@ function sessionStatsEqual(a: OnlineSessionStats, b: OnlineSessionStats): boolea
 }
 
 type UsageTone = "normal" | "warning" | "high" | "critical";
+
+const getUserInitials = (username: string) => {
+    const base = String(username || "").trim();
+    if (!base) return "U";
+    return base.slice(0, 2).toUpperCase();
+};
+
+type SessionBorderTone = "green" | "orange" | "red" | "amber" | "slate" | "default";
+
+const QUOTA_WARN_PCT = 70;
+
+const getDailyQuotaPct = (u: OnlineUser) => pct(u.real_time_data_usage, u.profile_daily_quota);
+
+const getMonthlyQuotaPct = (u: OnlineUser) => {
+    if (u.monthly_usage_pct != null && Number.isFinite(Number(u.monthly_usage_pct))) {
+        return Math.min(Number(u.monthly_usage_pct), 100);
+    }
+    return pct(u.monthly_usage, u.profile_monthly_quota);
+};
+
+const getSessionBorderTone = (u: OnlineUser): SessionBorderTone => {
+    const fup = isFupUser(u);
+    const stale = isSessionStale(u.session_last_update);
+    const status = String(u.session_status || "").toLowerCase();
+    const dailyPct = getDailyQuotaPct(u);
+    const monthlyPct = getMonthlyQuotaPct(u);
+    const monthlyExceeded = isMonthlyQuotaExceededFromFields(monthlyCycleFieldsFromOnlineUser(u));
+
+    if (fup || monthlyExceeded || dailyPct >= 100 || monthlyPct >= 100) return "red";
+    if (dailyPct >= QUOTA_WARN_PCT || monthlyPct >= QUOTA_WARN_PCT) return "orange";
+    if (stale) return "amber";
+    if (status === "active") return "green";
+    if (status === "idle") return "slate";
+    return "default";
+};
+
+const borderToneClasses: Record<SessionBorderTone, { stripe: string; accent: string }> = {
+    green: {
+        stripe: "bg-emerald-500",
+        accent: "text-emerald-600 dark:text-emerald-400",
+    },
+    orange: {
+        stripe: "bg-orange-500",
+        accent: "text-orange-600 dark:text-orange-400",
+    },
+    red: {
+        stripe: "bg-red-500",
+        accent: "text-red-600 dark:text-red-400",
+    },
+    amber: {
+        stripe: "bg-amber-500",
+        accent: "text-amber-600 dark:text-amber-400",
+    },
+    slate: {
+        stripe: "bg-slate-400 dark:bg-slate-500",
+        accent: "text-slate-500 dark:text-slate-400",
+    },
+    default: {
+        stripe: "bg-border",
+        accent: "text-primary",
+    },
+};
+
+const sessionRowShell = "bg-white dark:bg-card border-border/70 dark:border-border/60";
+
+const SessionStatusStripe = ({ user }: { user: OnlineUser }) => (
+    <div
+        className={cn(
+            "pointer-events-none absolute inset-y-0 left-0 z-10 w-[3px]",
+            borderToneClasses[getSessionBorderTone(user)].stripe
+        )}
+        aria-hidden
+    />
+);
+
+const getSessionRowClasses = () =>
+    cn(sessionRowShell, "relative overflow-hidden border shadow-sm hover:shadow-md");
+
+const getSessionFirstCellClasses = () =>
+    cn(sessionRowShell, "relative rounded-l-lg border-y border-l border-r-0");
+
+const getSessionMiddleCellClasses = () =>
+    cn(sessionRowShell, "border-y border-x-0");
+
+const getSessionLastCellClasses = () =>
+    cn(sessionRowShell, "rounded-r-lg border-y border-l-0 border-r shadow-sm");
+
+const getSessionAccentClass = (u: OnlineUser) => borderToneClasses[getSessionBorderTone(u)].accent;
 
 const getUsageTone = (value: number, isFup: boolean): UsageTone => {
     if (isFup || value >= 100) return "critical";
@@ -283,7 +378,7 @@ const UsageBar: React.FC<{ used: string; total: string; type: 'daily' | 'monthly
     );
 };
 
-const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
+const StatusBadge: React.FC<{ status: string; compact?: boolean }> = ({ status, compact }) => {
     const s = status.toLowerCase();
     const tone =
         s === "active" ? "info" :
@@ -297,6 +392,7 @@ const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
             tone={tone as any}
             dot
             pulseDot={s === "active"}
+            className={compact ? "gap-1 px-1.5 py-0 text-[10px] [&_span:first-child]:h-1.5 [&_span:first-child]:w-1.5" : undefined}
         />
     );
 };
@@ -316,26 +412,35 @@ const MobileCard: React.FC<{
     return (
     <Card
         className={cn(
-            "overflow-hidden border border-border/50 transition-colors hover:border-border dark:border-border/60 dark:hover:border-border",
-            fup && "border-red-200 bg-red-50/30 dark:border-red-900/55 dark:bg-red-950/25"
+            "overflow-hidden transition-shadow duration-200",
+            getSessionRowClasses()
         )}
     >
-        <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                    <CardTitle className={cn("text-lg", profileClass(user.profile_profile_name))}>
-                        <Link className="hover:underline" href={`/users/${encodeURIComponent(user.session_username)}`}>
-                            {user.session_username}
-                        </Link>
-                    </CardTitle>
-                    <CardDescription className="flex items-center gap-2">
-                        <User className="h-3.5 w-3.5" />
-                        {user.userDetails_full_name || "—"}
-                    </CardDescription>
+        <SessionStatusStripe user={user} />
+        <CardHeader className="pb-2 pt-3 pl-4">
+            <div className="flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2.5">
+                    <div className={cn(
+                        "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-xs font-semibold",
+                        getSessionAccentClass(user)
+                    )}>
+                        {getUserInitials(user.session_username)}
+                    </div>
+                    <div className="min-w-0 space-y-1">
+                        <CardTitle className={cn("text-base leading-tight", profileClass(user.profile_profile_name))}>
+                            <Link className="hover:underline" href={`/users/${encodeURIComponent(user.session_username)}`}>
+                                {user.session_username}
+                            </Link>
+                        </CardTitle>
+                        <CardDescription className="flex items-center gap-2">
+                            <User className="h-3.5 w-3.5 shrink-0" />
+                            <span className="truncate">{user.userDetails_full_name || "—"}</span>
+                        </CardDescription>
+                    </div>
                 </div>
-                <div className="flex flex-col items-end gap-2">
-                    {profileBadge(user.profile_profile_name)}
-                    <StatusBadge status={user.session_status} />
+                <div className="flex shrink-0 flex-col items-end gap-1.5">
+                    {profileBadge(user.profile_profile_name, true)}
+                    <StatusBadge status={user.session_status} compact />
                 </div>
             </div>
         </CardHeader>
@@ -410,25 +515,19 @@ const TableRows = function TableRows({
                 return (
                 <TableRow 
                     key={u.session_username} 
-                    className={cn(
-                        "transition-[background-color,box-shadow] duration-150",
-                        "border-b border-border/40 dark:border-border/55",
-                        "hover:bg-muted/45 dark:hover:bg-white/[0.04]",
-                        u.session_status === "active" && "bg-emerald-50/45 dark:bg-emerald-950/18 dark:hover:bg-emerald-950/28",
-                        u.session_status === "idle" && "bg-amber-50/40 dark:bg-amber-950/22 dark:hover:bg-amber-950/32",
-                        isSessionStale(u.session_last_update) &&
-                            "border-l-[3px] border-l-amber-500 bg-amber-50/55 dark:border-l-amber-400 dark:bg-amber-950/30 dark:hover:bg-amber-950/38",
-                        fup &&
-                            "border-l-[3px] border-l-red-500 bg-red-50/60 dark:border-l-red-400 dark:bg-red-950/32 dark:hover:bg-red-950/42"
-                    )}
+                    className="group border-0 hover:bg-transparent"
                 >
-                    <TableCell className="p-4 align-middle">
-                        <div className="flex items-center gap-3">
-                            <div className="rounded-lg bg-primary/10 p-2 ring-1 ring-border/30 dark:bg-primary/18 dark:ring-border/45">
-                                <User className="h-4 w-4 text-primary" />
+                    <TableCell className={cn("px-2 py-2 align-middle", getSessionFirstCellClasses())}>
+                        <SessionStatusStripe user={u} />
+                        <div className="relative flex items-center gap-2 min-w-0 pl-1">
+                            <div className={cn(
+                                "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-[10px] font-semibold",
+                                getSessionAccentClass(u)
+                            )}>
+                                {getUserInitials(u.session_username)}
                             </div>
-                            <div>
-                                <div className="font-medium">
+                            <div className="min-w-0">
+                                <div className="truncate text-sm font-medium leading-tight">
                                     <Link
                                         className={cn("hover:underline", profileClass(u.profile_profile_name))}
                                         href={`/users/${encodeURIComponent(u.session_username)}`}
@@ -436,63 +535,51 @@ const TableRows = function TableRows({
                                         {u.session_username}
                                     </Link>
                                 </div>
-                                <div className="text-xs text-muted-foreground">{u.userDetails_full_name || "—"}</div>
+                                <div className="truncate text-[11px] text-muted-foreground">{u.userDetails_full_name || "—"}</div>
                             </div>
                         </div>
                     </TableCell>
-                    <TableCell>
-                        <div className="flex items-center gap-1.5">
-                            <Wifi className="h-3.5 w-3.5 text-muted-foreground" />
-                            <span className="font-mono text-sm text-foreground/90 dark:text-foreground/85">
-                                {u.session_mac_address}
-                            </span>
-                        </div>
+                    <TableCell className={cn("px-2 py-2 align-middle", getSessionMiddleCellClasses())}>
+                        <span className="block max-w-[6.5rem] truncate font-mono text-[10px] text-foreground/85" title={u.session_mac_address}>
+                            {u.session_mac_address}
+                        </span>
                     </TableCell>
-                    <TableCell>{profileBadge(u.profile_profile_name)}</TableCell>
-                    <TableCell>
-                        <StatusBadge status={u.session_status} />
+                    <TableCell className={cn("px-2 py-2 align-middle", getSessionMiddleCellClasses())}>{profileBadge(u.profile_profile_name, true)}</TableCell>
+                    <TableCell className={cn("px-2 py-2 align-middle", getSessionMiddleCellClasses())}>
+                        <StatusBadge status={u.session_status} compact />
                     </TableCell>
-                    <TableCell>
-                        <div className="flex items-center gap-1.5">
-                            <HardDrive
-                                className={cn(
-                                    "h-3.5 w-3.5",
-                                    fup ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"
-                                )}
-                            />
-                            <Badge 
-                                variant="outline" 
-                                className={cn(
-                                    "text-sm",
-                                    fup
-                                      ? "border-red-200 bg-red-100 text-red-700 dark:border-red-800 dark:bg-red-950/45 dark:text-red-200"
-                                      : "border-green-200 bg-green-100 text-green-700 dark:border-green-800 dark:bg-green-950/45 dark:text-green-200"
-                                )}
-                            >
-                                {fup ? "Yes" : "No"}
-                            </Badge>
-                        </div>
+                    <TableCell className={cn("px-2 py-2 align-middle", getSessionMiddleCellClasses())}>
+                        <Badge 
+                            variant="outline" 
+                            className={cn(
+                                "px-1.5 py-0 text-[10px] font-medium",
+                                fup
+                                  ? "border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950/45 dark:text-red-200"
+                                  : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/45 dark:text-emerald-200"
+                            )}
+                        >
+                            {fup ? "FUP" : "OK"}
+                        </Badge>
                     </TableCell>
-                    <TableCell>
-                        <div className="flex items-center gap-1.5 text-sm">
-                            <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                    <TableCell className={cn("px-2 py-2 align-middle", getSessionMiddleCellClasses())}>
+                        <span className="whitespace-nowrap text-[11px] font-medium tabular-nums">
                             {formatUptime(u.session_session_time)}
-                        </div>
+                        </span>
                     </TableCell>
-                    <TableCell>
-                        <div className="text-sm space-y-1" title={u.session_last_update || ""}>
-                            <div>{formatAgo(u.session_last_update)}</div>
+                    <TableCell className={cn("px-2 py-2 align-middle", getSessionMiddleCellClasses())}>
+                        <div className="space-y-0.5" title={u.session_last_update || ""}>
+                            <div className="whitespace-nowrap text-[11px] font-medium">{formatAgo(u.session_last_update)}</div>
                             {isSessionStale(u.session_last_update) ? (
                                 <Badge
                                   variant="outline"
-                                  className="border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/35 dark:text-amber-200"
+                                  className="px-1 py-0 text-[9px] border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/35 dark:text-amber-200"
                                 >
                                     Stale
                                 </Badge>
                             ) : null}
                         </div>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className={cn("px-2 py-2 align-middle", getSessionMiddleCellClasses())}>
                         <UsageBar
                             used={u.real_time_data_usage}
                             total={u.profile_daily_quota}
@@ -500,10 +587,10 @@ const TableRows = function TableRows({
                             isFup={fup}
                         />
                     </TableCell>
-                    <TableCell>
+                    <TableCell className={cn("px-2 py-2 align-middle", getSessionMiddleCellClasses())}>
                         <MonthlyCycleCell {...monthlyCycleFieldsFromOnlineUser(u)} />
                     </TableCell>
-                    <TableCell className="text-center">
+                    <TableCell className={cn("px-2 py-2 text-center align-middle", getSessionLastCellClasses())}>
                         <TableRowActions
                             actions={[
                                 { label: "Session Details", icon: HardDrive, onClick: () => onAction("details", u.session_username) },
@@ -532,21 +619,21 @@ const DesktopTable: React.FC<{
     manageReason: string;
     disconnectReason: string;
 }> = React.memo(({ users, onAction, canManageRadiusUsers, canResetDailyQuota, canResetMonthlyQuota, canDisconnect, manageReason, disconnectReason }) => (
-    <Card className="overflow-hidden border border-border/50 dark:border-border/60 dark:bg-card/50">
-        <div className="max-h-[70vh] overflow-auto">
-        <Table>
-            <TableHeader className="sticky top-0 z-10 border-b border-border bg-card/95 shadow-sm backdrop-blur-sm dark:bg-muted/40 dark:backdrop-blur-md">
-                <TableRow className="hover:bg-transparent">
-                    <TableHead className="w-[250px]">User</TableHead>
-                    <TableHead className="w-[150px]">MAC Address</TableHead>
-                    <TableHead className="w-[100px]">Profile</TableHead>
-                    <TableHead className="w-[120px]">Status</TableHead>
-                    <TableHead className="w-[80px]">FUP</TableHead>
-                    <TableHead className="w-[120px]">Uptime</TableHead>
-                    <TableHead className="w-[120px]">Last update</TableHead>
-                    <TableHead>Daily Usage</TableHead>
-                    <TableHead className="min-w-[160px]">Monthly Cycle</TableHead>
-                    <TableHead className="text-center w-[100px]">Actions</TableHead>
+    <Card className="overflow-hidden border border-border/50 bg-muted/30 p-1.5 dark:border-border/60 dark:bg-muted/15">
+        <div className="max-h-[70vh] overflow-auto rounded-md">
+        <Table className="border-separate border-spacing-x-0 border-spacing-y-1.5 text-xs">
+            <TableHeader className="sticky top-0 z-10">
+                <TableRow className="border-none bg-muted/80 shadow-sm hover:bg-transparent dark:bg-muted/40">
+                    <TableHead className="rounded-l-md bg-transparent px-2 py-2 text-[11px] font-semibold min-w-[140px]">User</TableHead>
+                    <TableHead className="bg-transparent px-2 py-2 text-[11px] font-semibold w-[6.5rem]">MAC</TableHead>
+                    <TableHead className="bg-transparent px-2 py-2 text-[11px] font-semibold w-[4.5rem]">Profile</TableHead>
+                    <TableHead className="bg-transparent px-2 py-2 text-[11px] font-semibold w-[4.5rem]">Status</TableHead>
+                    <TableHead className="bg-transparent px-2 py-2 text-[11px] font-semibold w-[3rem]">FUP</TableHead>
+                    <TableHead className="bg-transparent px-2 py-2 text-[11px] font-semibold w-[4.5rem]">Uptime</TableHead>
+                    <TableHead className="bg-transparent px-2 py-2 text-[11px] font-semibold w-[4.5rem]">Updated</TableHead>
+                    <TableHead className="bg-transparent px-2 py-2 text-[11px] font-semibold min-w-[120px]">Daily</TableHead>
+                    <TableHead className="bg-transparent px-2 py-2 text-[11px] font-semibold min-w-[120px]">Monthly</TableHead>
+                    <TableHead className="rounded-r-md bg-transparent px-2 py-2 text-[11px] font-semibold text-center w-[3.5rem]">···</TableHead>
                 </TableRow>
             </TableHeader>
             <TableBody>

@@ -49,7 +49,7 @@ export const UserMenu: React.FC<UserMenuProps> = ({
           animate="visible"
           exit="exit"
           variants={menuVariants}
-          className="absolute right-4 top-full z-50 mt-2 w-72 rounded-lg border border-border bg-popover p-4 text-popover-foreground shadow-xl dark:shadow-[var(--shop-shadow-lg,0_20px_50px_rgba(0,0,0,0.45))]"
+          className="absolute right-0 top-full z-50 mt-2 w-72 rounded-lg border border-border bg-popover p-4 text-popover-foreground shadow-xl dark:shadow-[var(--shop-shadow-lg,0_20px_50px_rgba(0,0,0,0.45))]"
         >
           {/* User Info */}
           {userInfo && (

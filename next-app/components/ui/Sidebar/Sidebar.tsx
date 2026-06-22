@@ -77,7 +77,7 @@ const Sidebar: React.FC = () => {
 
   // Internal helper components
   const SidebarHeader = () => (
-    <div className="flex items-center p-4 border-b border-gray-700/50 flex-shrink-0">
+    <div className="flex items-center p-4 border-b border-sidebar-border flex-shrink-0">
       {/* Show toggle button only on desktop */}
       {isMobile === false && (
         <button
@@ -86,8 +86,8 @@ const Sidebar: React.FC = () => {
             toggleCollapse();
           }}
           className={cn(
-            "text-gray-300 hover:text-white focus:outline-none transition-all duration-300",
-            "p-2 rounded-lg hover:bg-gray-700/50",
+            "text-sidebar-foreground/70 hover:text-sidebar-foreground focus:outline-none transition-all duration-300",
+            "p-2 rounded-lg hover:bg-sidebar-accent",
             isCollapsed ? '' : 'rotate-180'
           )}
           aria-label="Toggle Sidebar"
@@ -340,7 +340,7 @@ const Sidebar: React.FC = () => {
       .map(({ to, label, icon }) => ({ to, label, icon }));
 
     const SectionLabel = ({ children }: { children: React.ReactNode }) => (
-      <div className={cn("px-4 pt-3 pb-1 text-xs font-semibold tracking-wide text-gray-400", !isMobile && isCollapsed && "hidden")}>
+      <div className={cn("px-4 pt-3 pb-1 text-xs font-semibold tracking-wide text-sidebar-foreground/60", !isMobile && isCollapsed && "hidden")}>
         {children}
       </div>
     );
@@ -356,8 +356,8 @@ const Sidebar: React.FC = () => {
         const Icon = props.icon;
         const badgeClass =
           props.badgeVariant === "danger"
-            ? "bg-red-500/20 text-red-200"
-            : "bg-blue-500/20 text-blue-200";
+            ? "bg-destructive/15 text-destructive"
+            : "bg-sidebar-primary/15 text-sidebar-primary";
         const isActive =
           pathname === props.to || (props.to !== "/" && pathname.startsWith(props.to + "/"));
         return (
@@ -365,10 +365,10 @@ const Sidebar: React.FC = () => {
         key={props.to}
         href={props.to}
         className={cn(
-          "flex items-center px-4 py-3 space-x-3 transition-all duration-200",
-          "hover:bg-gray-700/50 rounded-lg mx-2",
+          "flex items-center px-4 py-3 space-x-3 transition-colors duration-200",
+          "hover:bg-sidebar-accent rounded-lg mx-2",
           "group relative",
-          isActive ? "bg-blue-500/10 text-blue-400" : "text-gray-300 hover:text-white"
+          isActive ? "bg-sidebar-primary/10 text-sidebar-primary" : "text-sidebar-foreground/80 hover:text-sidebar-foreground"
         )}
         onClick={() => isMobile && setMobileMenuOpen(false)}
       >
@@ -384,7 +384,7 @@ const Sidebar: React.FC = () => {
             <span
               className={cn(
                 "absolute -top-1 -right-1 h-2 w-2 rounded-full",
-                props.badgeVariant === "danger" ? "bg-red-400" : "bg-blue-400"
+                props.badgeVariant === "danger" ? "bg-destructive" : "bg-sidebar-primary"
               )}
             />
           ) : null}
@@ -404,7 +404,7 @@ const Sidebar: React.FC = () => {
           </span>
         ) : null}
         {!isMobile && isCollapsed && (
-          <div className="absolute left-full ml-2 px-2 py-1 bg-gray-800 rounded-md text-sm whitespace-nowrap opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+          <div className="absolute left-full ml-2 px-2 py-1 bg-popover text-popover-foreground border border-border rounded-md text-sm whitespace-nowrap opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 shadow-md">
             {props.label}
           </div>
         )}
@@ -428,11 +428,11 @@ const Sidebar: React.FC = () => {
           <button
             type="button"
             className={cn(
-              "w-full flex items-center px-4 py-3 space-x-3 transition-all duration-200",
-              "hover:bg-gray-700/50 rounded-lg",
-              "text-gray-300 hover:text-white",
+              "w-full flex items-center px-4 py-3 space-x-3 transition-colors duration-200",
+              "hover:bg-sidebar-accent rounded-lg",
+              "text-sidebar-foreground/80 hover:text-sidebar-foreground",
               "group relative",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/60 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-800"
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
             )}
             aria-expanded={props.isOpen}
             onClick={(e) => {
@@ -458,7 +458,7 @@ const Sidebar: React.FC = () => {
             />
 
             {!isMobile && isCollapsed && (
-              <div className="absolute left-full ml-2 px-2 py-1 bg-gray-800 rounded-md text-sm whitespace-nowrap opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+              <div className="absolute left-full ml-2 px-2 py-1 bg-popover text-popover-foreground border border-border rounded-md text-sm whitespace-nowrap opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 shadow-md">
                 {props.label}
               </div>
             )}
@@ -468,7 +468,7 @@ const Sidebar: React.FC = () => {
             <div className={cn("mt-1 space-y-1", !isMobile && isCollapsed ? 'hidden' : 'block')}>
               {props.items.map(({ to, label, icon, badgeCount, badgeVariant }) => (
                 <div key={to} className="ml-3">
-                  <NavItem to={to} label={label} icon={icon} badgeCount={badgeCount} badgeVariant={badgeVariant} />
+                  {NavItem({ to, label, icon, badgeCount, badgeVariant })}
                 </div>
               ))}
             </div>
@@ -487,25 +487,25 @@ const Sidebar: React.FC = () => {
         {!isMobile ? (
           <div className={cn("px-2 pb-3", isCollapsed && "px-0")}>
             {!isCollapsed ? (
-              <div className="mx-2 rounded-xl border border-gray-700/50 bg-gray-900/30 p-3">
+              <div className="mx-2 rounded-xl border border-sidebar-border bg-sidebar-accent/50 p-3">
                 <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center font-bold">
+                  <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center font-bold text-white">
                     {initials}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm font-semibold text-gray-100 truncate">{displayName}</div>
-                    <div className="text-xs text-gray-400 truncate">{roleLabel}</div>
+                    <div className="text-sm font-semibold text-sidebar-foreground truncate">{displayName}</div>
+                    <div className="text-xs text-sidebar-foreground/60 truncate">{roleLabel}</div>
                   </div>
                 </div>
               </div>
             ) : (
               <div className="relative group flex items-center justify-center py-2">
-                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center font-bold">
+                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center font-bold text-white">
                   {initials}
                 </div>
-                <div className="absolute left-full ml-2 px-3 py-2 bg-gray-800 rounded-md text-sm whitespace-nowrap opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+                <div className="absolute left-full ml-2 px-3 py-2 bg-popover text-popover-foreground border border-border rounded-md text-sm whitespace-nowrap opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 shadow-md">
                   <div className="font-semibold">{displayName}</div>
-                  <div className="text-xs text-gray-300">{roleLabel}</div>
+                  <div className="text-xs text-muted-foreground">{roleLabel}</div>
                 </div>
               </div>
             )}
@@ -516,19 +516,19 @@ const Sidebar: React.FC = () => {
         {!isMobile && !isCollapsed ? (
           <div className="px-4 pb-3">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-sidebar-foreground/50" />
               <Input
                 id="sidebar-search"
                 value={navQuery}
                 onChange={(e) => setNavQuery(e.target.value)}
                 placeholder='Search… (press "/")'
-                className="h-9 pl-9 pr-9 bg-gray-900/30 border-gray-700/50 text-gray-100 placeholder:text-gray-500 focus-visible:ring-blue-400/40"
+                className="h-9 pl-9 pr-9 bg-sidebar-accent/50 border-sidebar-border text-sidebar-foreground placeholder:text-sidebar-foreground/50 focus-visible:ring-sidebar-ring/40"
               />
               {navQuery.trim().length > 0 ? (
                 <button
                   type="button"
                   onClick={() => setNavQuery("")}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-gray-700/50 text-gray-300"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-sidebar-accent text-sidebar-foreground/70"
                   title="Clear"
                 >
                   <X className="h-4 w-4" />
@@ -539,54 +539,56 @@ const Sidebar: React.FC = () => {
         ) : null}
 
         {mainItemsFiltered.map(({ to, label, icon: Icon }) => (
-          <NavItem key={to} to={to} label={label} icon={Icon} />
+          <React.Fragment key={to}>{NavItem({ to, label, icon: Icon })}</React.Fragment>
         ))}
 
-        {canAny(user, adminItems.map((i) => i.perm) as unknown as string[]) && adminItemsFiltered.length > 0 ? (
-          <NavGroup
-            label="Admin"
-            icon={FaUserShield}
-            isOpen={q.length > 0 ? true : isAdminGroupOpen}
-            onToggle={() => setIsAdminGroupOpen((v) => !v)}
-            items={adminItemsFiltered}
-          />
-        ) : null}
+        {canAny(user, adminItems.map((i) => i.perm) as unknown as string[]) && adminItemsFiltered.length > 0
+          ? NavGroup({
+              label: "Admin",
+              icon: FaUserShield,
+              isOpen: q.length > 0 ? true : isAdminGroupOpen,
+              onToggle: () => setIsAdminGroupOpen((v) => !v),
+              items: adminItemsFiltered,
+            })
+          : null}
 
-        {canAny(user, usersItems.flatMap((i) => i.perms) as unknown as string[]) && usersItemsFiltered.length > 0 ? (
-          <NavGroup
-            label="Users"
-            icon={FaUsers}
-            isOpen={q.length > 0 ? true : isUsersGroupOpen}
-            onToggle={() => setIsUsersGroupOpen((v) => !v)}
-            items={usersItemsFiltered}
-          />
-        ) : null}
+        {canAny(user, usersItems.flatMap((i) => i.perms) as unknown as string[]) && usersItemsFiltered.length > 0
+          ? NavGroup({
+              label: "Users",
+              icon: FaUsers,
+              isOpen: q.length > 0 ? true : isUsersGroupOpen,
+              onToggle: () => setIsUsersGroupOpen((v) => !v),
+              items: usersItemsFiltered,
+            })
+          : null}
 
-        {canAny(user, radiusSettingsItems.map((i) => i.perm) as unknown as string[]) && radiusSettingsItemsFiltered.length > 0 ? (
-          <NavGroup
-            label="Radius Settings"
-            icon={FaCogs}
-            isOpen={q.length > 0 ? true : isRadiusSettingsGroupOpen}
-            onToggle={() => setIsRadiusSettingsGroupOpen((v) => !v)}
-            items={radiusSettingsItemsFiltered}
-          />
-        ) : null}
+        {canAny(user, radiusSettingsItems.map((i) => i.perm) as unknown as string[]) && radiusSettingsItemsFiltered.length > 0
+          ? NavGroup({
+              label: "Radius Settings",
+              icon: FaCogs,
+              isOpen: q.length > 0 ? true : isRadiusSettingsGroupOpen,
+              onToggle: () => setIsRadiusSettingsGroupOpen((v) => !v),
+              items: radiusSettingsItemsFiltered,
+            })
+          : null}
 
         {canAny(
           user,
           billingItems.flatMap((i) => ("perms" in i ? (i as any).perms : [(i as any).perm])) as unknown as string[]
         ) && billingItemsFiltered.length > 0 ? (
           <>
-            <div className="my-2 border-t border-gray-700/50 mx-3" />
+            <div className="my-2 border-t border-sidebar-border mx-3" />
 
-            <SectionLabel>
-              <span className="inline-flex items-center gap-2">
-                <Folder className="h-3.5 w-3.5" /> Billing
-              </span>
-            </SectionLabel>
+            {SectionLabel({
+              children: (
+                <span className="inline-flex items-center gap-2">
+                  <Folder className="h-3.5 w-3.5" /> Billing
+                </span>
+              ),
+            })}
 
             {billingItemsFiltered.map(({ to, label, icon: Icon }) => (
-                <NavItem key={to} to={to} label={label} icon={Icon} />
+                <React.Fragment key={to}>{NavItem({ to, label, icon: Icon })}</React.Fragment>
               ))}
           </>
         ) : null}
@@ -614,25 +616,25 @@ const Sidebar: React.FC = () => {
     ].filter(Boolean).join(" ");
 
     return (
-      <div className="p-4 mt-auto border-t border-gray-700/50 flex-shrink-0">
+      <div className="p-4 mt-auto border-t border-sidebar-border flex-shrink-0">
         <div className="space-y-2">
           {!isCollapsed ? (
             <>
               <div className="flex items-center justify-between gap-2">
                 <div className="min-w-0">
-                  <div className="text-xs text-gray-400">Version</div>
+                  <div className="text-xs text-sidebar-foreground/60">Version</div>
                   <div className="grid grid-cols-[1fr_auto] items-center gap-2 min-w-0" title={copyText}>
-                    <div className="text-sm text-gray-200 font-mono truncate">
+                    <div className="text-sm text-sidebar-foreground font-mono truncate">
                       {`v${v.version}`}
                     </div>
                     {buildNumberLabel ? (
-                      <div className="text-xs text-gray-400 font-mono truncate max-w-[6rem]">
+                      <div className="text-xs text-sidebar-foreground/60 font-mono truncate max-w-[6rem]">
                         {buildNumberLabel}
                       </div>
                     ) : null}
                   </div>
                   {meta ? (
-                    <div className="text-[11px] text-gray-500 truncate" title={v.buildTime}>
+                    <div className="text-[11px] text-sidebar-foreground/50 truncate" title={v.buildTime}>
                       {meta}
                     </div>
                   ) : null}
@@ -640,7 +642,7 @@ const Sidebar: React.FC = () => {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-8 px-2 text-gray-300 hover:text-white hover:bg-gray-700/50"
+                  className="h-8 px-2 text-sidebar-foreground/80 hover:text-sidebar-foreground hover:bg-sidebar-accent"
                   onClick={async () => {
                     try {
                       await navigator.clipboard.writeText(copyText);
@@ -655,34 +657,34 @@ const Sidebar: React.FC = () => {
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-8 w-full justify-start gap-2 px-2 text-gray-300 hover:text-white hover:bg-gray-700/50"
+                className="h-8 w-full justify-start gap-2 px-2 text-sidebar-foreground/80 hover:text-sidebar-foreground hover:bg-sidebar-accent"
                 onClick={() => logout()}
                 title="Logout"
               >
                 <LogOut className="h-4 w-4" />
                 Logout
               </Button>
-              <div className="text-[11px] text-gray-500">© {new Date().getFullYear()} Xnet Billing</div>
+              <div className="text-[11px] text-sidebar-foreground/50">© {new Date().getFullYear()} Xnet Billing</div>
             </>
           ) : (
             <div className="space-y-2">
               <div className="relative group flex items-center justify-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-blue-400/80 flex-shrink-0" />
-                <div className="min-w-0 max-w-full text-[10px] text-gray-300 font-mono truncate" title={versionLabel}>
+                <div className="h-2 w-2 rounded-full bg-sidebar-primary/80 flex-shrink-0" />
+                <div className="min-w-0 max-w-full text-[10px] text-sidebar-foreground/80 font-mono truncate" title={versionLabel}>
                   {collapsedVersionLabel}
                 </div>
-                <div className="absolute left-full ml-2 px-2 py-1 bg-gray-800 rounded-md text-sm whitespace-nowrap opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+                <div className="absolute left-full ml-2 px-2 py-1 bg-popover text-popover-foreground border border-border rounded-md text-sm whitespace-nowrap opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 shadow-md">
                   {versionLabel}
                 </div>
               </div>
 
               <button
                 type="button"
-                className="relative group flex items-center justify-center w-full rounded-lg py-2 hover:bg-gray-700/50 transition-colors"
+                className="relative group flex items-center justify-center w-full rounded-lg py-2 hover:bg-sidebar-accent transition-colors"
                 onClick={() => logout()}
                 title="Logout"
               >
-                <LogOut className="h-4 w-4 text-gray-200" />
+                <LogOut className="h-4 w-4 text-sidebar-foreground/80" />
               </button>
             </div>
           )}
@@ -700,7 +702,7 @@ const Sidebar: React.FC = () => {
             e.stopPropagation();
             toggleMobileMenu();
           }}
-          className="md:hidden fixed top-4 left-4 z-50 p-2 bg-gray-800 rounded-lg text-white shadow-lg hover:bg-gray-700 transition-colors"
+          className="md:hidden fixed top-4 left-4 z-50 p-2 bg-sidebar border border-sidebar-border rounded-lg text-sidebar-foreground shadow-lg hover:bg-sidebar-accent transition-colors"
           aria-label="Toggle Menu"
         >
           {isMobileMenuOpen ? <FaTimes size={20} /> : <FaBars size={20} />}
@@ -711,8 +713,8 @@ const Sidebar: React.FC = () => {
       <div
         id="sidebar"
         className={cn(
-          "radius-sidebar-shop h-full text-white",
-          "transition-[width] duration-300 ease-in-out will-change-[width] flex flex-col",
+          "radius-sidebar-shop h-full text-sidebar-foreground",
+          "transition-[width] duration-200 ease-out will-change-[width] flex flex-col shrink-0",
           "min-h-0 overflow-hidden overflow-x-hidden",
           // Mobile styles
           isMobile && "fixed z-40 h-screen",
@@ -721,9 +723,9 @@ const Sidebar: React.FC = () => {
           !isMobile && (isCollapsed ? 'w-20' : 'w-64')
         )}
       >
-        <SidebarHeader />
-        <SidebarContent />
-        <SidebarFooter />
+        {SidebarHeader()}
+        {SidebarContent()}
+        {SidebarFooter()}
       </div>
     </>
   );

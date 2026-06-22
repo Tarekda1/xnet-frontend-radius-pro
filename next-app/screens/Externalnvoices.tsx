@@ -166,7 +166,7 @@ export function ExternalInvoicesPageImpl({ mode = "standard" }: { mode?: "standa
     try {
       return localStorage.getItem(metricsCollapsedStorageKey) === "1";
     } catch {
-      return false;
+      return true;
     }
   });
   useEffect(() => {
@@ -852,86 +852,281 @@ export function ExternalInvoicesPageImpl({ mode = "standard" }: { mode?: "standa
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {isStatsLoading ? (
-          <>
-            <WidgetSkeleton />
-            <WidgetSkeleton />
-            <WidgetSkeleton />
-            <WidgetSkeleton />
-          </>
-        ) : (
-          <>
-            <StatCard
-              label="Total invoices"
-              value={<CountUpNumber value={totalInvoices} />}
-              sublabel="In current filter scope"
-              onClick={() => handleQuickFilter("all")}
-              icon={
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-500/10">
-                  <FileCheck className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                </div>
-              }
-              footer={
-                sparkSeries.total.length >= 2 ? (
-                  <Sparkline data={sparkSeries.total} strokeClass="stroke-blue-500" />
-                ) : null
-              }
+      <Card className="overflow-hidden border-border/70 shadow-sm">
+        <CardContent className="space-y-4 p-4 sm:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2">
+              <div className="flex shrink-0 items-center gap-2">
+                <FileText className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-semibold">Invoice metrics</span>
+              </div>
+              {metricsCollapsed ? (
+                isStatsLoading ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {[1, 2, 3, 4].map((i) => (
+                      <WidgetSkeleton key={i} />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {[
+                      { label: "Total", value: totalInvoices.toLocaleString(), icon: FileCheck },
+                      { label: "Unpaid", value: (metrics?.totalUnpaid ?? 0).toLocaleString(), icon: AlertCircle },
+                      { label: "Pending", value: (metrics?.totalPending ?? 0).toLocaleString(), icon: ClockIcon },
+                      { label: "Paid", value: (metrics?.totalPaid ?? 0).toLocaleString(), icon: CheckCircle },
+                      ...(canViewTotals
+                        ? [{ label: "Collected", value: `${Math.round(collectionRate.countRate)}%`, icon: DollarSign }]
+                        : []),
+                    ].map((item) => (
+                      <span
+                        key={item.label}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-muted/40 px-2.5 py-1 text-xs"
+                      >
+                        <item.icon className="h-3 w-3 shrink-0 text-muted-foreground" />
+                        <span className="text-muted-foreground">{item.label}</span>
+                        <span className="font-semibold tabular-nums text-foreground">{item.value}</span>
+                      </span>
+                    ))}
+                  </div>
+                )
+              ) : null}
+            </div>
+            <IconActionButton
+              label={metricsCollapsed ? "Show metrics" : "Hide metrics"}
+              onClick={() => setMetricsCollapsed((v) => !v)}
+              icon={metricsCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
             />
-            <StatCard
-              label="Unpaid / overdue"
-              value={<CountUpNumber value={metrics?.totalUnpaid ?? 0} />}
-              sublabel={
-                agingSummary?.overdueAmount
-                  ? `$${agingSummary.overdueAmount.toLocaleString()} overdue`
-                  : "Open balances"
-              }
-              onClick={() => handleQuickFilter("overdue")}
-              icon={
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/10">
-                  <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+          </div>
+
+          {!metricsCollapsed ? (
+            <>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                {isStatsLoading ? (
+                  <>
+                    <WidgetSkeleton />
+                    <WidgetSkeleton />
+                    <WidgetSkeleton />
+                    <WidgetSkeleton />
+                  </>
+                ) : (
+                  <>
+                    <StatCard
+                      label="Total invoices"
+                      value={<CountUpNumber value={totalInvoices} />}
+                      sublabel="In current filter scope"
+                      onClick={() => handleQuickFilter("all")}
+                      icon={
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-500/10">
+                          <FileCheck className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                        </div>
+                      }
+                      footer={
+                        sparkSeries.total.length >= 2 ? (
+                          <Sparkline data={sparkSeries.total} strokeClass="stroke-blue-500" />
+                        ) : null
+                      }
+                    />
+                    <StatCard
+                      label="Unpaid / overdue"
+                      value={<CountUpNumber value={metrics?.totalUnpaid ?? 0} />}
+                      sublabel={
+                        agingSummary?.overdueAmount
+                          ? `$${agingSummary.overdueAmount.toLocaleString()} overdue`
+                          : "Open balances"
+                      }
+                      onClick={() => handleQuickFilter("overdue")}
+                      icon={
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/10">
+                          <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                        </div>
+                      }
+                      footer={
+                        sparkSeries.open.length >= 2 ? (
+                          <Sparkline data={sparkSeries.open} strokeClass="stroke-amber-500" />
+                        ) : null
+                      }
+                    />
+                    <StatCard
+                      label="Pending"
+                      value={<CountUpNumber value={metrics?.totalPending ?? 0} />}
+                      sublabel="Awaiting payment confirmation"
+                      onClick={() => handleQuickFilter("pending")}
+                      icon={
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-500/10">
+                          <ClockIcon className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+                        </div>
+                      }
+                    />
+                    <StatCard
+                      label="Paid"
+                      value={<CountUpNumber value={metrics?.totalPaid ?? 0} />}
+                      sublabel={
+                        totalInvoices > 0
+                          ? `${Math.round(((metrics?.totalPaid ?? 0) / totalInvoices) * 100)}% collected`
+                          : "Collected invoices"
+                      }
+                      onClick={() => handleQuickFilter("paid")}
+                      icon={
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/10">
+                          <CheckCircle className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                        </div>
+                      }
+                      footer={
+                        sparkSeries.paid.length >= 2 ? (
+                          <Sparkline data={sparkSeries.paid} strokeClass="stroke-emerald-500" />
+                        ) : null
+                      }
+                    />
+                  </>
+                )}
+              </div>
+
+              {agingSummary && !isStatsLoading ? (
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                  <Card className="overflow-hidden border-border/70 shadow-sm lg:col-span-2">
+                    <CardContent className="space-y-3 p-4 sm:p-5">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <ClockIcon className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm font-semibold">Aging breakdown</span>
+                          <span className="text-xs text-muted-foreground">open balances by overdue age — click to filter</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="rounded-md border border-border/70 bg-muted/40 px-2 py-1">
+                            Avg overdue <strong className="ml-1">{(agingSummary.avgDaysOverdue ?? 0).toFixed(1)}d</strong>
+                          </span>
+                          <span className="rounded-md border border-amber-200/80 bg-amber-50/80 px-2 py-1 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+                            ${(agingSummary.overdueAmount ?? 0).toLocaleString()} overdue
+                          </span>
+                        </div>
+                      </div>
+
+                      {agingBarTotal > 0 ? (
+                        <div className="flex h-9 w-full overflow-hidden rounded-lg border border-border/50">
+                          {AGING_SEGMENTS.map((segment) => {
+                            const bucket = agingSummary.buckets.find((b) => b.key === segment.key);
+                            const amount = bucket?.amount ?? 0;
+                            if (amount <= 0) return null;
+                            const widthPercent = (amount / agingBarTotal) * 100;
+                            const isActive = ageFilterValue === segment.key;
+                            return (
+                              <button
+                                key={segment.key}
+                                type="button"
+                                className={`relative h-full transition-all ${segment.barClass} ${
+                                  isActive ? "ring-2 ring-inset ring-foreground/60" : ""
+                                }`}
+                                style={{ width: `${Math.max(widthPercent, 2)}%` }}
+                                title={`${segment.label}: ${bucket?.count ?? 0} invoices · $${amount.toLocaleString()}`}
+                                onClick={() => handleAgeBucketFilter(isActive ? "all" : segment.key)}
+                              >
+                                {widthPercent > 12 ? (
+                                  <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-[10px] font-semibold text-white drop-shadow-sm">
+                                    {segment.label}
+                                  </span>
+                                ) : null}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="flex h-9 items-center justify-center rounded-lg border border-dashed border-border/60 text-xs text-muted-foreground">
+                          No open balances in the current filter scope
+                        </div>
+                      )}
+
+                      <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                        {AGING_SEGMENTS.map((segment) => {
+                          const bucket = agingSummary.buckets.find((b) => b.key === segment.key);
+                          const isActive = ageFilterValue === segment.key;
+                          return (
+                            <button
+                              key={segment.key}
+                              type="button"
+                              onClick={() => handleAgeBucketFilter(isActive ? "all" : segment.key)}
+                              className={`flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-xs transition-colors hover:bg-muted ${
+                                isActive ? "bg-muted font-semibold" : "text-muted-foreground"
+                              }`}
+                            >
+                              <span className={`h-2 w-2 rounded-full ${segment.dotClass}`} />
+                              {segment.label}
+                              <span className="tabular-nums">
+                                {bucket?.count ?? 0} · ${(bucket?.amount ?? 0).toLocaleString()}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="overflow-hidden border-border/70 shadow-sm">
+                    <CardContent className="flex items-center gap-4 p-4 sm:p-5">
+                      <div className="relative shrink-0">
+                        <ProgressRing percent={collectionRate.countRate} />
+                        <div className="absolute inset-0 flex flex-col items-center justify-center">
+                          <span className="text-xl font-bold tabular-nums">
+                            {Math.round(collectionRate.countRate)}%
+                          </span>
+                          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">collected</span>
+                        </div>
+                      </div>
+                      <div className="min-w-0 space-y-1.5">
+                        <div className="text-sm font-semibold">Collection rate</div>
+                        <div className="text-xs text-muted-foreground">
+                          {(metrics?.totalPaid ?? 0).toLocaleString()} of {totalInvoices.toLocaleString()} invoices paid in the current scope
+                        </div>
+                        {canViewTotals && collectionRate.amountRate !== null ? (
+                          <div className="text-xs text-muted-foreground">
+                            By value: <strong className="text-foreground">{Math.round(collectionRate.amountRate)}%</strong>{" "}
+                            (${Math.round(collectionRate.sumPaidAmount).toLocaleString()} of $
+                            {Math.round(collectionRate.sumAmount).toLocaleString()}
+                            {trendMonthsLabel ? `, ${trendMonthsLabel}` : ""})
+                          </div>
+                        ) : null}
+                        {sparkSeries.paidAmount.length >= 2 && canViewTotals ? (
+                          <div className="pt-1">
+                            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Cash collected trend</div>
+                            <Sparkline data={sparkSeries.paidAmount} strokeClass="stroke-emerald-500" />
+                          </div>
+                        ) : null}
+                      </div>
+                    </CardContent>
+                  </Card>
                 </div>
-              }
-              footer={
-                sparkSeries.open.length >= 2 ? (
-                  <Sparkline data={sparkSeries.open} strokeClass="stroke-amber-500" />
-                ) : null
-              }
-            />
-            <StatCard
-              label="Pending"
-              value={<CountUpNumber value={metrics?.totalPending ?? 0} />}
-              sublabel="Awaiting payment confirmation"
-              onClick={() => handleQuickFilter("pending")}
-              icon={
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-500/10">
-                  <ClockIcon className="h-5 w-5 text-orange-600 dark:text-orange-400" />
-                </div>
-              }
-            />
-            <StatCard
-              label="Paid"
-              value={<CountUpNumber value={metrics?.totalPaid ?? 0} />}
-              sublabel={
-                totalInvoices > 0
-                  ? `${Math.round(((metrics?.totalPaid ?? 0) / totalInvoices) * 100)}% collected`
-                  : "Collected invoices"
-              }
-              onClick={() => handleQuickFilter("paid")}
-              icon={
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/10">
-                  <CheckCircle className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-                </div>
-              }
-              footer={
-                sparkSeries.paid.length >= 2 ? (
-                  <Sparkline data={sparkSeries.paid} strokeClass="stroke-emerald-500" />
-                ) : null
-              }
-            />
-          </>
-        )}
-      </div>
+              ) : null}
+
+              <div className="grid grid-cols-2 gap-2 border-t border-border/60 pt-4 sm:grid-cols-3 xl:grid-cols-6">
+                {isStatsLoading ? (
+                  <>
+                    <WidgetSkeleton />
+                    <WidgetSkeleton />
+                    <WidgetSkeleton />
+                    <WidgetSkeleton />
+                    <WidgetSkeleton />
+                    <WidgetSkeleton />
+                  </>
+                ) : (
+                  compactWidgets
+                    .filter((widget) => canViewTotals || (widget.key !== "total-amount" && widget.key !== "average-amount"))
+                    .map((widget) => (
+                      <InvoiceMetricLink
+                        key={widget.key}
+                        title={widget.title}
+                        value={widget.value}
+                        subtitle={widget.subtitle}
+                        icon={widget.icon}
+                        accentClass={widget.accentClass}
+                        glowClass={widget.glowClass}
+                        to={widget.to}
+                      />
+                    ))
+                )}
+              </div>
+            </>
+          ) : null}
+        </CardContent>
+      </Card>
 
       {isReconciliationMode ? (
         <Card className="overflow-hidden border-orange-200/60 bg-gradient-to-r from-orange-50/80 to-amber-50/40 dark:border-orange-900/40 dark:from-orange-950/30 dark:to-amber-950/20">
@@ -954,123 +1149,6 @@ export function ExternalInvoicesPageImpl({ mode = "standard" }: { mode?: "standa
             </div>
           </CardContent>
         </Card>
-      ) : null}
-
-      {agingSummary && !isStatsLoading ? (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          {/* Aging breakdown: clickable stacked bar */}
-          <Card className="overflow-hidden border-border/70 shadow-sm lg:col-span-2">
-            <CardContent className="space-y-3 p-4 sm:p-5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <ClockIcon className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-semibold">Aging breakdown</span>
-                  <span className="text-xs text-muted-foreground">open balances by overdue age — click to filter</span>
-                </div>
-                <div className="flex items-center gap-2 text-xs">
-                  <span className="rounded-md border border-border/70 bg-muted/40 px-2 py-1">
-                    Avg overdue <strong className="ml-1">{(agingSummary.avgDaysOverdue ?? 0).toFixed(1)}d</strong>
-                  </span>
-                  <span className="rounded-md border border-amber-200/80 bg-amber-50/80 px-2 py-1 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
-                    ${(agingSummary.overdueAmount ?? 0).toLocaleString()} overdue
-                  </span>
-                </div>
-              </div>
-
-              {agingBarTotal > 0 ? (
-                <div className="flex h-9 w-full overflow-hidden rounded-lg border border-border/50">
-                  {AGING_SEGMENTS.map((segment) => {
-                    const bucket = agingSummary.buckets.find((b) => b.key === segment.key);
-                    const amount = bucket?.amount ?? 0;
-                    if (amount <= 0) return null;
-                    const widthPercent = (amount / agingBarTotal) * 100;
-                    const isActive = ageFilterValue === segment.key;
-                    return (
-                      <button
-                        key={segment.key}
-                        type="button"
-                        className={`relative h-full transition-all ${segment.barClass} ${
-                          isActive ? "ring-2 ring-inset ring-foreground/60" : ""
-                        }`}
-                        style={{ width: `${Math.max(widthPercent, 2)}%` }}
-                        title={`${segment.label}: ${bucket?.count ?? 0} invoices · $${amount.toLocaleString()}`}
-                        onClick={() => handleAgeBucketFilter(isActive ? "all" : segment.key)}
-                      >
-                        {widthPercent > 12 ? (
-                          <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-[10px] font-semibold text-white drop-shadow-sm">
-                            {segment.label}
-                          </span>
-                        ) : null}
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="flex h-9 items-center justify-center rounded-lg border border-dashed border-border/60 text-xs text-muted-foreground">
-                  No open balances in the current filter scope
-                </div>
-              )}
-
-              <div className="flex flex-wrap gap-x-4 gap-y-1.5">
-                {AGING_SEGMENTS.map((segment) => {
-                  const bucket = agingSummary.buckets.find((b) => b.key === segment.key);
-                  const isActive = ageFilterValue === segment.key;
-                  return (
-                    <button
-                      key={segment.key}
-                      type="button"
-                      onClick={() => handleAgeBucketFilter(isActive ? "all" : segment.key)}
-                      className={`flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-xs transition-colors hover:bg-muted ${
-                        isActive ? "bg-muted font-semibold" : "text-muted-foreground"
-                      }`}
-                    >
-                      <span className={`h-2 w-2 rounded-full ${segment.dotClass}`} />
-                      {segment.label}
-                      <span className="tabular-nums">
-                        {bucket?.count ?? 0} · ${(bucket?.amount ?? 0).toLocaleString()}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Collection rate ring */}
-          <Card className="overflow-hidden border-border/70 shadow-sm">
-            <CardContent className="flex items-center gap-4 p-4 sm:p-5">
-              <div className="relative shrink-0">
-                <ProgressRing percent={collectionRate.countRate} />
-                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-xl font-bold tabular-nums">
-                    {Math.round(collectionRate.countRate)}%
-                  </span>
-                  <span className="text-[10px] uppercase tracking-wide text-muted-foreground">collected</span>
-                </div>
-              </div>
-              <div className="min-w-0 space-y-1.5">
-                <div className="text-sm font-semibold">Collection rate</div>
-                <div className="text-xs text-muted-foreground">
-                  {(metrics?.totalPaid ?? 0).toLocaleString()} of {totalInvoices.toLocaleString()} invoices paid in the current scope
-                </div>
-                {canViewTotals && collectionRate.amountRate !== null ? (
-                  <div className="text-xs text-muted-foreground">
-                    By value: <strong className="text-foreground">{Math.round(collectionRate.amountRate)}%</strong>{" "}
-                    (${Math.round(collectionRate.sumPaidAmount).toLocaleString()} of $
-                    {Math.round(collectionRate.sumAmount).toLocaleString()}
-                    {trendMonthsLabel ? `, ${trendMonthsLabel}` : ""})
-                  </div>
-                ) : null}
-                {sparkSeries.paidAmount.length >= 2 && canViewTotals ? (
-                  <div className="pt-1">
-                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Cash collected trend</div>
-                    <Sparkline data={sparkSeries.paidAmount} strokeClass="stroke-emerald-500" />
-                  </div>
-                ) : null}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
       ) : null}
 
       <Card className="overflow-hidden border-border/70 shadow-sm">
@@ -1111,11 +1189,6 @@ export function ExternalInvoicesPageImpl({ mode = "standard" }: { mode?: "standa
                   onDeleted={(name) => notify.success("View deleted", `Deleted “${name}”.`)}
                 />
               </div>
-              <IconActionButton
-                label={metricsCollapsed ? "Show breakdown" : "Hide breakdown"}
-                onClick={() => setMetricsCollapsed((v) => !v)}
-                icon={metricsCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-              />
             </div>
           </div>
 
@@ -1245,35 +1318,6 @@ export function ExternalInvoicesPageImpl({ mode = "standard" }: { mode?: "standa
             </div>
           )}
 
-          {!metricsCollapsed ? (
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
-              {isStatsLoading ? (
-                <>
-                  <WidgetSkeleton />
-                  <WidgetSkeleton />
-                  <WidgetSkeleton />
-                  <WidgetSkeleton />
-                  <WidgetSkeleton />
-                  <WidgetSkeleton />
-                </>
-              ) : (
-                compactWidgets
-                  .filter((widget) => canViewTotals || (widget.key !== "total-amount" && widget.key !== "average-amount"))
-                  .map((widget) => (
-                    <InvoiceMetricLink
-                      key={widget.key}
-                      title={widget.title}
-                      value={widget.value}
-                      subtitle={widget.subtitle}
-                      icon={widget.icon}
-                      accentClass={widget.accentClass}
-                      glowClass={widget.glowClass}
-                      to={widget.to}
-                    />
-                  ))
-              )}
-            </div>
-          ) : null}
         </CardContent>
       </Card>
 

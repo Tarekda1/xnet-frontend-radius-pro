@@ -21,7 +21,9 @@ import {
     X,
     Server,
     Gauge,
-    Layers
+    Layers,
+    ChevronDown,
+    ChevronUp,
 } from 'lucide-react';
 import Link from "next/link";
 import SearchBar from '@/components/SearchBar';
@@ -342,6 +344,19 @@ const UsersPage: React.FC = () => {
 
     const [isFiltersDialogOpen, setIsFiltersDialogOpen] = useState(false);
     const [filtersDraft, setFiltersDraft] = useState({ accountStatus: "" as string });
+    const metricsCollapsedStorageKey = "ui.users.metricsCollapsed";
+    const [metricsCollapsed, setMetricsCollapsed] = useState<boolean>(() => {
+        try {
+            return localStorage.getItem(metricsCollapsedStorageKey) === "1";
+        } catch {
+            return true;
+        }
+    });
+    useEffect(() => {
+        try {
+            localStorage.setItem(metricsCollapsedStorageKey, metricsCollapsed ? "1" : "0");
+        } catch {}
+    }, [metricsCollapsed]);
 
     const { user: authUser } = useAuth();
     const canSeeAudit = useMemo(() => canAny(authUser, ["users.view", "reseller.users.view"]), [authUser]);
@@ -1247,154 +1262,228 @@ const UsersPage: React.FC = () => {
             </div>
 
             {/* Fleet-wide KPIs (all users, not just the current page) */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                {isLoading && !fleet ? (
-                    <>
-                        {[1, 2, 3, 4].map((i) => (
-                            <Card key={i} className="border bg-card/60">
-                                <CardContent className="p-4">
-                                    <Skeleton className="h-4 w-24" />
-                                    <Skeleton className="mt-2 h-8 w-20" />
-                                    <Skeleton className="mt-2 h-3 w-28" />
-                                </CardContent>
-                            </Card>
-                        ))}
-                    </>
-                ) : (
-                    <>
-                        <StatCard
-                            label="Total users"
-                            value={<CountUpNumber value={fleet?.total ?? metrics.total} />}
-                            sublabel={
-                                fleetSparks.newUsers.length
-                                    ? `+${fleetSparks.newUsers[fleetSparks.newUsers.length - 1]} new this week`
-                                    : "Registered users"
-                            }
-                            onClick={clearAllFilters}
-                            icon={
-                                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-                                    <UsersIcon className="h-5 w-5 text-primary" />
-                                </div>
-                            }
-                            footer={
-                                fleetSparks.newUsers.length >= 2 ? (
-                                    <Sparkline data={fleetSparks.newUsers} strokeClass="stroke-blue-500" />
-                                ) : null
-                            }
-                        />
-                        <StatCard
-                            label="Online now"
-                            value={<CountUpNumber value={fleet?.online ?? metrics.online} />}
-                            sublabel={
-                                fleet?.total
-                                    ? `${Math.round(((fleet.online ?? 0) / fleet.total) * 100)}% of all users`
-                                    : "Live RADIUS sessions"
-                            }
-                            onClick={() => handleQuickFilter("online")}
-                            icon={
-                                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-500/10">
-                                    <Wifi className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                                </div>
-                            }
-                            footer={
-                                fleetSparks.onlineDaily.length >= 2 ? (
-                                    <Sparkline data={fleetSparks.onlineDaily} strokeClass="stroke-emerald-500" />
-                                ) : null
-                            }
-                        />
-                        <StatCard
-                            label="Suspended"
-                            value={<CountUpNumber value={fleet?.byStatus?.suspended ?? metrics.suspended} />}
-                            sublabel={
-                                fleet?.total
-                                    ? `${Math.round(((fleet.byStatus?.suspended ?? 0) / fleet.total) * 100)}% of all users`
-                                    : "Account status"
-                            }
-                            onClick={() => handleQuickFilter("suspended")}
-                            icon={
-                                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-500/10">
-                                    <UserX className="h-5 w-5 text-red-600 dark:text-red-400" />
-                                </div>
-                            }
-                        />
-                        <StatCard
-                            label="Quota exceeded"
-                            value={<CountUpNumber value={fleet?.monthlyExceeded ?? metrics.quotaExceeded} />}
-                            sublabel="Monthly traffic limit reached"
-                            onClick={() => setAttributeFilter("quota")}
-                            icon={
-                                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-500/10">
-                                    <Gauge className="h-5 w-5 text-orange-600 dark:text-orange-400" />
-                                </div>
-                            }
-                        />
-                    </>
-                )}
-            </div>
-
-            {/* Account status distribution (fleet-wide, clickable) */}
-            {fleet && fleetStatusTotal > 0 ? (
-                <Card className="overflow-hidden border-border/70 shadow-sm">
-                    <CardContent className="space-y-3 p-4 sm:p-5">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="flex items-center gap-2">
-                                <Shield className="h-4 w-4 text-muted-foreground" />
-                                <span className="text-sm font-semibold">Account status distribution</span>
-                                <span className="text-xs text-muted-foreground">click a segment to filter</span>
+            <Card className="overflow-hidden border-border/70 shadow-sm">
+                <CardContent className="space-y-4 p-4 sm:p-5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2">
+                            <div className="flex shrink-0 items-center gap-2">
+                                <UsersIcon className="h-4 w-4 text-muted-foreground" />
+                                <span className="text-sm font-semibold">Fleet metrics</span>
                             </div>
-                            <span className="text-xs text-muted-foreground">
-                                {fleetStatusTotal.toLocaleString()} users total
-                            </span>
+                            {metricsCollapsed ? (
+                                isLoading && !fleet ? (
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        {[1, 2, 3, 4].map((i) => (
+                                            <Skeleton key={i} className="h-7 w-24 rounded-full" />
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        {[
+                                            {
+                                                key: "total",
+                                                label: "Total",
+                                                value: fleet?.total ?? metrics.total,
+                                                icon: UsersIcon,
+                                                onClick: clearAllFilters,
+                                            },
+                                            {
+                                                key: "online",
+                                                label: "Online",
+                                                value: fleet?.online ?? metrics.online,
+                                                icon: Wifi,
+                                                onClick: () => handleQuickFilter("online"),
+                                            },
+                                            {
+                                                key: "suspended",
+                                                label: "Suspended",
+                                                value: fleet?.byStatus?.suspended ?? metrics.suspended,
+                                                icon: UserX,
+                                                onClick: () => handleQuickFilter("suspended"),
+                                            },
+                                            {
+                                                key: "quota",
+                                                label: "Quota exceeded",
+                                                value: fleet?.monthlyExceeded ?? metrics.quotaExceeded,
+                                                icon: Gauge,
+                                                onClick: () => setAttributeFilter("quota"),
+                                            },
+                                        ].map((item) => (
+                                            <button
+                                                key={item.key}
+                                                type="button"
+                                                onClick={item.onClick}
+                                                className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-muted/40 px-2.5 py-1 text-xs transition-colors hover:bg-muted"
+                                            >
+                                                <item.icon className="h-3 w-3 shrink-0 text-muted-foreground" />
+                                                <span className="text-muted-foreground">{item.label}</span>
+                                                <span className="font-semibold tabular-nums text-foreground">
+                                                    {(item.value ?? 0).toLocaleString()}
+                                                </span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )
+                            ) : null}
                         </div>
-                        <div className="flex h-9 w-full overflow-hidden rounded-lg border border-border/50">
-                            {STATUS_SEGMENTS.map((segment) => {
-                                const count = fleet.byStatus?.[segment.key] ?? 0;
-                                if (count <= 0) return null;
-                                const widthPercent = (count / fleetStatusTotal) * 100;
-                                const isActive = advancedFilters.accountStatus === segment.key;
-                                return (
-                                    <button
-                                        key={segment.key}
-                                        type="button"
-                                        className={`relative h-full transition-all ${segment.barClass} ${
-                                            isActive ? "ring-2 ring-inset ring-foreground/60" : ""
-                                        }`}
-                                        style={{ width: `${Math.max(widthPercent, 2)}%` }}
-                                        title={`${segment.label}: ${count.toLocaleString()} users`}
-                                        onClick={() => applyAccountStatusFilter(segment.key)}
-                                    >
-                                        {widthPercent > 12 ? (
-                                            <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-[10px] font-semibold text-white drop-shadow-sm">
-                                                {segment.label}
-                                            </span>
-                                        ) : null}
-                                    </button>
-                                );
-                            })}
-                        </div>
-                        <div className="flex flex-wrap gap-x-4 gap-y-1.5">
-                            {STATUS_SEGMENTS.map((segment) => {
-                                const count = fleet.byStatus?.[segment.key] ?? 0;
-                                const isActive = advancedFilters.accountStatus === segment.key;
-                                return (
-                                    <button
-                                        key={segment.key}
-                                        type="button"
-                                        onClick={() => applyAccountStatusFilter(segment.key)}
-                                        className={`flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-xs transition-colors hover:bg-muted ${
-                                            isActive ? "bg-muted font-semibold" : "text-muted-foreground"
-                                        }`}
-                                    >
-                                        <span className={`h-2 w-2 rounded-full ${segment.dotClass}`} />
-                                        {segment.label}
-                                        <span className="tabular-nums">{count.toLocaleString()}</span>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    </CardContent>
-                </Card>
-            ) : null}
+                        <IconActionButton
+                            label={metricsCollapsed ? "Show metrics" : "Hide metrics"}
+                            onClick={() => setMetricsCollapsed((v) => !v)}
+                            icon={metricsCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+                        />
+                    </div>
+
+                    {!metricsCollapsed ? (
+                        <>
+                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                                {isLoading && !fleet ? (
+                                    <>
+                                        {[1, 2, 3, 4].map((i) => (
+                                            <Card key={i} className="border bg-card/60">
+                                                <CardContent className="p-4">
+                                                    <Skeleton className="h-4 w-24" />
+                                                    <Skeleton className="mt-2 h-8 w-20" />
+                                                    <Skeleton className="mt-2 h-3 w-28" />
+                                                </CardContent>
+                                            </Card>
+                                        ))}
+                                    </>
+                                ) : (
+                                    <>
+                                        <StatCard
+                                            label="Total users"
+                                            value={<CountUpNumber value={fleet?.total ?? metrics.total} />}
+                                            sublabel={
+                                                fleetSparks.newUsers.length
+                                                    ? `+${fleetSparks.newUsers[fleetSparks.newUsers.length - 1]} new this week`
+                                                    : "Registered users"
+                                            }
+                                            onClick={clearAllFilters}
+                                            icon={
+                                                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+                                                    <UsersIcon className="h-5 w-5 text-primary" />
+                                                </div>
+                                            }
+                                            footer={
+                                                fleetSparks.newUsers.length >= 2 ? (
+                                                    <Sparkline data={fleetSparks.newUsers} strokeClass="stroke-blue-500" />
+                                                ) : null
+                                            }
+                                        />
+                                        <StatCard
+                                            label="Online now"
+                                            value={<CountUpNumber value={fleet?.online ?? metrics.online} />}
+                                            sublabel={
+                                                fleet?.total
+                                                    ? `${Math.round(((fleet.online ?? 0) / fleet.total) * 100)}% of all users`
+                                                    : "Live RADIUS sessions"
+                                            }
+                                            onClick={() => handleQuickFilter("online")}
+                                            icon={
+                                                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-500/10">
+                                                    <Wifi className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                                                </div>
+                                            }
+                                            footer={
+                                                fleetSparks.onlineDaily.length >= 2 ? (
+                                                    <Sparkline data={fleetSparks.onlineDaily} strokeClass="stroke-emerald-500" />
+                                                ) : null
+                                            }
+                                        />
+                                        <StatCard
+                                            label="Suspended"
+                                            value={<CountUpNumber value={fleet?.byStatus?.suspended ?? metrics.suspended} />}
+                                            sublabel={
+                                                fleet?.total
+                                                    ? `${Math.round(((fleet.byStatus?.suspended ?? 0) / fleet.total) * 100)}% of all users`
+                                                    : "Account status"
+                                            }
+                                            onClick={() => handleQuickFilter("suspended")}
+                                            icon={
+                                                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-500/10">
+                                                    <UserX className="h-5 w-5 text-red-600 dark:text-red-400" />
+                                                </div>
+                                            }
+                                        />
+                                        <StatCard
+                                            label="Quota exceeded"
+                                            value={<CountUpNumber value={fleet?.monthlyExceeded ?? metrics.quotaExceeded} />}
+                                            sublabel="Monthly traffic limit reached"
+                                            onClick={() => setAttributeFilter("quota")}
+                                            icon={
+                                                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-500/10">
+                                                    <Gauge className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+                                                </div>
+                                            }
+                                        />
+                                    </>
+                                )}
+                            </div>
+
+                            {fleet && fleetStatusTotal > 0 ? (
+                                <div className="space-y-3 border-t border-border/60 pt-4">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2">
+                                            <Shield className="h-4 w-4 text-muted-foreground" />
+                                            <span className="text-sm font-semibold">Account status distribution</span>
+                                            <span className="text-xs text-muted-foreground">click a segment to filter</span>
+                                        </div>
+                                        <span className="text-xs text-muted-foreground">
+                                            {fleetStatusTotal.toLocaleString()} users total
+                                        </span>
+                                    </div>
+                                    <div className="flex h-9 w-full overflow-hidden rounded-lg border border-border/50">
+                                        {STATUS_SEGMENTS.map((segment) => {
+                                            const count = fleet.byStatus?.[segment.key] ?? 0;
+                                            if (count <= 0) return null;
+                                            const widthPercent = (count / fleetStatusTotal) * 100;
+                                            const isActive = advancedFilters.accountStatus === segment.key;
+                                            return (
+                                                <button
+                                                    key={segment.key}
+                                                    type="button"
+                                                    className={`relative h-full transition-all ${segment.barClass} ${
+                                                        isActive ? "ring-2 ring-inset ring-foreground/60" : ""
+                                                    }`}
+                                                    style={{ width: `${Math.max(widthPercent, 2)}%` }}
+                                                    title={`${segment.label}: ${count.toLocaleString()} users`}
+                                                    onClick={() => applyAccountStatusFilter(segment.key)}
+                                                >
+                                                    {widthPercent > 12 ? (
+                                                        <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-[10px] font-semibold text-white drop-shadow-sm">
+                                                            {segment.label}
+                                                        </span>
+                                                    ) : null}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                                        {STATUS_SEGMENTS.map((segment) => {
+                                            const count = fleet.byStatus?.[segment.key] ?? 0;
+                                            const isActive = advancedFilters.accountStatus === segment.key;
+                                            return (
+                                                <button
+                                                    key={segment.key}
+                                                    type="button"
+                                                    onClick={() => applyAccountStatusFilter(segment.key)}
+                                                    className={`flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-xs transition-colors hover:bg-muted ${
+                                                        isActive ? "bg-muted font-semibold" : "text-muted-foreground"
+                                                    }`}
+                                                >
+                                                    <span className={`h-2 w-2 rounded-full ${segment.dotClass}`} />
+                                                    {segment.label}
+                                                    <span className="tabular-nums">{count.toLocaleString()}</span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            ) : null}
+                        </>
+                    ) : null}
+                </CardContent>
+            </Card>
 
             {/* Search & filters */}
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">

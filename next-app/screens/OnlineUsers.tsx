@@ -2,7 +2,7 @@
 import { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import SearchBar from "../components/SearchBar";
 import OnlineUsersTable, { type OnlineSessionStats } from "../components/OnlineUsersTable";
-import { RefreshCw, Users, Activity, AlertTriangle, Gauge, Wifi, Server } from "lucide-react";
+import { RefreshCw, Users, Activity, AlertTriangle, Gauge, Wifi, Server, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import PageHeader from "@/components/PageHeader";
 import IconActionButton from "@/components/IconActionButton";
@@ -49,6 +49,19 @@ export default function OnlineUsersPage() {
   const [refreshToken, setRefreshToken] = useState(0);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date>(() => new Date());
   const [nowTick, setNowTick] = useState<number>(() => Date.now());
+  const metricsCollapsedStorageKey = "ui.onlineUsers.metricsCollapsed";
+  const [metricsCollapsed, setMetricsCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(metricsCollapsedStorageKey) === "1";
+    } catch {
+      return true;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(metricsCollapsedStorageKey, metricsCollapsed ? "1" : "0");
+    } catch {}
+  }, [metricsCollapsed]);
 
   const handleSessionStats = useCallback((stats: OnlineSessionStats) => {
     setSessionStats((prev) =>
@@ -432,96 +445,135 @@ export default function OnlineUsersPage() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          label="Active now"
-          value={<CountUpNumber value={activeOnline} />}
-          sublabel="Recent accounting updates"
-          icon={
-            <div className="relative flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/10">
-              <Activity className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-              {activeOnline > 0 ? (
-                <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-500 ring-2 ring-background" />
+      <Card className="overflow-hidden border-border/70 shadow-sm">
+        <CardContent className="space-y-4 p-4 sm:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2">
+              <div className="flex shrink-0 items-center gap-2">
+                <Activity className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-semibold">Live session metrics</span>
+              </div>
+              {metricsCollapsed ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  {[
+                    { key: "active", label: "Active", value: activeOnline, icon: Activity },
+                    { key: "total", label: "Online", value: totalOnline, icon: Users },
+                    { key: "fup", label: "FUP", value: sessionStats.fup, icon: AlertTriangle },
+                    { key: "quota", label: "Over quota", value: sessionStats.monthlyExceeded, icon: Gauge },
+                  ].map((item) => (
+                    <span
+                      key={item.key}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-muted/40 px-2.5 py-1 text-xs"
+                    >
+                      <item.icon className="h-3 w-3 shrink-0 text-muted-foreground" />
+                      <span className="text-muted-foreground">{item.label}</span>
+                      <span className="font-semibold tabular-nums text-foreground">{item.value.toLocaleString()}</span>
+                    </span>
+                  ))}
+                </div>
               ) : null}
             </div>
-          }
-        />
-        <StatCard
-          label="Total online"
-          value={<CountUpNumber value={totalOnline} />}
-          sublabel={idleOnline ? `${idleOnline.toLocaleString()} idle / no recent update` : "All open sessions"}
-          icon={
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-500/10">
-              <Users className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-            </div>
-          }
-        />
-        <StatCard
-          label="FUP / throttled"
-          value={<CountUpNumber value={sessionStats.fup} />}
-          sublabel={
-            sessionStats.fup
-              ? `${Math.round((sessionStats.fup / Math.max(sessionStats.total, 1)) * 100)}% on current page`
-              : "No fallback profiles"
-          }
-          icon={
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-500/10">
-              <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
-            </div>
-          }
-        />
-        <StatCard
-          label="Monthly exceeded"
-          value={<CountUpNumber value={sessionStats.monthlyExceeded} />}
-          sublabel="Over quota this billing cycle"
-          icon={
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/10">
-              <Gauge className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-            </div>
-          }
-        />
-      </div>
+            <IconActionButton
+              label={metricsCollapsed ? "Show metrics" : "Hide metrics"}
+              onClick={() => setMetricsCollapsed((v) => !v)}
+              icon={metricsCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+            />
+          </div>
 
-      {totalOnline > 0 ? (
-        <Card className="border-border/60">
-          <CardContent className="space-y-2 p-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold">Session mix</h2>
-              <span className="text-xs text-muted-foreground">
-                {activeOnline.toLocaleString()} active · {idleOnline.toLocaleString()} idle · {totalOnline.toLocaleString()} total
-              </span>
-            </div>
-            <div className="flex h-3 w-full overflow-hidden rounded-full bg-muted">
-              <div
-                className="bg-emerald-500 transition-all duration-700"
-                style={{ width: `${(activeOnline / totalOnline) * 100}%` }}
-                title={`Active: ${activeOnline.toLocaleString()}`}
-              />
-              <div
-                className="bg-slate-400/70 transition-all duration-700 dark:bg-slate-500/60"
-                style={{ width: `${(idleOnline / totalOnline) * 100}%` }}
-                title={`Idle: ${idleOnline.toLocaleString()}`}
-              />
-            </div>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-              <span className="inline-flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                Active — recent accounting updates
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-slate-400/70 dark:bg-slate-500/60" />
-                Idle — session open, no recent update
-              </span>
-              {sessionStats.fup > 0 ? (
-                <span className="inline-flex items-center gap-1.5 text-red-600 dark:text-red-400">
-                  <AlertTriangle className="h-3 w-3" />
-                  {sessionStats.fup} throttled on this page
-                </span>
+          {!metricsCollapsed ? (
+            <>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <StatCard
+                  label="Active now"
+                  value={<CountUpNumber value={activeOnline} />}
+                  sublabel="Recent accounting updates"
+                  icon={
+                    <div className="relative flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/10">
+                      <Activity className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                      {activeOnline > 0 ? (
+                        <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-500 ring-2 ring-background" />
+                      ) : null}
+                    </div>
+                  }
+                />
+                <StatCard
+                  label="Total online"
+                  value={<CountUpNumber value={totalOnline} />}
+                  sublabel={idleOnline ? `${idleOnline.toLocaleString()} idle / no recent update` : "All open sessions"}
+                  icon={
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-500/10">
+                      <Users className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                    </div>
+                  }
+                />
+                <StatCard
+                  label="FUP / throttled"
+                  value={<CountUpNumber value={sessionStats.fup} />}
+                  sublabel={
+                    sessionStats.fup
+                      ? `${Math.round((sessionStats.fup / Math.max(sessionStats.total, 1)) * 100)}% on current page`
+                      : "No fallback profiles"
+                  }
+                  icon={
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-500/10">
+                      <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
+                    </div>
+                  }
+                />
+                <StatCard
+                  label="Monthly exceeded"
+                  value={<CountUpNumber value={sessionStats.monthlyExceeded} />}
+                  sublabel="Over quota this billing cycle"
+                  icon={
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/10">
+                      <Gauge className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                    </div>
+                  }
+                />
+              </div>
+
+              {totalOnline > 0 ? (
+                <div className="space-y-2 border-t border-border/60 pt-4">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-sm font-semibold">Session mix</h2>
+                    <span className="text-xs text-muted-foreground">
+                      {activeOnline.toLocaleString()} active · {idleOnline.toLocaleString()} idle · {totalOnline.toLocaleString()} total
+                    </span>
+                  </div>
+                  <div className="flex h-3 w-full overflow-hidden rounded-full bg-muted">
+                    <div
+                      className="bg-emerald-500 transition-all duration-700"
+                      style={{ width: `${(activeOnline / totalOnline) * 100}%` }}
+                      title={`Active: ${activeOnline.toLocaleString()}`}
+                    />
+                    <div
+                      className="bg-slate-400/70 transition-all duration-700 dark:bg-slate-500/60"
+                      style={{ width: `${(idleOnline / totalOnline) * 100}%` }}
+                      title={`Idle: ${idleOnline.toLocaleString()}`}
+                    />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                      Active — recent accounting updates
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full bg-slate-400/70 dark:bg-slate-500/60" />
+                      Idle — session open, no recent update
+                    </span>
+                    {sessionStats.fup > 0 ? (
+                      <span className="inline-flex items-center gap-1.5 text-red-600 dark:text-red-400">
+                        <AlertTriangle className="h-3 w-3" />
+                        {sessionStats.fup} throttled on this page
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
               ) : null}
-            </div>
-          </CardContent>
-        </Card>
-      ) : null}
+            </>
+          ) : null}
+        </CardContent>
+      </Card>
 
       <Card className="overflow-hidden border-border/70 shadow-sm">
         <CardContent className="p-4 sm:p-5">

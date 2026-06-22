@@ -6,6 +6,13 @@ ingress:
       wsSettings:
         enableWS: true
         enableWSS: true
+  - hostname: iptv.xnetcloud.tech
+    service: http://localhost:14090
+    originRequest:
+      noTLSVerify: true
+      wsSettings:
+        enableWS: true
+        enableWSS: true
   - hostname: api.xnetcloud.tech
     service: http://localhost:3000
     originRequest:

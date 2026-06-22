@@ -1,6 +1,5 @@
 import React from "react";
 import Sidebar from "@/components/ui/Sidebar/Sidebar";
-import Navbar from "@/components/ui/Navbar";
 import Breadcrumb from "@/components/ui/Breadcrumbs";
 import { cn } from "@/lib/utils";
 import { useAppPreferences } from "@/context/AppPreferencesContext";
@@ -15,7 +14,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <a
         href="#main-content"
         className={cn(
-          "fixed left-3 top-20 z-[300] -translate-y-24 rounded-md px-4 py-2 text-sm font-medium shadow-lg",
+          "fixed left-3 top-4 z-[300] -translate-y-24 rounded-md px-4 py-2 text-sm font-medium shadow-lg",
           "bg-primary text-primary-foreground outline-none ring-2 ring-ring",
           "pointer-events-none opacity-0 transition-all",
           "focus:pointer-events-auto focus:translate-y-0 focus:opacity-100"
@@ -23,7 +22,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       >
         Skip to main content
       </a>
-      <Navbar />
       <SystemHealthStrip />
       <ExternalInvoicePayDueInboxSync />
 
@@ -34,9 +32,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           id="main-content"
           tabIndex={-1}
           className={cn(
-            "min-h-0 flex-1 overflow-y-auto scroll-smooth bg-background",
+            "min-h-0 min-w-0 flex-1 overflow-y-auto scroll-smooth bg-background",
             "border-l border-border/70 dark:border-border/50 shadow-[inset_1px_0_0_0] shadow-border/20",
-            "transition-[padding] duration-300 ease-out",
             "px-4 py-6 sm:px-6 lg:px-8 outline-none",
             density === "compact" && "table-compact"
           )}
